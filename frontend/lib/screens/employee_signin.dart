@@ -32,11 +32,11 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
               padding: const EdgeInsets.all(28),
               margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95), // FIXED
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1), // FIXED
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -48,7 +48,9 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                   // Logo/Icon
                   CircleAvatar(
                     radius: 35,
-                    backgroundColor: const Color(0xFF26A69A).withOpacity(0.15),
+                    backgroundColor: const Color(
+                      0xFF26A69A,
+                    ).withValues(alpha: 0.15), // FIXED
                     child: const Icon(
                       Icons.work_outline,
                       size: 40,

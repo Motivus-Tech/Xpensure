@@ -33,11 +33,11 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
               padding: const EdgeInsets.all(28),
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -46,7 +46,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title
                   const Text(
                     "Employee Registration",
                     style: TextStyle(
@@ -57,7 +56,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   ),
                   const SizedBox(height: 25),
 
-                  // Profile Photo
                   GestureDetector(
                     onTap: () {
                       // TODO: Implement file picker / image picker
@@ -66,7 +64,7 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                       radius: 40,
                       backgroundColor: const Color(
                         0xFF26A69A,
-                      ).withOpacity(0.15),
+                      ).withValues(alpha: 0.15),
                       backgroundImage: _profileImagePath != null
                           ? AssetImage(_profileImagePath!) as ImageProvider
                           : null,
@@ -81,7 +79,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   ),
                   const SizedBox(height: 25),
 
-                  // Fields
                   _buildTextField(
                     label: "Full Name",
                     icon: Icons.person_outline,
@@ -158,7 +155,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   ),
                   const SizedBox(height: 28),
 
-                  // Sign Up Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -185,7 +181,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Back to Sign In
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
