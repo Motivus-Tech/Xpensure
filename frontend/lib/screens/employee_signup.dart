@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class EmployeeSignUp extends StatefulWidget {
   const EmployeeSignUp({super.key});
@@ -10,7 +12,58 @@ class EmployeeSignUp extends StatefulWidget {
 class _EmployeeSignUpState extends State<EmployeeSignUp> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String? _profileImagePath;
+  File? _profileImage;
+
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Color(0xFF26A69A)),
+                title: const Text("Take a photo"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final pickedFile = await _picker.pickImage(
+                    source: ImageSource.camera,
+                    imageQuality: 80,
+                  );
+                  if (pickedFile != null) {
+                    setState(() {
+                      _profileImage = File(pickedFile.path);
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo, color: Color(0xFF26A69A)),
+                title: const Text("Choose from gallery"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final pickedFile = await _picker.pickImage(
+                    source: ImageSource.gallery,
+                    imageQuality: 80,
+                  );
+                  if (pickedFile != null) {
+                    setState(() {
+                      _profileImage = File(pickedFile.path);
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,10 +71,7 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF1A237E), // Deep Indigo
-              Color(0xFF26A69A), // Soothing Teal-Green
-            ],
+            colors: [Color(0xFF1A237E), Color(0xFF26A69A)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -33,11 +83,11 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
               padding: const EdgeInsets.all(28),
               margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -57,18 +107,16 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   const SizedBox(height: 25),
 
                   GestureDetector(
-                    onTap: () {
-                      // TODO: Implement file picker / image picker
-                    },
+                    onTap: _pickImage,
                     child: CircleAvatar(
                       radius: 40,
                       backgroundColor: const Color(
                         0xFF26A69A,
-                      ).withValues(alpha: 0.15),
-                      backgroundImage: _profileImagePath != null
-                          ? AssetImage(_profileImagePath!) as ImageProvider
+                      ).withOpacity(0.15),
+                      backgroundImage: _profileImage != null
+                          ? FileImage(_profileImage!)
                           : null,
-                      child: _profileImagePath == null
+                      child: _profileImage == null
                           ? const Icon(
                               Icons.camera_alt,
                               color: Color(0xFF26A69A),
@@ -167,7 +215,7 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                         elevation: 3,
                       ),
                       onPressed: () {
-                        // TODO: Submit data to backend
+                        // TODO: Send _profileImage with other form fields to backend
                       },
                       child: const Text(
                         "Register",
