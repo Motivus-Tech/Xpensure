@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 
 class EmployeeSignUp extends StatefulWidget {
   const EmployeeSignUp({super.key});
@@ -13,8 +14,17 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   File? _profileImage;
-
   final ImagePicker _picker = ImagePicker();
+
+  // Controllers for form fields
+  final fullNameController = TextEditingController();
+  final employeeIdController = TextEditingController();
+  final departmentController = TextEditingController();
+  final phoneController = TextEditingController();
+  final emailController = TextEditingController();
+  final aadharController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
 
   Future<void> _pickImage() async {
     showModalBottomSheet(
@@ -63,6 +73,58 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
         );
       },
     );
+  }
+
+  Future<void> _registerEmployee() async {
+    if (passwordController.text != confirmPasswordController.text) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Passwords do not match")));
+      return;
+    }
+
+    final uri = Uri.parse(
+      "http://10.0.2.2:8000/employee/register/",
+    ); // backend URL for Android emulator
+    final request = http.MultipartRequest('POST', uri);
+
+    // Add form fields matching your Django serializer field names
+    request.fields['username'] = fullNameController.text;
+    request.fields['employee_id'] = employeeIdController.text;
+    request.fields['department'] = departmentController.text;
+    request.fields['phone_number'] = phoneController.text;
+    request.fields['email'] = emailController.text;
+    request.fields['aadhar_card'] = aadharController.text;
+    request.fields['password'] = passwordController.text;
+    request.fields['confirm_password'] = confirmPasswordController.text;
+
+    // Add profile image if picked
+    if (_profileImage != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('profile_photo', _profileImage!.path),
+      );
+    }
+
+    try {
+      final response = await request.send();
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Registration successful!")),
+        );
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Registration failed: ${response.statusCode}"),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
   }
 
   @override
@@ -130,42 +192,43 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   _buildTextField(
                     label: "Full Name",
                     icon: Icons.person_outline,
+                    controller: fullNameController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Employee ID",
                     icon: Icons.badge_outlined,
+                    controller: employeeIdController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Department",
                     icon: Icons.business_outlined,
+                    controller: departmentController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Phone Number",
                     icon: Icons.phone_outlined,
+                    controller: phoneController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Email ID",
                     icon: Icons.email_outlined,
+                    controller: emailController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Aadhar Card No.",
                     icon: Icons.credit_card_outlined,
+                    controller: aadharController,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Create Password",
                     icon: Icons.lock_outline,
+                    controller: passwordController,
                     obscure: _obscurePassword,
                     suffix: IconButton(
                       icon: Icon(
@@ -174,18 +237,15 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                             : Icons.visibility,
                         color: Colors.grey,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: "Confirm Password",
                     icon: Icons.lock_outline,
+                    controller: confirmPasswordController,
                     obscure: _obscureConfirmPassword,
                     suffix: IconButton(
                       icon: Icon(
@@ -194,11 +254,10 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                             : Icons.visibility,
                         color: Colors.grey,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _obscureConfirmPassword = !_obscureConfirmPassword;
-                        });
-                      },
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 28),
@@ -214,9 +273,7 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                         ),
                         elevation: 3,
                       ),
-                      onPressed: () {
-                        // TODO: Send _profileImage with other form fields to backend
-                      },
+                      onPressed: _registerEmployee,
                       child: const Text(
                         "Register",
                         style: TextStyle(
@@ -234,9 +291,7 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                     children: [
                       const Text("Already have an account? "),
                       TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                        },
+                        onPressed: () => Navigator.pop(context),
                         child: const Text(
                           "Sign In",
                           style: TextStyle(
@@ -259,10 +314,12 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
   Widget _buildTextField({
     required String label,
     required IconData icon,
+    TextEditingController? controller,
     bool obscure = false,
     Widget? suffix,
   }) {
     return TextField(
+      controller: controller,
       obscureText: obscure,
       decoration: InputDecoration(
         labelText: label,
