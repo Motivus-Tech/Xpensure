@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class EmployeeConfig(AppConfig):
+class XpensureConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'employee'
+    name = 'xpensure'
