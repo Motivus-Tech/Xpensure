@@ -3,8 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl =
-      'http://10.0.2.2:8000'; // Use your backend URL here
+  static const String baseUrl = 'http://10.0.2.2:8000';
 
   Future<bool> registerEmployee({
     required String fullName,
