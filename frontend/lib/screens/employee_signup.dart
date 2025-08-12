@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
+import '../services/api_service.dart';
 
 class EmployeeSignUp extends StatefulWidget {
   const EmployeeSignUp({super.key});
@@ -16,7 +16,6 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
 
-  // Controllers for form fields
   final fullNameController = TextEditingController();
   final employeeIdController = TextEditingController();
   final departmentController = TextEditingController();
@@ -27,52 +26,15 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
   final confirmPasswordController = TextEditingController();
 
   Future<void> _pickImage() async {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Color(0xFF26A69A)),
-                title: const Text("Take a photo"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile = await _picker.pickImage(
-                    source: ImageSource.camera,
-                    imageQuality: 80,
-                  );
-                  if (pickedFile != null) {
-                    setState(() {
-                      _profileImage = File(pickedFile.path);
-                    });
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo, color: Color(0xFF26A69A)),
-                title: const Text("Choose from gallery"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile = await _picker.pickImage(
-                    source: ImageSource.gallery,
-                    imageQuality: 80,
-                  );
-                  if (pickedFile != null) {
-                    setState(() {
-                      _profileImage = File(pickedFile.path);
-                    });
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
     );
+    if (pickedFile != null) {
+      setState(() {
+        _profileImage = File(pickedFile.path);
+      });
+    }
   }
 
   Future<void> _registerEmployee() async {
@@ -83,48 +45,56 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
       return;
     }
 
-    final uri = Uri.parse(
-      "http://10.0.2.2:8000/employee/register/",
-    ); // backend URL for Android emulator
-    final request = http.MultipartRequest('POST', uri);
+    bool success = await ApiService().registerEmployee(
+      fullName: fullNameController.text.trim(),
+      employeeId: employeeIdController.text.trim(),
+      department: departmentController.text.trim(),
+      phone: phoneController.text.trim(),
+      email: emailController.text.trim(),
+      aadhar: aadharController.text.trim(),
+      password: passwordController.text.trim(),
+      confirmPassword: confirmPasswordController.text.trim(),
+      profileImage: _profileImage,
+    );
 
-    // Add form fields matching your Django serializer field names
-    request.fields['username'] = fullNameController.text;
-    request.fields['employee_id'] = employeeIdController.text;
-    request.fields['department'] = departmentController.text;
-    request.fields['phone_number'] = phoneController.text;
-    request.fields['email'] = emailController.text;
-    request.fields['aadhar_card'] = aadharController.text;
-    request.fields['password'] = passwordController.text;
-    request.fields['confirm_password'] = confirmPasswordController.text;
-
-    // Add profile image if picked
-    if (_profileImage != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath('profile_photo', _profileImage!.path),
-      );
-    }
-
-    try {
-      final response = await request.send();
-
-      if (response.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Registration successful!")),
-        );
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Registration failed: ${response.statusCode}"),
-          ),
-        );
-      }
-    } catch (e) {
+    if (success) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ).showSnackBar(const SnackBar(content: Text("Registration successful!")));
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Registration failed")));
     }
+  }
+
+  Widget _buildTextField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
   }
 
   @override
@@ -187,8 +157,8 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                           : null,
                     ),
                   ),
-                  const SizedBox(height: 25),
 
+                  const SizedBox(height: 25),
                   _buildTextField(
                     label: "Full Name",
                     icon: Icons.person_outline,
@@ -265,15 +235,14 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
+                      onPressed: _registerEmployee,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF26A69A),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        elevation: 3,
                       ),
-                      onPressed: _registerEmployee,
                       child: const Text(
                         "Register",
                         style: TextStyle(
@@ -284,56 +253,10 @@ class _EmployeeSignUpState extends State<EmployeeSignUp> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("Already have an account? "),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          "Sign In",
-                          style: TextStyle(
-                            color: Color(0xFF1A237E),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String label,
-    required IconData icon,
-    TextEditingController? controller,
-    bool obscure = false,
-    Widget? suffix,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: obscure,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
         ),
       ),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'employee_signup.dart'; // <-- Sign Up page ka import
+import '../services/api_service.dart';
+import 'employee_signup.dart';
 
 class EmployeeSignIn extends StatefulWidget {
   const EmployeeSignIn({super.key});
@@ -11,16 +12,68 @@ class EmployeeSignIn extends StatefulWidget {
 class _EmployeeSignInState extends State<EmployeeSignIn> {
   bool _obscurePassword = true;
 
+  final employeeIdController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  Future<void> _login() async {
+    final empId = employeeIdController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (empId.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter Employee ID and Password")),
+      );
+      return;
+    }
+
+    bool success = await ApiService().login(empId, password);
+    if (success) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Login Successful!")));
+      // Navigate to next page, e.g. home screen
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Invalid credentials")));
+    }
+  }
+
+  Widget _buildTextField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF1A237E), // Deep Indigo
-              Color(0xFF26A69A), // Greener Teal
-            ],
+            colors: [Color(0xFF1A237E), Color(0xFF26A69A)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -32,11 +85,11 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
               padding: const EdgeInsets.all(28),
               margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95), // FIXED
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1), // FIXED
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -45,12 +98,9 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo/Icon
                   CircleAvatar(
                     radius: 35,
-                    backgroundColor: const Color(
-                      0xFF26A69A,
-                    ).withValues(alpha: 0.15), // FIXED
+                    backgroundColor: const Color(0xFF26A69A).withOpacity(0.15),
                     child: const Icon(
                       Icons.work_outline,
                       size: 40,
@@ -58,8 +108,6 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Title
                   const Text(
                     "Employee Sign In",
                     style: TextStyle(
@@ -69,18 +117,16 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                     ),
                   ),
                   const SizedBox(height: 30),
-
-                  // Employee ID
                   _buildTextField(
                     label: "Employee ID",
                     icon: Icons.badge_outlined,
+                    controller: employeeIdController,
                   ),
                   const SizedBox(height: 18),
-
-                  // Password
                   _buildTextField(
                     label: "Password",
                     icon: Icons.lock_outline,
+                    controller: passwordController,
                     obscure: _obscurePassword,
                     suffix: IconButton(
                       icon: Icon(
@@ -89,28 +135,22 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                             : Icons.visibility,
                         color: Colors.grey,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   const SizedBox(height: 28),
-
-                  // Sign In Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
+                      onPressed: _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF26A69A),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        elevation: 3,
                       ),
-                      onPressed: () {},
                       child: const Text(
                         "Sign In",
                         style: TextStyle(
@@ -122,13 +162,13 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Links
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          // TODO: Implement Forgot Password navigation
+                        },
                         child: const Text(
                           "Forgot Password?",
                           style: TextStyle(
@@ -142,7 +182,7 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const EmployeeSignUp(),
+                              builder: (_) => const EmployeeSignUp(),
                             ),
                           );
                         },
@@ -160,32 +200,6 @@ class _EmployeeSignInState extends State<EmployeeSignIn> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String label,
-    required IconData icon,
-    bool obscure = false,
-    Widget? suffix,
-  }) {
-    return TextField(
-      obscureText: obscure,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: Colors.grey[100],
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
         ),
       ),
     );
