@@ -1,18 +1,26 @@
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ApiService {
-  // Replace with your laptop's local IP address and backend port
-  final String baseUrl = "http://192.168.1.5:5000";
+  final String baseUrl = "http://192.168.1.7:8000"; // Tanika's backend IP
 
-  // Function to test connection
-  Future<String> testConnection() async {
+  Future<String> loginEmployee(String employeeId, String password) async {
     try {
-      final response = await http.get(Uri.parse("$baseUrl/test"));
+      final url = Uri.parse(
+        '$baseUrl/api/employee/login/',
+      ); // backend login endpoint
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'employee_id': employeeId, 'password': password}),
+      );
 
       if (response.statusCode == 200) {
-        return "Connected: ${response.body}";
+        return "Login Successful!";
+      } else if (response.statusCode == 401) {
+        return "Invalid credentials!";
       } else {
-        return "Failed: ${response.statusCode}";
+        return "Error: ${response.statusCode}";
       }
     } catch (e) {
       return "Error: $e";

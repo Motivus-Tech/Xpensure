@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// import 'employee_signin.dart'; // you can comment this out if EmployeeSignIn isn't ready
+import 'employee_signin.dart'; // Import the EmployeeSignIn page
 
 class RoleSelection extends StatelessWidget {
   const RoleSelection({super.key});
@@ -60,13 +60,13 @@ class RoleSelection extends StatelessWidget {
                               description: "Submit & track expenses",
                               color: Colors.teal,
                               onTap: () {
-                                // Uncomment when EmployeeSignIn is ready
-                                // Navigator.push(
-                                //   context,
-                                //   MaterialPageRoute(
-                                //     builder: (context) => const EmployeeSignIn(),
-                                //   ),
-                                // );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const EmployeeSignInPage(),
+                                  ),
+                                );
                               },
                             ),
                           ],
@@ -87,7 +87,15 @@ class RoleSelection extends StatelessWidget {
                               title: "Employee",
                               description: "Submit & track expenses",
                               color: Colors.teal,
-                              onTap: () {},
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const EmployeeSignInPage(),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
