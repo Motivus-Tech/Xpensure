@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'employee_signin.dart'; // Import the EmployeeSignIn page
+import 'employee_signin.dart'; // Correct relative import
 
 class RoleSelection extends StatelessWidget {
   const RoleSelection({super.key});
@@ -51,7 +51,9 @@ class RoleSelection extends StatelessWidget {
                               title: "Admin",
                               description: "Manage approvals & reports",
                               color: Colors.blueAccent,
-                              onTap: () {},
+                              onTap: () {
+                                // Admin navigation can be added later
+                              },
                             ),
                             const SizedBox(width: 40),
                             _AnimatedRoleCard(
