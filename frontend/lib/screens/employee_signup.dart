@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart'; // for camera/gallery
-import 'employee_signin.dart'; // navigate back to sign-in
+import 'package:image_picker/image_picker.dart';
+import '../services/api_service.dart';
+import 'employee_signin.dart';
 
 class EmployeeSignUpPage extends StatefulWidget {
   const EmployeeSignUpPage({super.key});
@@ -12,6 +13,7 @@ class EmployeeSignUpPage extends StatefulWidget {
 
 class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
   final _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService();
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _employeeIdController = TextEditingController();
@@ -25,6 +27,7 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
   File? _profileImage;
 
   final ImagePicker _picker = ImagePicker();
@@ -69,21 +72,47 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
     );
   }
 
-  void _signUp() {
-    if (_formKey.currentState!.validate()) {
-      // TODO: Call backend API for registration
+  Future<void> _signUp() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final Map<String, dynamic> employeeData = {
+      'name': _nameController.text.trim(),
+      'employee_id': _employeeIdController.text.trim(),
+      'email': _emailController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'department': _departmentController.text.trim(),
+      'aadhar': _aadharController.text.trim(),
+      'password': _passwordController.text.trim(),
+    };
+
+    final response = await _apiService.registerEmployee(employeeData);
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (response == "Sign Up Successful!") {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text("Sign Up successful!")));
+      ).showSnackBar(SnackBar(content: Text(response)));
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const EmployeeSignInPage()),
       );
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Your existing UI code remains exactly the same
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -246,7 +275,7 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _signUp,
+                        onPressed: _isLoading ? null : _signUp,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF009688),
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -254,13 +283,17 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          "Sign Up",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text(
+                                "Sign Up",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 16),

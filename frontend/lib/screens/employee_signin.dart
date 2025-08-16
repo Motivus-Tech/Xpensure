@@ -19,8 +19,45 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
   bool _isLoading = false;
   String _message = "";
 
+  void _login() async {
+    final employeeId = _employeeIdController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (employeeId.isEmpty || password.isEmpty) {
+      setState(() {
+        _message = "Please fill both fields";
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _message = "";
+    });
+
+    String response = await _apiService.loginEmployee(employeeId, password);
+
+    setState(() {
+      _isLoading = false;
+      _message = response;
+    });
+
+    if (response == "Login Successful!") {
+      // Show success message and navigate if needed
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response)));
+      // You might want to navigate to home page here
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Your existing UI code remains exactly the same
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -170,29 +207,5 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
         ),
       ),
     );
-  }
-
-  void _login() async {
-    final employeeId = _employeeIdController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (employeeId.isEmpty || password.isEmpty) {
-      setState(() {
-        _message = "Please fill both fields";
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _message = "";
-    });
-
-    String response = await _apiService.loginEmployee(employeeId, password);
-
-    setState(() {
-      _isLoading = false;
-      _message = response;
-    });
   }
 }

@@ -6,9 +6,7 @@ class ApiService {
 
   Future<String> loginEmployee(String employeeId, String password) async {
     try {
-      final url = Uri.parse(
-        '$baseUrl/api/employee/login/',
-      ); // backend login endpoint
+      final url = Uri.parse('$baseUrl/api/employee/login/');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -20,7 +18,26 @@ class ApiService {
       } else if (response.statusCode == 401) {
         return "Invalid credentials!";
       } else {
-        return "Error: ${response.statusCode}";
+        return "Error: ${response.statusCode} - ${response.body}";
+      }
+    } catch (e) {
+      return "Error: $e";
+    }
+  }
+
+  Future<String> registerEmployee(Map<String, dynamic> employeeData) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/employee/register/');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(employeeData),
+      );
+
+      if (response.statusCode == 201) {
+        return "Sign Up Successful!";
+      } else {
+        return "Error: ${response.statusCode} - ${response.body}";
       }
     } catch (e) {
       return "Error: $e";
