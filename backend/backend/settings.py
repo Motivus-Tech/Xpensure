@@ -1,12 +1,15 @@
 from pathlib import Path
 
+# Custom user model reference:
+AUTH_USER_MODEL = 'Xpensure.Employee'
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1','192.168.1.5','192.168.1.7']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1','192.168.1.5','192.168.1.7','10.0.2.2']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -19,7 +22,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
 
-    'xpensure',
+    'Xpensure',
 ]
 
 MIDDLEWARE = [
@@ -51,12 +54,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'xpensure_db',
+        'USER': 'postgres',
+        'PASSWORD': 'Xpensure@2025',
+        'HOST': '127.0.0.1',
+        'PORT': '5432',
     }
 }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
@@ -77,8 +86,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Custom user model reference:
-AUTH_USER_MODEL = 'xpensure.Employee'
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
