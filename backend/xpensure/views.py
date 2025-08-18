@@ -20,8 +20,13 @@ class EmployeeSignupView(APIView):
     def post(self, request):
         serializer = EmployeeSignupSerializer(data=request.data)
         if serializer.is_valid():
+            # 1️⃣ Save the employee first
             employee = serializer.save()
-            token = Token.objects.create(user=employee)
+
+            # 2️⃣ Create token safely after employee is saved
+            token, created = Token.objects.get_or_create(user=employee)
+
+            # 3️⃣ Return response
             return Response({
                 'employee_id': employee.employee_id,
                 'email': employee.email,
@@ -32,7 +37,9 @@ class EmployeeSignupView(APIView):
                 'aadhar_card': employee.aadhar_card,
                 'token': token.key
             }, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 # -----------------------------
 # Login API
@@ -59,6 +66,7 @@ class EmployeeLoginView(APIView):
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
         if user.check_password(password):
+            # Use get_or_create so it never fails
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
                 'employee_id': user.employee_id,
@@ -72,19 +80,21 @@ class EmployeeLoginView(APIView):
             })
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
+
 # -----------------------------
-# List & Create Employees
+# Optional: List & Create Employees (for admins)
 # -----------------------------
 class EmployeeListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeSignupSerializer
-    permission_classes = [permissions.IsAdminUser]  # optional, restrict list to admins
+    permission_classes = [permissions.IsAdminUser]  # restrict list/create to admins
+
 
 # -----------------------------
-# Retrieve, Update, Delete Employee
+# Optional: Retrieve, Update, Delete Employee (for admins)
 # -----------------------------
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeSignupSerializer
     lookup_field = 'employee_id'
-    permission_classes = [permissions.IsAdminUser]  # optional, restrict to admins
+    permission_classes = [permissions.IsAdminUser]
