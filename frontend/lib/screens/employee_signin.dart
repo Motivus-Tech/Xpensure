@@ -35,7 +35,11 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
       _message = "";
     });
 
-    String response = await _apiService.loginEmployee(employeeId, password);
+    // ✅ Use named parameters for loginEmployee
+    String response = await _apiService.loginEmployee(
+      employeeId: employeeId,
+      password: password,
+    );
 
     setState(() {
       _isLoading = false;
@@ -43,11 +47,11 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
     });
 
     if (response == "Login Successful!") {
-      // Show success message and navigate if needed
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(response)));
-      // You might want to navigate to home page here
+      // TODO: Navigate to dashboard/home page
+      // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => DashboardPage()));
     } else {
       ScaffoldMessenger.of(
         context,
@@ -57,7 +61,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Your existing UI code remains exactly the same
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(

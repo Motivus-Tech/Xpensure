@@ -72,6 +72,9 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
     );
   }
 
+  // -----------------------------
+  // Fixed Sign Up Method
+  // -----------------------------
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -79,40 +82,37 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
       _isLoading = true;
     });
 
-    final Map<String, dynamic> employeeData = {
-      'name': _nameController.text.trim(),
-      'employee_id': _employeeIdController.text.trim(),
-      'email': _emailController.text.trim(),
-      'phone': _phoneController.text.trim(),
-      'department': _departmentController.text.trim(),
-      'aadhar': _aadharController.text.trim(),
-      'password': _passwordController.text.trim(),
-    };
-
-    final response = await _apiService.registerEmployee(employeeData);
+    // Call API with correct fields matching Django serializer
+    final response = await _apiService.registerEmployee(
+      employeeId: _employeeIdController.text.trim(),
+      email: _emailController.text.trim(),
+      firstName: _nameController.text.trim(), // Full Name
+      lastName: "", // Optional, can split full name if needed
+      department: _departmentController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
+      aadharNumber: _aadharController.text.trim(),
+      password: _passwordController.text.trim(),
+      confirmPassword: _confirmPasswordController.text.trim(),
+    );
 
     setState(() {
       _isLoading = false;
     });
 
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(response)));
+
     if (response == "Sign Up Successful!") {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(response)));
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const EmployeeSignInPage()),
       );
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(response)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Your existing UI code remains exactly the same
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
