@@ -30,8 +30,7 @@ class EmployeeSignupView(APIView):
             return Response({
                 'employee_id': employee.employee_id,
                 'email': employee.email,
-                'first_name': employee.first_name,
-                'last_name': employee.last_name,
+                'full_name': employee.full_name,
                 'department': employee.department,
                 'phone_number': employee.phone_number,
                 'aadhar_card': employee.aadhar_card,
@@ -71,8 +70,7 @@ class EmployeeLoginView(APIView):
             return Response({
                 'employee_id': user.employee_id,
                 'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
+                'full_name': user.full_name,
                 'department': user.department,
                 'phone_number': user.phone_number,
                 'aadhar_card': user.aadhar_card,

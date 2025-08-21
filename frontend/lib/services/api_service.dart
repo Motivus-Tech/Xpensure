@@ -17,8 +17,7 @@ class ApiService {
   Future<String> registerEmployee({
     required String employeeId,
     required String email,
-    required String firstName,
-    required String lastName,
+    required String fullName, // <- matches Django serializer
     required String department,
     required String phoneNumber,
     required String aadharNumber,
@@ -34,8 +33,7 @@ class ApiService {
             body: jsonEncode({
               'employee_id': employeeId,
               'email': email,
-              'first_name': firstName,
-              'last_name': lastName,
+              'fullName': fullName, // <- must match serializer
               'department': department,
               'phone_number': phoneNumber,
               'aadhar_card': aadharNumber,
@@ -45,7 +43,7 @@ class ApiService {
           )
           .timeout(requestTimeout);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         return "Sign Up Successful!";
       } else {
         return "Error: ${response.statusCode} - ${response.body}";

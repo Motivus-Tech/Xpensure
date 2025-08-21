@@ -1,14 +1,18 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
 from .models import Employee
 
-class EmployeeAdmin(UserAdmin):
-    model = Employee
-    fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('employee_id', 'department', 'phone_number', 'aadhar_card')}),
+@admin.register(Employee)
+class EmployeeAdmin(admin.ModelAdmin):
+    list_display = ('employee_id', 'email', 'full_name', 'department', 'phone_number')
+    search_fields = ('employee_id', 'email', 'full_name')
+    readonly_fields = ('id',)  # optional
+    fieldsets = (
+        (None, {
+            'fields': ('employee_id', 'email', 'full_name', 'department', 'phone_number', 'aadhar_card', 'password')
+        }),
     )
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        (None, {'fields': ('employee_id', 'department', 'phone_number', 'aadhar_card')}),
+    add_fieldsets = (
+        (None, {
+            'fields': ('employee_id', 'email', 'full_name', 'department', 'phone_number', 'aadhar_card', 'password')
+        }),
     )
-
-admin.site.register(Employee, EmployeeAdmin)

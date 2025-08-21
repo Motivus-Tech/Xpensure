@@ -72,9 +72,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
     );
   }
 
-  // -----------------------------
-  // Fixed Sign Up Method
-  // -----------------------------
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -82,12 +79,10 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
       _isLoading = true;
     });
 
-    // Call API with correct fields matching Django serializer
     final response = await _apiService.registerEmployee(
       employeeId: _employeeIdController.text.trim(),
+      fullName: _nameController.text.trim(), // matches Django serializer
       email: _emailController.text.trim(),
-      firstName: _nameController.text.trim(), // Full Name
-      lastName: "", // Optional, can split full name if needed
       department: _departmentController.text.trim(),
       phoneNumber: _phoneController.text.trim(),
       aadharNumber: _aadharController.text.trim(),
@@ -143,7 +138,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Profile Image
                     GestureDetector(
                       onTap: _showImagePickerOptions,
                       child: CircleAvatar(
@@ -213,11 +207,9 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                                 ? Icons.visibility_off
                                 : Icons.visibility,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                         filled: true,
                         fillColor: Colors.grey[100],
@@ -226,12 +218,9 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return "Enter password";
-                        }
-                        return null;
-                      },
+                      validator: (value) => value == null || value.isEmpty
+                          ? "Enter password"
+                          : null,
                     ),
                     const SizedBox(height: 12),
 
@@ -248,12 +237,10 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                                 ? Icons.visibility_off
                                 : Icons.visibility,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscureConfirmPassword =
-                                  !_obscureConfirmPassword;
-                            });
-                          },
+                          onPressed: () => setState(
+                            () => _obscureConfirmPassword =
+                                !_obscureConfirmPassword,
+                          ),
                         ),
                         filled: true,
                         fillColor: Colors.grey[100],
@@ -262,12 +249,9 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                           borderSide: BorderSide.none,
                         ),
                       ),
-                      validator: (value) {
-                        if (value != _passwordController.text) {
-                          return "Passwords do not match";
-                        }
-                        return null;
-                      },
+                      validator: (value) => value != _passwordController.text
+                          ? "Passwords do not match"
+                          : null,
                     ),
                     const SizedBox(height: 20),
 
@@ -300,14 +284,12 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
 
                     // Back to Sign In
                     TextButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const EmployeeSignInPage(),
-                          ),
-                        );
-                      },
+                      onPressed: () => Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EmployeeSignInPage(),
+                        ),
+                      ),
                       child: const Text("Back to Sign In"),
                     ),
                   ],
@@ -339,12 +321,8 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
           borderSide: BorderSide.none,
         ),
       ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return "Enter $label";
-        }
-        return null;
-      },
+      validator: (value) =>
+          value == null || value.isEmpty ? "Enter $label" : null,
     );
   }
 }

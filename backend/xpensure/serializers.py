@@ -4,14 +4,14 @@ from .models import Employee
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=6)
+    fullName = serializers.CharField(write_only=True)  # Only for input
 
     class Meta:
         model = Employee
         fields = [
             'employee_id',
             'email',
-            'first_name',
-            'last_name',
+            'fullName',       
             'department',
             'phone_number',
             'aadhar_card',
@@ -20,19 +20,14 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """
-        Ensure password and confirm_password match
-        """
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Passwords do not match"})
         return attrs
 
     def create(self, validated_data):
-        """
-        Create and return a new Employee instance
-        """
-        # Remove confirm_password from data
+        # Pop fields not in the model
         validated_data.pop('confirm_password')
+        full_name = validated_data.pop('fullName')  # get fullName from frontend
 
         # Set username equal to employee_id
         validated_data['username'] = validated_data['employee_id']
@@ -40,16 +35,9 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         # Extract password
         password = validated_data.pop('password')
 
-        # Create employee instance
+        # Create employee instance correctly
         employee = Employee(**validated_data)
-        employee.set_password(password)  # Hash password
+        employee.full_name = full_name  # assign full_name manually
+        employee.set_password(password)
         employee.save()
         return employee
-
-
-class EmployeeLoginSerializer(serializers.Serializer):
-    """
-    Optional serializer for login validation
-    """
-    employee_id = serializers.CharField(required=True)
-    password = serializers.CharField(required=True, write_only=True)
