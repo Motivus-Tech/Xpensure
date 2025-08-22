@@ -42,8 +42,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFFC196CC), // purple
-              Color(0xFF849CFC), // blue
+              Color.fromARGB(255, 174, 135, 184), // purple
+              Color.fromARGB(255, 127, 152, 250), // blue
             ],
           ),
           boxShadow: [
@@ -211,8 +211,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           // Tabs for Pending, Approved, Rejected
           TabBar(
             controller: _tabController,
-            indicatorColor: Colors.purpleAccent[100],
-            labelColor: Colors.purpleAccent[100],
+            indicatorColor: const Color.fromARGB(255, 136, 122, 139),
+            labelColor: const Color.fromARGB(255, 133, 130, 134),
             unselectedLabelColor: Colors.grey[400],
             tabs: const [
               Tab(text: "Pending"),
@@ -237,8 +237,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Color.fromARGB(255, 204, 158, 61), // purple
-                        Color.fromARGB(255, 229, 162, 80), // light purple
+                        Color.fromARGB(255, 255, 176, 80),
+                        Color.fromARGB(255, 227, 182, 85),
                       ],
                     ),
                   ),
