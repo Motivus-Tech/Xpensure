@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'reimbursement_form.dart'; // Import your ReimbursementForm screen
 import 'request_history.dart';
 
 // Request model
 class Request {
   final String type; // "Reimbursement" or "Advance"
-  final int amount;
-  final String description;
+  final List<Map<String, dynamic>> payments; // multiple payments
   String status; // "Pending", "Approved", "Rejected"
 
   Request({
     required this.type,
-    required this.amount,
-    required this.description,
+    required this.payments,
     this.status = "Pending",
   });
 }
@@ -59,8 +58,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color.fromARGB(255, 174, 135, 184), // purple
-              Color.fromARGB(255, 127, 152, 250), // blue
+              Color.fromARGB(255, 174, 135, 184),
+              Color.fromARGB(255, 127, 152, 250),
             ],
           ),
           boxShadow: [
@@ -97,8 +96,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     switch (request.status) {
       case "Pending":
         gradient = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
           colors: [
             Color.fromARGB(255, 255, 176, 80),
             Color.fromARGB(255, 227, 182, 85),
@@ -107,15 +104,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         break;
       case "Approved":
         gradient = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
           colors: [Color.fromARGB(255, 125, 193, 100), Color(0xFFA5D6A7)],
         );
         break;
       case "Rejected":
         gradient = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
           colors: [
             Color.fromARGB(255, 174, 72, 72),
             Color.fromARGB(255, 198, 140, 124),
@@ -149,7 +142,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           ),
         ),
         subtitle: Text(
-          "₹${request.amount} • ${request.description}",
+          "Payments: ${request.payments.length}",
           style: const TextStyle(color: Colors.white70),
         ),
         trailing: const Icon(
@@ -164,8 +157,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               builder: (context) => RequestHistoryScreen(
                 employeeName: widget.employeeName,
                 requestTitle: "${request.type} Request #${index + 1}",
-                amount: request.amount,
-                description: request.description,
+                payments: request.payments,
               ),
             ),
           );
@@ -179,198 +171,35 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     return requests.where((r) => r.status == status).toList();
   }
 
-  // Open form to create new request
+  // Open form as full screen
   void _createRequest(String type) {
-    final _amountController = TextEditingController();
-    final _descController = TextEditingController();
-    final _projectController = TextEditingController();
-    DateTime? _selectedDate;
-    String? _attachmentPath;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          backgroundColor: const Color(0xFF1F222B),
-          title: Text(
-            "New $type Request",
-            style: const TextStyle(color: Colors.white),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (type == "Reimbursement") ...[
-                  // Date Picker
-                  InkWell(
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: now,
-                        firstDate: DateTime(now.year - 5),
-                        lastDate: DateTime(now.year + 5),
-                        builder: (context, child) {
-                          return Theme(
-                            data: ThemeData.dark().copyWith(
-                              colorScheme: ColorScheme.dark(
-                                primary: const Color(0xFF849CFC),
-                                onPrimary: Colors.white,
-                                surface: const Color(0xFF1F222B),
-                                onSurface: Colors.white,
-                              ),
-                              dialogBackgroundColor: const Color(0xFF1F222B),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null)
-                        setStateDialog(() => _selectedDate = picked);
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: "Date",
-                        labelStyle: TextStyle(color: Colors.white70),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
-                      ),
-                      child: Text(
-                        _selectedDate == null
-                            ? "Select Date"
-                            : "${_selectedDate!.day}-${_selectedDate!.month}-${_selectedDate!.year}",
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Project ID
-                  TextField(
-                    controller: _projectController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: "Project ID",
-                      labelStyle: TextStyle(color: Colors.white70),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Attachment picker
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF849CFC),
-                        ),
-                        onPressed: () async {
-                          final result = await FilePicker.platform.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: ['jpg', 'jpeg', 'pdf'],
-                          );
-                          if (result != null && result.files.isNotEmpty) {
-                            setStateDialog(() {
-                              _attachmentPath = result.files.first.path;
-                            });
-                          }
-                        },
-                        child: const Text("Pick Attachment"),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _attachmentPath != null
-                              ? _attachmentPath!.split('/').last
-                              : "No file selected",
-                          style: const TextStyle(color: Colors.white70),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                // Amount
-                TextField(
-                  controller: _amountController,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: "Amount",
-                    labelStyle: TextStyle(color: Colors.white70),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white24),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Description
-                TextField(
-                  controller: _descController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: "Description",
-                    labelStyle: TextStyle(color: Colors.white70),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white24),
-                    ),
-                  ),
-                ),
-              ],
+    if (type == "Reimbursement") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const ReimbursementFormScreen(),
+        ),
+      );
+    } else {
+      // For Advance Request, create a similar full screen form
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            appBar: AppBar(
+              title: const Text("Advance Request Form"),
+              backgroundColor: Colors.deepPurple,
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                "Cancel",
-                style: TextStyle(color: Colors.white70),
+            body: const Center(
+              child: Text(
+                "Advance Request Form Coming Soon",
+                style: TextStyle(fontSize: 18),
               ),
             ),
-            ElevatedButton(
-              onPressed: () {
-                if (_amountController.text.isEmpty ||
-                    _descController.text.isEmpty)
-                  return;
-
-                if (type == "Reimbursement" && _selectedDate == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Please select a date")),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  String desc = _descController.text;
-                  if (type == "Reimbursement") {
-                    desc +=
-                        " | Project ID: ${_projectController.text} | Date: ${_selectedDate!.day}-${_selectedDate!.month}-${_selectedDate!.year}";
-                    if (_attachmentPath != null)
-                      desc +=
-                          " | Attachment: ${_attachmentPath!.split('/').last}";
-                  }
-                  requests.add(
-                    Request(
-                      type: type,
-                      amount: int.parse(_amountController.text),
-                      description: desc,
-                    ),
-                  );
-                });
-                Navigator.pop(context);
-              },
-              child: const Text("Submit"),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
@@ -406,9 +235,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
-          // Welcome Header
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
@@ -420,8 +247,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               ),
             ),
           ),
-
-          // Quick Actions Row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
@@ -445,8 +270,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             ),
           ),
           const SizedBox(height: 16),
-
-          // Tabs
           TabBar(
             controller: _tabController,
             indicatorColor: const Color.fromARGB(255, 136, 122, 139),
@@ -458,8 +281,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               Tab(text: "Rejected"),
             ],
           ),
-
-          // Tab Views
           Expanded(
             child: TabBarView(
               controller: _tabController,

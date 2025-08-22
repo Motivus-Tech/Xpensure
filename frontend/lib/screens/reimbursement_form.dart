@@ -1,213 +1,405 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
-class ReimbursementForm extends StatefulWidget {
-  final Function(Map<String, dynamic>) onSubmit;
-
-  const ReimbursementForm({super.key, required this.onSubmit});
+class ReimbursementFormScreen extends StatefulWidget {
+  const ReimbursementFormScreen({super.key});
 
   @override
-  State<ReimbursementForm> createState() => _ReimbursementFormState();
+  State<ReimbursementFormScreen> createState() =>
+      _ReimbursementFormScreenState();
 }
 
-class _ReimbursementFormState extends State<ReimbursementForm> {
+class PaymentEntry {
+  DateTime? paymentDate;
+  TextEditingController descriptionController = TextEditingController();
+  String claimType = "Travel";
+  String? attachmentPath;
+}
+
+class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _projectController = TextEditingController();
-  final TextEditingController _descController = TextEditingController();
-  DateTime? _selectedDate;
-  String? _attachmentName;
-  String? _attachmentPath;
+  DateTime? reimbursementDate;
+  final projectIdController = TextEditingController();
+  List<PaymentEntry> payments = [];
 
   @override
-  void dispose() {
-    _amountController.dispose();
-    _projectController.dispose();
-    _descController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    payments.add(PaymentEntry());
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
+  void _addPayment() {
+    setState(() {
+      payments.add(PaymentEntry());
+    });
+  }
+
+  void _removePayment(int index) {
+    setState(() {
+      payments.removeAt(index);
+    });
+  }
+
+  Future<void> _pickReimbursementDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year - 5),
-      lastDate: DateTime(now.year + 5),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: const Color(0xFF849CFC),
-              onPrimary: Colors.white,
-              surface: const Color(0xFF1F222B),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF1F222B),
+      initialDate: reimbursementDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Colors.deepPurple,
+            onPrimary: Colors.white,
+            surface: Colors.black,
+            onSurface: Colors.white,
           ),
-          child: child!,
-        );
-      },
+          dialogBackgroundColor: Colors.black,
+        ),
+        child: child!,
+      ),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) {
+      setState(() {
+        reimbursementDate = picked;
+      });
+    }
   }
 
-  Future<void> _pickAttachment() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'pdf'],
+  Future<void> _pickPaymentDate(
+    BuildContext context,
+    PaymentEntry entry,
+  ) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: entry.paymentDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Colors.deepPurple,
+            onPrimary: Colors.white,
+            surface: Colors.black,
+            onSurface: Colors.white,
+          ),
+          dialogBackgroundColor: Colors.black,
+        ),
+        child: child!,
+      ),
     );
-    if (result != null && result.files.isNotEmpty) {
+    if (picked != null) {
       setState(() {
-        _attachmentName = result.files.first.name;
-        _attachmentPath = result.files.first.path;
+        entry.paymentDate = picked;
+      });
+    }
+  }
+
+  Future<void> _pickAttachment(PaymentEntry entry) async {
+    final result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      setState(() {
+        entry.attachmentPath = result.files.single.path;
+      });
+    }
+  }
+
+  void _submitForm() {
+    if (_formKey.currentState!.validate()) {
+      List<Map<String, dynamic>> paymentData = payments.map((p) {
+        return {
+          "paymentDate": p.paymentDate,
+          "description": p.descriptionController.text,
+          "claimType": p.claimType,
+          "attachmentPath": p.attachmentPath,
+        };
+      }).toList();
+
+      Map<String, dynamic> reimbursementData = {
+        "reimbursementDate": reimbursementDate,
+        "projectId": projectIdController.text,
+        "payments": paymentData,
+        "status": "Pending",
+      };
+
+      print(reimbursementData);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Reimbursement submitted! Status: Pending"),
+          backgroundColor: Colors.deepPurple,
+        ),
+      );
+
+      // Reset form
+      setState(() {
+        reimbursementDate = null;
+        projectIdController.clear();
+        payments = [PaymentEntry()];
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: const Color(0xFF1F222B),
-      title: const Text(
-        "New Reimbursement",
-        style: TextStyle(color: Colors.white),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("Reimbursement Form"),
+        backgroundColor: Colors.deepPurple,
+        elevation: 2,
       ),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Date
-              InkWell(
-                onTap: _pickDate,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: "Date",
-                    labelStyle: TextStyle(color: Colors.white70),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white24),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Project ID
+            TextFormField(
+              controller: projectIdController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: "Project ID",
+                labelStyle: const TextStyle(color: Colors.white70),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey[900],
+              ),
+              validator: (value) =>
+                  value == null || value.isEmpty ? "Enter Project ID" : null,
+            ),
+            const SizedBox(height: 16),
+
+            // Reimbursement Date
+            GestureDetector(
+              onTap: () => _pickReimbursementDate(context),
+              child: AbsorbPointer(
+                child: TextFormField(
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: reimbursementDate == null
+                        ? "Select Reimbursement Date"
+                        : reimbursementDate.toString().split(" ")[0],
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                  ),
+                  validator: (_) =>
+                      reimbursementDate == null ? "Pick a date" : null,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Payments
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: payments.length,
+              itemBuilder: (context, index) {
+                PaymentEntry entry = payments[index];
+                return Card(
+                  color: Colors.grey[850],
+                  shadowColor: Colors.black54,
+                  elevation: 6,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Payment Date
+                        GestureDetector(
+                          onTap: () => _pickPaymentDate(context, entry),
+                          child: AbsorbPointer(
+                            child: TextFormField(
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                labelText: entry.paymentDate == null
+                                    ? "Payment Date"
+                                    : entry.paymentDate.toString().split(
+                                        " ",
+                                      )[0],
+                                labelStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey[900],
+                              ),
+                              validator: (_) => entry.paymentDate == null
+                                  ? "Pick a payment date"
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Description
+                        TextFormField(
+                          controller: entry.descriptionController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: "Description",
+                            labelStyle: const TextStyle(color: Colors.white70),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[900],
+                          ),
+                          validator: (value) => value == null || value.isEmpty
+                              ? "Enter description"
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Claim Type
+                        DropdownButtonFormField<String>(
+                          value: entry.claimType,
+                          dropdownColor: Colors.grey[900],
+                          style: const TextStyle(color: Colors.white),
+                          items: const [
+                            DropdownMenuItem(
+                              value: "Travel",
+                              child: Text("Travel"),
+                            ),
+                            DropdownMenuItem(
+                              value: "Food",
+                              child: Text("Food"),
+                            ),
+                            DropdownMenuItem(
+                              value: "Other",
+                              child: Text("Other"),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                entry.claimType = val;
+                              });
+                            }
+                          },
+                          decoration: InputDecoration(
+                            labelText: "Claim Type",
+                            labelStyle: const TextStyle(color: Colors.white70),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[900],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Attach File + Delete
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () => _pickAttachment(entry),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                  horizontal: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: const [
+                                    Icon(
+                                      Icons.attach_file,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      "Attach File",
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: Text(
+                                entry.attachmentPath ?? "No file selected",
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => _removePayment(index),
+                              icon: const Icon(
+                                Icons.delete,
+                                color: Color.fromARGB(255, 161, 53, 45),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  child: Text(
-                    _selectedDate == null
-                        ? "Select Date"
-                        : "${_selectedDate!.day}-${_selectedDate!.month}-${_selectedDate!.year}",
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Amount
-              TextFormField(
-                controller: _amountController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Amount",
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return "Enter amount";
-                  if (int.tryParse(value) == null) return "Enter valid number";
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // Project ID
-              TextFormField(
-                controller: _projectController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Project ID",
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return "Enter Project ID";
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // Description
-              TextFormField(
-                controller: _descController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Description",
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty)
-                    return "Enter description";
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // Attachment
-              Row(
-                children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF849CFC),
-                    ),
-                    onPressed: _pickAttachment,
-                    child: const Text("Pick Attachment (JPG/PDF)"),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _attachmentName ?? "No file selected",
-                      style: const TextStyle(color: Colors.white70),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              if (_selectedDate == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Please select a date")),
                 );
-                return;
-              }
-              widget.onSubmit({
-                "date": _selectedDate,
-                "amount": int.parse(_amountController.text),
-                "projectId": _projectController.text,
-                "description": _descController.text,
-                "attachment": _attachmentPath,
-              });
-              Navigator.pop(context);
-            }
-          },
-          child: const Text("Submit"),
+              },
+            ),
+
+            const SizedBox(height: 16),
+
+            // Add More Payment
+            ElevatedButton(
+              onPressed: _addPayment,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: const Text(
+                "Add More Payment",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Submit Button
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onPressed: _submitForm,
+              child: const Text(
+                "Submit Reimbursement",
+                style: TextStyle(
+                  color: Color.fromARGB(255, 203, 196, 196),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
