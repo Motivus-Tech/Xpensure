@@ -12,6 +12,7 @@ class ReimbursementFormScreen extends StatefulWidget {
 class PaymentEntry {
   DateTime? paymentDate;
   TextEditingController descriptionController = TextEditingController();
+  TextEditingController amountController = TextEditingController(); // Added
   String claimType = "Travel";
   String? attachmentPath;
 }
@@ -21,6 +22,9 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
   DateTime? reimbursementDate;
   final projectIdController = TextEditingController();
   List<PaymentEntry> payments = [];
+
+  // This will hold all submitted reimbursements (Pending)
+  List<Map<String, dynamic>> pendingReimbursements = [];
 
   @override
   void initState() {
@@ -109,6 +113,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       List<Map<String, dynamic>> paymentData = payments.map((p) {
         return {
           "paymentDate": p.paymentDate,
+          "amount": p.amountController.text, // Added
           "description": p.descriptionController.text,
           "claimType": p.claimType,
           "attachmentPath": p.attachmentPath,
@@ -122,12 +127,17 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
         "status": "Pending",
       };
 
+      // Add to pending reimbursements list
+      setState(() {
+        pendingReimbursements.add(reimbursementData);
+      });
+
       print(reimbursementData);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Reimbursement submitted! Status: Pending"),
-          backgroundColor: Colors.deepPurple,
+          content: Text("Reimbursement submitted!"),
+          backgroundColor: Color.fromARGB(255, 179, 170, 195),
         ),
       );
 
@@ -143,10 +153,10 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color.fromARGB(255, 33, 33, 33),
       appBar: AppBar(
         title: const Text("Reimbursement Form"),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: const Color.fromARGB(255, 148, 99, 233),
         elevation: 2,
       ),
       body: Form(
@@ -165,7 +175,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
-                fillColor: Colors.grey[900],
+                fillColor: const Color.fromARGB(255, 33, 33, 33),
               ),
               validator: (value) =>
                   value == null || value.isEmpty ? "Enter Project ID" : null,
@@ -242,6 +252,26 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                                   : null,
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Amount
+                        TextFormField(
+                          controller: entry.amountController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: "Amount",
+                            labelStyle: const TextStyle(color: Colors.white70),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[900],
+                          ),
+                          validator: (value) => value == null || value.isEmpty
+                              ? "Enter amount"
+                              : null,
                         ),
                         const SizedBox(height: 12),
 
