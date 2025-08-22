@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'employee_signup.dart';
 import 'employee_forgot_password.dart';
+import 'employee_dashboard.dart'; // Dashboard import
 
 class EmployeeSignInPage extends StatefulWidget {
   const EmployeeSignInPage({super.key});
@@ -35,7 +36,7 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
       _message = "";
     });
 
-    // ✅ Use named parameters for loginEmployee
+    // Call API
     String response = await _apiService.loginEmployee(
       employeeId: employeeId,
       password: password,
@@ -50,8 +51,15 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(response)));
-      // TODO: Navigate to dashboard/home page
-      // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => DashboardPage()));
+
+      // Navigate to EmployeeDashboard after successful login
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              EmployeeDashboard(employeeName: employeeId), // exact param
+        ),
+      );
     } else {
       ScaffoldMessenger.of(
         context,
