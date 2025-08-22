@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'reimbursement_form.dart'; // Import your ReimbursementForm screen
+import 'reimbursement_form.dart';
 import 'request_history.dart';
 
 // Request model
 class Request {
   final String type; // "Reimbursement" or "Advance"
-  final List<Map<String, dynamic>> payments; // multiple payments
+  final List<Map<String, dynamic>> payments;
   String status; // "Pending", "Approved", "Rejected"
 
   Request({
@@ -28,7 +27,7 @@ class EmployeeDashboard extends StatefulWidget {
 class _EmployeeDashboardState extends State<EmployeeDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<Request> requests = []; // dynamic request list
+  List<Request> requests = []; // All requests
 
   @override
   void initState() {
@@ -42,7 +41,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     super.dispose();
   }
 
-  // Quick Action Card (UI same as original)
+  // Quick Action Card
   Widget _quickActionCard({
     required IconData icon,
     required String title,
@@ -166,22 +165,29 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     );
   }
 
-  // Filter requests by status
-  List<Request> _filterRequests(String status) {
-    return requests.where((r) => r.status == status).toList();
-  }
+  List<Request> _filterRequests(String status) =>
+      requests.where((r) => r.status == status).toList();
 
-  // Open form as full screen
+  // Open form
   void _createRequest(String type) {
     if (type == "Reimbursement") {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const ReimbursementFormScreen(),
+          builder: (context) => ReimbursementFormScreen(
+            onSubmit: (submittedPayments) {
+              setState(() {
+                // ✅ Fixed here: use 'payments' field correctly
+                requests.add(
+                  Request(type: "Reimbursement", payments: [submittedPayments]),
+                );
+              });
+              Navigator.pop(context); // Close the form
+            },
+          ),
         ),
       );
     } else {
-      // For Advance Request, create a similar full screen form
       Navigator.push(
         context,
         MaterialPageRoute(

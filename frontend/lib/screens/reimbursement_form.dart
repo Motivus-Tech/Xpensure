@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 class ReimbursementFormScreen extends StatefulWidget {
-  const ReimbursementFormScreen({super.key});
+  final Function(Map<String, dynamic>) onSubmit; // required callback
+
+  const ReimbursementFormScreen({super.key, required this.onSubmit});
 
   @override
   State<ReimbursementFormScreen> createState() =>
@@ -12,7 +14,7 @@ class ReimbursementFormScreen extends StatefulWidget {
 class PaymentEntry {
   DateTime? paymentDate;
   TextEditingController descriptionController = TextEditingController();
-  TextEditingController amountController = TextEditingController(); // Added
+  TextEditingController amountController = TextEditingController();
   String claimType = "Travel";
   String? attachmentPath;
 }
@@ -22,9 +24,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
   DateTime? reimbursementDate;
   final projectIdController = TextEditingController();
   List<PaymentEntry> payments = [];
-
-  // This will hold all submitted reimbursements (Pending)
-  List<Map<String, dynamic>> pendingReimbursements = [];
 
   @override
   void initState() {
@@ -113,7 +112,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       List<Map<String, dynamic>> paymentData = payments.map((p) {
         return {
           "paymentDate": p.paymentDate,
-          "amount": p.amountController.text, // Added
+          "amount": p.amountController.text,
           "description": p.descriptionController.text,
           "claimType": p.claimType,
           "attachmentPath": p.attachmentPath,
@@ -127,12 +126,8 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
         "status": "Pending",
       };
 
-      // Add to pending reimbursements list
-      setState(() {
-        pendingReimbursements.add(reimbursementData);
-      });
-
-      print(reimbursementData);
+      // Send data to EmployeeDashboard via callback
+      widget.onSubmit(reimbursementData);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
