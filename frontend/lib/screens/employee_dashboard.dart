@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 import 'reimbursement_form.dart';
 import 'request_history.dart';
+import 'advance_form.dart';
+import '../services/api_service.dart'; // ApiService
 
 // Request model
 class Request {
@@ -28,11 +32,14 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<Request> requests = []; // All requests
+  final ApiService apiService = ApiService(); // API instance
+  String? authToken;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadAuthTokenAndRequests();
   }
 
   @override
@@ -41,7 +48,42 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     super.dispose();
   }
 
-  // Quick Action Card
+  Future<void> _loadAuthTokenAndRequests() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    authToken = prefs.getString('authToken');
+
+    if (authToken != null) {
+      var fetchedReimbursementsRaw = await apiService.fetchReimbursements(
+        authToken!,
+      );
+      var fetchedAdvancesRaw = await apiService.fetchAdvances(authToken!);
+
+      List<Map<String, dynamic>> fetchedReimbursements =
+          List<Map<String, dynamic>>.from(fetchedReimbursementsRaw);
+      List<Map<String, dynamic>> fetchedAdvances =
+          List<Map<String, dynamic>>.from(fetchedAdvancesRaw);
+
+      setState(() {
+        requests = [
+          ...fetchedReimbursements.map(
+            (r) => Request(
+              type: "Reimbursement",
+              payments: List<Map<String, dynamic>>.from(r["payments"]),
+              status: r["status"] ?? "Pending",
+            ),
+          ),
+          ...fetchedAdvances.map(
+            (r) => Request(
+              type: "Advance",
+              payments: List<Map<String, dynamic>>.from(r["payments"]),
+              status: r["status"] ?? "Pending",
+            ),
+          ),
+        ];
+      });
+    }
+  }
+
   Widget _quickActionCard({
     required IconData icon,
     required String title,
@@ -88,7 +130,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     );
   }
 
-  // Request Card
   Widget _requestCard(Request request, int index) {
     Gradient gradient;
 
@@ -168,40 +209,74 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
   List<Request> _filterRequests(String status) =>
       requests.where((r) => r.status == status).toList();
 
-  // Open form
-  void _createRequest(String type) {
+  Future<void> _createRequest(String type) async {
+    if (authToken == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Auth token missing!")));
+      return;
+    }
+
     if (type == "Reimbursement") {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ReimbursementFormScreen(
-            onSubmit: (submittedPayments) {
+            onSubmit: (submittedPayments) async {
+              List<Map<String, dynamic>> paymentsList = [];
+              if (submittedPayments["payments"] != null) {
+                paymentsList = List<Map<String, dynamic>>.from(
+                  submittedPayments["payments"],
+                );
+              } else {
+                paymentsList = [submittedPayments];
+              }
+
+              for (var payment in paymentsList) {
+                String amount = payment["amount"];
+                String description = payment["description"];
+                String date = payment["paymentDate"].toString().split(" ")[0];
+                File? attachment = payment["attachmentPath"] != null
+                    ? File(payment["attachmentPath"])
+                    : null;
+
+                String result = await apiService.submitReimbursement(
+                  authToken: authToken!,
+                  amount: amount,
+                  description: description,
+                  attachment: attachment,
+                  date: date,
+                );
+
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(result)));
+              }
+
               setState(() {
-                // ✅ Fixed here: use 'payments' field correctly
                 requests.add(
-                  Request(type: "Reimbursement", payments: [submittedPayments]),
+                  Request(type: "Reimbursement", payments: paymentsList),
                 );
               });
-              Navigator.pop(context); // Close the form
+
+              Navigator.pop(context);
             },
           ),
         ),
       );
-    } else {
+    } else if (type == "Advance") {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => Scaffold(
-            appBar: AppBar(
-              title: const Text("Advance Request Form"),
-              backgroundColor: Colors.deepPurple,
-            ),
-            body: const Center(
-              child: Text(
-                "Advance Request Form Coming Soon",
-                style: TextStyle(fontSize: 18),
-              ),
-            ),
+          builder: (context) => AdvanceRequestFormScreen(
+            onSubmit: (advanceData) {
+              List<Map<String, dynamic>> paymentsList =
+                  List<Map<String, dynamic>>.from(advanceData["payments"]);
+              setState(() {
+                requests.add(Request(type: "Advance", payments: paymentsList));
+              });
+              Navigator.pop(context);
+            },
           ),
         ),
       );

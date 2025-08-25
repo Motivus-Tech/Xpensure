@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'employee_signup.dart';
 import 'employee_forgot_password.dart';
@@ -48,6 +49,13 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
     });
 
     if (response == "Login Successful!") {
+      // Save token in SharedPreferences
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'authToken',
+        'demo_token_here',
+      ); // replace with real token if API returns one
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(response)));

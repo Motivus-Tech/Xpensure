@@ -1,9 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 class ApiService {
-  final String baseUrl = "http://10.0.2.2:8000"; // Android emulator
+  final String baseUrl =
+      "http://10.0.2.2:8000"; // Use PC LAN IP for real device
   final Duration requestTimeout = const Duration(seconds: 15);
 
   static const Map<String, String> headers = {
@@ -17,7 +19,7 @@ class ApiService {
   Future<String> registerEmployee({
     required String employeeId,
     required String email,
-    required String fullName, // <- matches Django serializer
+    required String fullName,
     required String department,
     required String phoneNumber,
     required String aadharNumber,
@@ -33,7 +35,7 @@ class ApiService {
             body: jsonEncode({
               'employee_id': employeeId,
               'email': email,
-              'fullName': fullName, // <- must match serializer
+              'fullName': fullName,
               'department': department,
               'phone_number': phoneNumber,
               'aadhar_card': aadharNumber,
@@ -79,6 +81,138 @@ class ApiService {
       }
     } catch (e) {
       return "Error: $e";
+    }
+  }
+
+  // -----------------------------
+  // Submit Reimbursement
+  // -----------------------------
+  Future<String> submitReimbursement({
+    required String authToken,
+    required String amount,
+    String? description,
+    File? attachment,
+    required String date,
+  }) async {
+    try {
+      var uri = Uri.parse('$baseUrl/api/reimbursements/');
+      var request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Token $authToken';
+      request.fields['amount'] = amount;
+      request.fields['description'] = description ?? '';
+      request.fields['date'] = date;
+
+      if (attachment != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('attachment', attachment.path),
+        );
+      }
+
+      var streamedResponse = await request.send().timeout(requestTimeout);
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 201) {
+        return "Reimbursement submitted successfully!";
+      } else {
+        return "Error: ${response.statusCode} - ${response.body}";
+      }
+    } catch (e) {
+      return "Error: $e";
+    }
+  }
+
+  // -----------------------------
+  // Submit Advance
+  // -----------------------------
+  Future<String> submitAdvanceRequest({
+    required String authToken,
+    required String amount,
+    required String description,
+    required String requestDate,
+    required String projectDate,
+    File? attachment,
+  }) async {
+    try {
+      var uri = Uri.parse('$baseUrl/api/advances/');
+      var request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Token $authToken';
+      request.fields['amount'] = amount;
+      request.fields['description'] = description;
+      request.fields['request_date'] = requestDate; // fixed key
+      request.fields['project_date'] = projectDate; // fixed key
+
+      if (attachment != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('attachment', attachment.path),
+        );
+      }
+
+      var streamedResponse = await request.send().timeout(requestTimeout);
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 201) {
+        return "Advance submitted successfully!";
+      } else {
+        return "Error: ${response.statusCode} - ${response.body}";
+      }
+    } catch (e) {
+      return "Error: $e";
+    }
+  }
+
+  // -----------------------------
+  // Fetch Reimbursements
+  // -----------------------------
+  Future<List<Map<String, dynamic>>> fetchReimbursements(
+    String authToken,
+  ) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/reimbursements/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else {
+        throw Exception(
+          "Failed to fetch reimbursements: ${response.statusCode}",
+        );
+      }
+    } catch (e) {
+      throw Exception("Error fetching reimbursements: $e");
+    }
+  }
+
+  // -----------------------------
+  // Fetch Advances
+  // -----------------------------
+  Future<List<Map<String, dynamic>>> fetchAdvances(String authToken) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/advances/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else {
+        throw Exception("Failed to fetch advances: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error fetching advances: $e");
     }
   }
 
