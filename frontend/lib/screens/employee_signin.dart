@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'employee_signup.dart';
 import 'employee_forgot_password.dart';
-import 'employee_dashboard.dart'; // Dashboard import
+import 'employee_dashboard.dart';
 
 class EmployeeSignInPage extends StatefulWidget {
   const EmployeeSignInPage({super.key});
@@ -38,40 +38,48 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
     });
 
     // Call API
-    String response = await _apiService.loginEmployee(
+    Map<String, dynamic> response = await _apiService.loginEmployeeMap(
       employeeId: employeeId,
       password: password,
     );
 
     setState(() {
       _isLoading = false;
-      _message = response;
     });
 
-    if (response == "Login Successful!") {
-      // Save token in SharedPreferences
+    if (response["status"] == "success" && response["employee"] != null) {
+      final employee = Map<String, dynamic>.from(response["employee"]);
+
+      // Save token
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'authToken',
-        'demo_token_here',
-      ); // replace with real token if API returns one
+      await prefs.setString('authToken', response["token"] ?? "");
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(response)));
+      ).showSnackBar(const SnackBar(content: Text("Login Successful!")));
 
-      // Navigate to EmployeeDashboard after successful login
+      // Navigate to EmployeeDashboard
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              EmployeeDashboard(employeeName: employeeId), // exact param
+          builder: (context) => EmployeeDashboard(
+            employeeName: employee["fullName"] ?? "",
+            employeeId: employee["employee_id"] ?? "",
+            email: employee["email"] ?? "",
+            mobile: employee["phone_number"] ?? "",
+            avatarUrl: employee["avatar_url"] ?? "",
+            department: employee["department"] ?? "",
+            aadhaar: employee["aadhar_card"] ?? "",
+          ),
         ),
       );
     } else {
+      setState(() {
+        _message = response["message"] ?? "Login failed";
+      });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(response)));
+      ).showSnackBar(SnackBar(content: Text(_message)));
     }
   }
 
@@ -116,8 +124,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Employee ID
                   TextField(
                     controller: _employeeIdController,
                     decoration: InputDecoration(
@@ -132,8 +138,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Password
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -161,8 +165,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Login Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -186,8 +188,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Forgot Password & Sign Up
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -216,7 +216,6 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 16),
                   Text(_message, style: const TextStyle(color: Colors.red)),
                 ],

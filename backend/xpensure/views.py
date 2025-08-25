@@ -1,32 +1,27 @@
-from rest_framework import status, permissions, generics
+from rest_framework import status, permissions, generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
-from .serializers import EmployeeSignupSerializer
+from .serializers import EmployeeSignupSerializer, ReimbursementSerializer, AdvanceRequestSerializer
+from .models import Reimbursement, AdvanceRequest
 
 User = get_user_model()
 
 # -----------------------------
-# Signup API
+# Employee Signup
 # -----------------------------
 class EmployeeSignupView(APIView):
-    """
-    Handles employee registration
-    Frontend does NOT send username; it's auto-generated from employee_id
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = EmployeeSignupSerializer(data=request.data)
+        data = request.data.copy()
+        if 'fullName' in data:
+            data['full_name'] = data.pop('fullName')
+        serializer = EmployeeSignupSerializer(data=data)
         if serializer.is_valid():
-            # 1️⃣ Save the employee first
             employee = serializer.save()
-
-            # 2️⃣ Create token safely after employee is saved
-            token, created = Token.objects.get_or_create(user=employee)
-
-            # 3️⃣ Return response
+            token, _ = Token.objects.get_or_create(user=employee)
             return Response({
                 'employee_id': employee.employee_id,
                 'email': employee.email,
@@ -36,36 +31,25 @@ class EmployeeSignupView(APIView):
                 'aadhar_card': employee.aadhar_card,
                 'token': token.key
             }, status=status.HTTP_201_CREATED)
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # -----------------------------
-# Login API
+# Employee Login
 # -----------------------------
 class EmployeeLoginView(APIView):
-    """
-    Handles login via employee_id
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         employee_id = request.data.get('employee_id')
         password = request.data.get('password')
-
         if not employee_id or not password:
-            return Response(
-                {'error': 'Both employee_id and password are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({'error': 'Both employee_id and password are required'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             user = User.objects.get(employee_id=employee_id)
         except User.DoesNotExist:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-
         if user.check_password(password):
-            # Use get_or_create so it never fails
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
                 'employee_id': user.employee_id,
@@ -80,19 +64,47 @@ class EmployeeLoginView(APIView):
 
 
 # -----------------------------
-# Optional: List & Create Employees (for admins)
+# Admin-only employee list/create
 # -----------------------------
 class EmployeeListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeSignupSerializer
-    permission_classes = [permissions.IsAdminUser]  # restrict list/create to admins
+    permission_classes = [permissions.IsAdminUser]
 
 
 # -----------------------------
-# Optional: Retrieve, Update, Delete Employee (for admins)
+# Admin-only employee detail
 # -----------------------------
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeSignupSerializer
     lookup_field = 'employee_id'
     permission_classes = [permissions.IsAdminUser]
+
+
+# -----------------------------
+# Reimbursement ViewSet
+# -----------------------------
+class ReimbursementViewSet(viewsets.ModelViewSet):
+    serializer_class = ReimbursementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Reimbursement.objects.filter(employee=self.request.user).order_by('-date')
+
+    def perform_create(self, serializer):
+        serializer.save(employee=self.request.user)
+
+
+# -----------------------------
+# Advance Request ViewSet
+# -----------------------------
+class AdvanceRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = AdvanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return AdvanceRequest.objects.filter(employee=self.request.user).order_by('-request_date')
+
+    def perform_create(self, serializer):
+        serializer.save(employee=self.request.user)

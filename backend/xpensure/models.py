@@ -1,7 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.conf import settings
 
-# Custom User Manager
+# -----------------------------
+# Employee / Custom User Model
+# -----------------------------
 class EmployeeManager(BaseUserManager):
     def create_user(self, employee_id, email, full_name, password=None, **extra_fields):
         if not email:
@@ -11,7 +14,7 @@ class EmployeeManager(BaseUserManager):
             employee_id=employee_id,
             email=email,
             full_name=full_name,
-            username=employee_id,  # use employee_id as username
+            username=employee_id,
             **extra_fields
         )
         user.set_password(password)
@@ -24,15 +27,14 @@ class EmployeeManager(BaseUserManager):
         return self.create_user(employee_id, email, full_name, password, **extra_fields)
 
 
-# Custom Employee model
 class Employee(AbstractBaseUser, PermissionsMixin):
     employee_id = models.CharField(max_length=50, unique=True)
     email = models.EmailField(unique=True)
-    full_name = models.CharField(max_length=100, default="Unknown")  # avoids migration issues
+    full_name = models.CharField(max_length=100, default="Unknown")
     department = models.CharField(max_length=50, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     aadhar_card = models.CharField(max_length=12, blank=True, null=True)
-    username = models.CharField(max_length=50, unique=True)  # required by AbstractBaseUser
+    username = models.CharField(max_length=50, unique=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -44,3 +46,33 @@ class Employee(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.employee_id
+
+# -----------------------------
+# Reimbursement Model
+# -----------------------------
+class Reimbursement(models.Model):
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reimbursements')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(blank=True, null=True)
+    attachment = models.FileField(upload_to='reimbursements/', blank=True, null=True)
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee.employee_id} - {self.amount}"
+
+
+# -----------------------------
+# Advance Request Model
+# -----------------------------
+class AdvanceRequest(models.Model):
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='advances')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField()
+    request_date = models.DateField()
+    project_date = models.DateField()
+    attachment = models.FileField(upload_to='advances/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee.employee_id} - {self.amount}"

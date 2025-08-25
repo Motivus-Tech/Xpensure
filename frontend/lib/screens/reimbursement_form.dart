@@ -147,12 +147,20 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       return;
     }
 
-    // Submit each payment to backend
     bool allSuccess = true;
+
     for (var payment in payments) {
+      if (payment.paymentDate == null ||
+          payment.amountController.text.isEmpty ||
+          payment.descriptionController.text.isEmpty) {
+        allSuccess = false;
+        continue;
+      }
+
       File? attachment = payment.attachmentPath != null
           ? File(payment.attachmentPath!)
           : null;
+
       String result = await apiService.submitReimbursement(
         authToken: authToken,
         amount: payment.amountController.text,
@@ -168,10 +176,9 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       ).showSnackBar(SnackBar(content: Text(result)));
     }
 
-    // Prepare local copy for dashboard
     List<Map<String, dynamic>> paymentData = payments.map((p) {
       return {
-        "paymentDate": p.paymentDate!,
+        "paymentDate": p.paymentDate,
         "amount": p.amountController.text,
         "description": p.descriptionController.text,
         "claimType": p.claimType,
@@ -180,7 +187,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
     }).toList();
 
     Map<String, dynamic> reimbursementData = {
-      "reimbursementDate": reimbursementDate!,
+      "reimbursementDate": reimbursementDate,
       "projectId": projectIdController.text,
       "payments": paymentData,
       "status": allSuccess ? "Pending" : "Error",
@@ -188,7 +195,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
 
     widget.onSubmit(reimbursementData);
 
-    // Reset form
     setState(() {
       reimbursementDate = null;
       projectIdController.clear();
@@ -212,7 +218,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Project ID
             TextFormField(
               controller: projectIdController,
               style: const TextStyle(color: Colors.white),
@@ -229,8 +234,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                   value == null || value.isEmpty ? "Enter Project ID" : null,
             ),
             const SizedBox(height: 16),
-
-            // Reimbursement Date
             GestureDetector(
               onTap: () => _pickReimbursementDate(context),
               child: AbsorbPointer(
@@ -253,8 +256,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Payments
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -274,7 +275,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Payment Date
                         GestureDetector(
                           onTap: () => _pickPaymentDate(context, entry),
                           child: AbsorbPointer(
@@ -302,8 +302,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Amount
                         TextFormField(
                           controller: entry.amountController,
                           keyboardType: TextInputType.number,
@@ -322,8 +320,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                               : null,
                         ),
                         const SizedBox(height: 12),
-
-                        // Description
                         TextFormField(
                           controller: entry.descriptionController,
                           style: const TextStyle(color: Colors.white),
@@ -341,8 +337,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                               : null,
                         ),
                         const SizedBox(height: 12),
-
-                        // Claim Type
                         DropdownButtonFormField<String>(
                           value: entry.claimType,
                           dropdownColor: Colors.grey[900],
@@ -379,8 +373,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
-                        // Attach File + Delete
                         Row(
                           children: [
                             InkWell(
@@ -436,10 +428,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                 );
               },
             ),
-
             const SizedBox(height: 16),
-
-            // Add More Payment
             ElevatedButton(
               onPressed: _addPayment,
               style: ElevatedButton.styleFrom(
@@ -454,10 +443,7 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 20),
-
-            // Submit Button
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
@@ -475,7 +461,6 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                       ),
                     ),
             ),
-
             const SizedBox(height: 20),
           ],
         ),

@@ -58,7 +58,7 @@ class ApiService {
   // -----------------------------
   // Employee Login via employee_id
   // -----------------------------
-  Future<String> loginEmployee({
+  Future<Map<String, dynamic>> loginEmployeeMap({
     required String employeeId,
     required String password,
   }) async {
@@ -73,14 +73,33 @@ class ApiService {
           .timeout(requestTimeout);
 
       if (response.statusCode == 200) {
-        return "Login Successful!";
+        final data = jsonDecode(response.body);
+        final employee = data["employee"] ?? {};
+
+        // Normalize keys for frontend
+        return {
+          "status": "success",
+          "employee": {
+            "fullName": employee["full_name"] ?? "",
+            "employee_id": employee["employee_id"] ?? "",
+            "email": employee["email"] ?? "",
+            "phone_number": employee["phone_number"] ?? "",
+            "avatar_url": employee["avatarUrl"] ?? "",
+            "department": employee["department"] ?? "",
+            "aadhar_card": employee["aadhar_card"] ?? "",
+          },
+          "token": data["token"] ?? "",
+        };
       } else if (response.statusCode == 401) {
-        return "Invalid credentials!";
+        return {"status": "error", "message": "Invalid credentials!"};
       } else {
-        return "Error: ${response.statusCode} - ${response.body}";
+        return {
+          "status": "error",
+          "message": "Error: ${response.statusCode} - ${response.body}",
+        };
       }
     } catch (e) {
-      return "Error: $e";
+      return {"status": "error", "message": "Error: $e"};
     }
   }
 
@@ -138,8 +157,8 @@ class ApiService {
       request.headers['Authorization'] = 'Token $authToken';
       request.fields['amount'] = amount;
       request.fields['description'] = description;
-      request.fields['request_date'] = requestDate; // fixed key
-      request.fields['project_date'] = projectDate; // fixed key
+      request.fields['request_date'] = requestDate;
+      request.fields['project_date'] = projectDate;
 
       if (attachment != null) {
         request.files.add(

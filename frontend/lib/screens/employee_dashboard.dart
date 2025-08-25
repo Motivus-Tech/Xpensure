@@ -21,8 +21,23 @@ class Request {
 
 class EmployeeDashboard extends StatefulWidget {
   final String employeeName;
+  final String employeeId;
+  final String email;
+  final String mobile;
+  final String avatarUrl;
+  final String department;
+  final String aadhaar;
 
-  const EmployeeDashboard({super.key, required this.employeeName});
+  const EmployeeDashboard({
+    super.key,
+    required this.employeeName,
+    required this.employeeId,
+    required this.email,
+    required this.mobile,
+    required this.avatarUrl,
+    required this.department,
+    required this.aadhaar,
+  });
 
   @override
   State<EmployeeDashboard> createState() => _EmployeeDashboardState();
@@ -68,14 +83,18 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           ...fetchedReimbursements.map(
             (r) => Request(
               type: "Reimbursement",
-              payments: List<Map<String, dynamic>>.from(r["payments"]),
+              payments: r["payments"] != null
+                  ? List<Map<String, dynamic>>.from(r["payments"])
+                  : [],
               status: r["status"] ?? "Pending",
             ),
           ),
           ...fetchedAdvances.map(
             (r) => Request(
               type: "Advance",
-              payments: List<Map<String, dynamic>>.from(r["payments"]),
+              payments: r["payments"] != null
+                  ? List<Map<String, dynamic>>.from(r["payments"])
+                  : [],
               status: r["status"] ?? "Pending",
             ),
           ),
@@ -197,7 +216,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               builder: (context) => RequestHistoryScreen(
                 employeeName: widget.employeeName,
                 requestTitle: "${request.type} Request #${index + 1}",
-                payments: request.payments,
+                payments: request.payments.isNotEmpty ? request.payments : [],
               ),
             ),
           );
@@ -232,27 +251,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 paymentsList = [submittedPayments];
               }
 
-              for (var payment in paymentsList) {
-                String amount = payment["amount"];
-                String description = payment["description"];
-                String date = payment["paymentDate"].toString().split(" ")[0];
-                File? attachment = payment["attachmentPath"] != null
-                    ? File(payment["attachmentPath"])
-                    : null;
-
-                String result = await apiService.submitReimbursement(
-                  authToken: authToken!,
-                  amount: amount,
-                  description: description,
-                  attachment: attachment,
-                  date: date,
-                );
-
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(result)));
-              }
-
               setState(() {
                 requests.add(
                   Request(type: "Reimbursement", payments: paymentsList),
@@ -271,7 +269,10 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           builder: (context) => AdvanceRequestFormScreen(
             onSubmit: (advanceData) {
               List<Map<String, dynamic>> paymentsList =
-                  List<Map<String, dynamic>>.from(advanceData["payments"]);
+                  advanceData["payments"] != null
+                  ? List<Map<String, dynamic>>.from(advanceData["payments"])
+                  : [];
+
               setState(() {
                 requests.add(Request(type: "Advance", payments: paymentsList));
               });
@@ -307,7 +308,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             child: CircleAvatar(
               backgroundColor: const Color(0xFF849CFC),
               child: Text(
-                widget.employeeName[0].toUpperCase(),
+                (widget.employeeName.isNotEmpty ? widget.employeeName[0] : '?')
+                    .toUpperCase(),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
@@ -366,51 +368,60 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _filterRequests("Pending").isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No pending requests",
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 8),
-                        itemCount: _filterRequests("Pending").length,
-                        itemBuilder: (context, index) => _requestCard(
-                          _filterRequests("Pending")[index],
-                          index,
-                        ),
-                      ),
-                _filterRequests("Approved").isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No approved requests",
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 8),
-                        itemCount: _filterRequests("Approved").length,
-                        itemBuilder: (context, index) => _requestCard(
-                          _filterRequests("Approved")[index],
-                          index,
-                        ),
-                      ),
-                _filterRequests("Rejected").isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No rejected requests",
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 8),
-                        itemCount: _filterRequests("Rejected").length,
-                        itemBuilder: (context, index) => _requestCard(
-                          _filterRequests("Rejected")[index],
-                          index,
-                        ),
-                      ),
+                Builder(
+                  builder: (context) {
+                    var pending = _filterRequests("Pending");
+                    return pending.isEmpty
+                        ? const Center(
+                            child: Text(
+                              "No pending requests",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: pending.length,
+                            itemBuilder: (context, index) =>
+                                _requestCard(pending[index], index),
+                          );
+                  },
+                ),
+                Builder(
+                  builder: (context) {
+                    var approved = _filterRequests("Approved");
+                    return approved.isEmpty
+                        ? const Center(
+                            child: Text(
+                              "No approved requests",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: approved.length,
+                            itemBuilder: (context, index) =>
+                                _requestCard(approved[index], index),
+                          );
+                  },
+                ),
+                Builder(
+                  builder: (context) {
+                    var rejected = _filterRequests("Rejected");
+                    return rejected.isEmpty
+                        ? const Center(
+                            child: Text(
+                              "No rejected requests",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: rejected.length,
+                            itemBuilder: (context, index) =>
+                                _requestCard(rejected[index], index),
+                          );
+                  },
+                ),
               ],
             ),
           ),
