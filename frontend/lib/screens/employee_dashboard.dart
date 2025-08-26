@@ -10,12 +10,15 @@ import '../services/api_service.dart'; // ApiService
 class Request {
   final String type; // "Reimbursement" or "Advance"
   final List<Map<String, dynamic>> payments;
+  final int
+  currentStep; // approval step: 0-RM,1-NOH,2-COO,3-ACCOUNT VERIFICATION,4-CEO,5-ACCOUNT DISBURSEMENT
   String status; // "Pending", "Approved", "Rejected"
 
   Request({
     required this.type,
     required this.payments,
     this.status = "Pending",
+    this.currentStep = 0,
   });
 }
 
@@ -49,6 +52,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
   List<Request> requests = []; // All requests
   final ApiService apiService = ApiService(); // API instance
   String? authToken;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -63,45 +67,152 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     super.dispose();
   }
 
+  // === Only changed: robust parsing + mapping into your Request model ===
   Future<void> _loadAuthTokenAndRequests() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    authToken = prefs.getString('authToken');
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      authToken = prefs.getString('authToken');
 
-    if (authToken != null) {
-      var fetchedReimbursementsRaw = await apiService.fetchReimbursements(
-        authToken!,
-      );
-      var fetchedAdvancesRaw = await apiService.fetchAdvances(authToken!);
+      if (authToken != null) {
+        // Fetch reimbursements
+        dynamic reimbursementResponse = await apiService.fetchReimbursements(
+          authToken!,
+        );
 
-      List<Map<String, dynamic>> fetchedReimbursements =
-          List<Map<String, dynamic>>.from(fetchedReimbursementsRaw);
-      List<Map<String, dynamic>> fetchedAdvances =
-          List<Map<String, dynamic>>.from(fetchedAdvancesRaw);
+        List<Map<String, dynamic>> fetchedReimbursements = [];
+        if (reimbursementResponse is List) {
+          fetchedReimbursements = List<Map<String, dynamic>>.from(
+            reimbursementResponse,
+          );
+        } else if (reimbursementResponse is Map &&
+            reimbursementResponse.containsKey('data')) {
+          fetchedReimbursements = List<Map<String, dynamic>>.from(
+            reimbursementResponse['data'],
+          );
+        } else if (reimbursementResponse is Map &&
+            reimbursementResponse.containsKey('results')) {
+          fetchedReimbursements = List<Map<String, dynamic>>.from(
+            reimbursementResponse['results'],
+          );
+        } else {
+          // fallback: try casting if possible
+          try {
+            fetchedReimbursements = List<Map<String, dynamic>>.from(
+              reimbursementResponse,
+            );
+          } catch (_) {
+            fetchedReimbursements = [];
+          }
+        }
 
+        // Fetch advances
+        dynamic advanceResponse = await apiService.fetchAdvances(authToken!);
+
+        List<Map<String, dynamic>> fetchedAdvances = [];
+        if (advanceResponse is List) {
+          fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
+        } else if (advanceResponse is Map &&
+            advanceResponse.containsKey('data')) {
+          fetchedAdvances = List<Map<String, dynamic>>.from(
+            advanceResponse['data'],
+          );
+        } else if (advanceResponse is Map &&
+            advanceResponse.containsKey('results')) {
+          fetchedAdvances = List<Map<String, dynamic>>.from(
+            advanceResponse['results'],
+          );
+        } else {
+          try {
+            fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
+          } catch (_) {
+            fetchedAdvances = [];
+          }
+        }
+
+        // Map backend data into Request model expected by your UI
+        setState(() {
+          requests = [
+            // reimbursements => map to Request with a single payment entry
+            ...fetchedReimbursements.map((r) {
+              // build payments list: if backend already sends payments list use it, else create one
+              List<Map<String, dynamic>> paymentsList = [];
+              if (r.containsKey('payments') && r['payments'] != null) {
+                try {
+                  paymentsList = List<Map<String, dynamic>>.from(r['payments']);
+                } catch (_) {
+                  paymentsList = [];
+                }
+              } else {
+                paymentsList = [
+                  {
+                    "amount": r["amount"],
+                    "description": r["description"],
+                    "requestDate": r["date"] ?? r["created_at"] ?? null,
+                  },
+                ];
+              }
+
+              return Request(
+                type: "Reimbursement",
+                payments: paymentsList,
+                status: (r["status"] != null)
+                    ? (r["status"].toString().isNotEmpty
+                          ? r["status"].toString()
+                          : "Pending")
+                    : "Pending",
+                currentStep: r["currentStep"] is int
+                    ? r["currentStep"]
+                    : 0, // default if backend doesn't send
+              );
+            }),
+            // advances => map to Request with a single payment entry
+            ...fetchedAdvances.map((r) {
+              List<Map<String, dynamic>> paymentsList = [];
+              if (r.containsKey('payments') && r['payments'] != null) {
+                try {
+                  paymentsList = List<Map<String, dynamic>>.from(r['payments']);
+                } catch (_) {
+                  paymentsList = [];
+                }
+              } else {
+                paymentsList = [
+                  {
+                    "amount": r["amount"],
+                    "description": r["description"],
+                    "requestDate": r["request_date"] ?? r["created_at"] ?? null,
+                    "projectDate": r["project_date"] ?? null,
+                  },
+                ];
+              }
+
+              return Request(
+                type: "Advance",
+                payments: paymentsList,
+                status: (r["status"] != null)
+                    ? (r["status"].toString().isNotEmpty
+                          ? r["status"].toString()
+                          : "Pending")
+                    : "Pending",
+                currentStep: r["currentStep"] is int ? r["currentStep"] : 0,
+              );
+            }),
+          ];
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      // keep UI behavior same as before but log error
+      print("Error in _loadAuthTokenAndRequests: $error");
       setState(() {
-        requests = [
-          ...fetchedReimbursements.map(
-            (r) => Request(
-              type: "Reimbursement",
-              payments: r["payments"] != null
-                  ? List<Map<String, dynamic>>.from(r["payments"])
-                  : [],
-              status: r["status"] ?? "Pending",
-            ),
-          ),
-          ...fetchedAdvances.map(
-            (r) => Request(
-              type: "Advance",
-              payments: r["payments"] != null
-                  ? List<Map<String, dynamic>>.from(r["payments"])
-                  : [],
-              status: r["status"] ?? "Pending",
-            ),
-          ),
-        ];
+        _isLoading = false;
       });
     }
   }
+  // === end of modified section ===
 
   Widget _quickActionCard({
     required IconData icon,
@@ -178,6 +289,33 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         gradient = const LinearGradient(colors: [Colors.grey, Colors.grey]);
     }
 
+    // Calculate total amount safely
+    double totalAmount = 0;
+    for (var p in request.payments) {
+      totalAmount += double.tryParse(p["amount"]?.toString() ?? "0") ?? 0;
+    }
+
+    // Get earliest request date safely
+    String requestDateStr = "-";
+    if (request.payments.isNotEmpty) {
+      List<DateTime> dates = request.payments.map((p) {
+        final rd = p["requestDate"];
+        if (rd is DateTime) return rd;
+        if (rd is String) {
+          try {
+            return DateTime.parse(rd);
+          } catch (_) {
+            return DateTime.now();
+          }
+        }
+        return DateTime.now();
+      }).toList();
+      dates.sort((a, b) => a.compareTo(b));
+      final earliest = dates.first;
+      requestDateStr =
+          "${earliest.year}-${earliest.month.toString().padLeft(2, '0')}-${earliest.day.toString().padLeft(2, '0')}";
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -200,9 +338,18 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             color: Colors.white,
           ),
         ),
-        subtitle: Text(
-          "Payments: ${request.payments.length}",
-          style: const TextStyle(color: Colors.white70),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Total Amount: ₹${totalAmount.toStringAsFixed(2)}",
+              style: const TextStyle(color: Colors.white70),
+            ),
+            Text(
+              "Date: $requestDateStr",
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
         ),
         trailing: const Icon(
           Icons.arrow_forward_ios,
@@ -217,6 +364,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 employeeName: widget.employeeName,
                 requestTitle: "${request.type} Request #${index + 1}",
                 payments: request.payments.isNotEmpty ? request.payments : [],
+                currentStep: request.currentStep, // essential for stepper
               ),
             ),
           );
@@ -370,6 +518,9 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               children: [
                 Builder(
                   builder: (context) {
+                    if (_isLoading) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
                     var pending = _filterRequests("Pending");
                     return pending.isEmpty
                         ? const Center(
@@ -388,6 +539,9 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 ),
                 Builder(
                   builder: (context) {
+                    if (_isLoading) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
                     var approved = _filterRequests("Approved");
                     return approved.isEmpty
                         ? const Center(
@@ -406,6 +560,9 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 ),
                 Builder(
                   builder: (context) {
+                    if (_isLoading) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
                     var rejected = _filterRequests("Rejected");
                     return rejected.isEmpty
                         ? const Center(

@@ -80,7 +80,7 @@ class ApiService {
         return {
           "status": "success",
           "employee": {
-            "fullName": employee["full_name"] ?? "",
+            "fullName": employee["fullName"] ?? "",
             "employee_id": employee["employee_id"] ?? "",
             "email": employee["email"] ?? "",
             "phone_number": employee["phone_number"] ?? "",

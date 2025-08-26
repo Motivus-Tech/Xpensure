@@ -6,14 +6,14 @@ from django.conf import settings
 # Employee / Custom User Model
 # -----------------------------
 class EmployeeManager(BaseUserManager):
-    def create_user(self, employee_id, email, full_name, password=None, **extra_fields):
+    def create_user(self, employee_id, email, fullName, password=None, **extra_fields):
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email)
         user = self.model(
             employee_id=employee_id,
             email=email,
-            full_name=full_name,
+            fullName=fullName,
             username=employee_id,
             **extra_fields
         )
@@ -21,16 +21,16 @@ class EmployeeManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, employee_id, email, full_name, password=None, **extra_fields):
+    def create_superuser(self, employee_id, email, fullName, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        return self.create_user(employee_id, email, full_name, password, **extra_fields)
+        return self.create_user(employee_id, email, fullName, password, **extra_fields)
 
 
 class Employee(AbstractBaseUser, PermissionsMixin):
     employee_id = models.CharField(max_length=50, unique=True)
     email = models.EmailField(unique=True)
-    full_name = models.CharField(max_length=100, default="Unknown")
+    fullName = models.CharField(max_length=100, default="Unknown")
     department = models.CharField(max_length=50, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     aadhar_card = models.CharField(max_length=12, blank=True, null=True)
@@ -42,7 +42,7 @@ class Employee(AbstractBaseUser, PermissionsMixin):
     objects = EmployeeManager()
 
     USERNAME_FIELD = 'employee_id'
-    REQUIRED_FIELDS = ['email', 'full_name']
+    REQUIRED_FIELDS = ['email', 'fullName']
 
     def __str__(self):
         return self.employee_id

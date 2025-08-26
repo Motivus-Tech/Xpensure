@@ -6,7 +6,9 @@ from .views import (
     EmployeeLoginView,
     EmployeeSignupView,
     ReimbursementViewSet,
-    AdvanceRequestViewSet
+    AdvanceRequestViewSet,
+    ReimbursementListCreateView,
+    AdvanceRequestListCreateView
 )
 
 router = DefaultRouter()
@@ -19,4 +21,6 @@ urlpatterns = [
     path('employees/<str:employee_id>/', EmployeeDetailView.as_view(), name='employee-detail'),
     path('auth/signup/', EmployeeSignupView.as_view(), name='employee-signup'),
     path('auth/login/', EmployeeLoginView.as_view(), name='employee-login'),
+    path('api/reimbursements/', ReimbursementListCreateView.as_view(), name='reimbursement-list-create'),
+    path('api/advances/', AdvanceRequestListCreateView.as_view(), name='advance-list-create'),
 ]

@@ -52,7 +52,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
   }
 
   void _removePayment(int index) {
-    if (payments.length <= 1) return; // <-- Prevent removing last item
+    if (payments.length <= 1) return; // Prevent removing last entry
     setState(() {
       payments[index].dispose();
       payments.removeAt(index);
@@ -104,7 +104,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
           ),
           dialogBackgroundColor: Colors.black,
         ),
-        child: child!, // <-- child must be passed here
+        child: child!,
       ),
     );
     if (picked != null) entry.projectDate = picked;
@@ -113,7 +113,9 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
 
   Future<void> _pickAttachment(PaymentEntry entry) async {
     final result = await FilePicker.platform.pickFiles();
-    if (result != null) entry.attachmentPath = result.files.single.path;
+    if (result != null && result.files.single.path != null) {
+      entry.attachmentPath = result.files.single.path!;
+    }
     setState(() {});
   }
 
@@ -220,7 +222,6 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: payments.length,
               itemBuilder: (context, index) {
-                if (index >= payments.length) return const SizedBox();
                 PaymentEntry entry = payments[index];
                 return Card(
                   color: const Color(0xFF1F1F1F),

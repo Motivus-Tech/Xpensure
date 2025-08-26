@@ -120,9 +120,9 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
 
   Future<void> _pickAttachment(PaymentEntry entry) async {
     final result = await FilePicker.platform.pickFiles();
-    if (result != null) {
+    if (result != null && result.files.single.path != null) {
       setState(() {
-        entry.attachmentPath = result.files.single.path;
+        entry.attachmentPath = result.files.single.path!;
       });
     }
   }

@@ -23,11 +23,11 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')
-        full_name = validated_data.pop('fullName')
+        fullName = validated_data.pop('fullName')
         password = validated_data.pop('password')
         validated_data['username'] = validated_data['employee_id']
         employee = Employee(**validated_data)
-        employee.full_name = full_name
+        employee.fullName = fullName
         employee.set_password(password)
         employee.save()
         return employee

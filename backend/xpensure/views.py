@@ -17,7 +17,7 @@ class EmployeeSignupView(APIView):
     def post(self, request):
         data = request.data.copy()
         if 'fullName' in data:
-            data['full_name'] = data.pop('fullName')
+            data['fullName'] = data.pop('fullName')
         serializer = EmployeeSignupSerializer(data=data)
         if serializer.is_valid():
             employee = serializer.save()
@@ -25,7 +25,7 @@ class EmployeeSignupView(APIView):
             return Response({
                 'employee_id': employee.employee_id,
                 'email': employee.email,
-                'full_name': employee.full_name,
+                'fullName': employee.fullName,
                 'department': employee.department,
                 'phone_number': employee.phone_number,
                 'aadhar_card': employee.aadhar_card,
@@ -54,7 +54,7 @@ class EmployeeLoginView(APIView):
             return Response({
                 'employee_id': user.employee_id,
                 'email': user.email,
-                'full_name': user.full_name,
+                'fullName': user.fullName,
                 'department': user.department,
                 'phone_number': user.phone_number,
                 'aadhar_card': user.aadhar_card,
@@ -107,4 +107,31 @@ class AdvanceRequestViewSet(viewsets.ModelViewSet):
         return AdvanceRequest.objects.filter(employee=self.request.user).order_by('-request_date')
 
     def perform_create(self, serializer):
+        serializer.save(employee=self.request.user)
+        
+# Reimbursements API
+class ReimbursementListCreateView(generics.ListCreateAPIView):
+    serializer_class = ReimbursementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only return reimbursements for the logged-in user
+        return Reimbursement.objects.filter(employee=self.request.user)
+
+    def perform_create(self, serializer):
+        # Assign the logged-in user as the employee
+        serializer.save(employee=self.request.user)
+
+
+# Advance Requests API
+class AdvanceRequestListCreateView(generics.ListCreateAPIView):
+    serializer_class = AdvanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only return advances for the logged-in user
+        return AdvanceRequest.objects.filter(employee=self.request.user)
+
+    def perform_create(self, serializer):
+        # Assign the logged-in user as the employee
         serializer.save(employee=self.request.user)
