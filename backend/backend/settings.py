@@ -1,5 +1,7 @@
 from pathlib import Path
+import os
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Custom user model reference:
 AUTH_USER_MODEL = 'Xpensure.Employee'
 
@@ -105,3 +107,5 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ),
 }
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")

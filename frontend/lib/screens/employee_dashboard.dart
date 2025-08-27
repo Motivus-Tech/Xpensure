@@ -4,15 +4,15 @@ import 'dart:io';
 import 'reimbursement_form.dart';
 import 'request_history.dart';
 import 'advance_form.dart';
+import 'change_password.dart';
+import 'edit_profile.dart';
 import '../services/api_service.dart'; // ApiService
 
-// Request model
 class Request {
-  final String type; // "Reimbursement" or "Advance"
+  final String type;
   final List<Map<String, dynamic>> payments;
-  final int
-  currentStep; // approval step: 0-RM,1-NOH,2-COO,3-ACCOUNT VERIFICATION,4-CEO,5-ACCOUNT DISBURSEMENT
-  String status; // "Pending", "Approved", "Rejected"
+  final int currentStep;
+  String status;
 
   Request({
     required this.type,
@@ -27,7 +27,7 @@ class EmployeeDashboard extends StatefulWidget {
   final String employeeId;
   final String email;
   final String mobile;
-  final String avatarUrl;
+  final String avatarUrl; // Backend avatar URL
   final String department;
   final String aadhaar;
 
@@ -49,15 +49,19 @@ class EmployeeDashboard extends StatefulWidget {
 class _EmployeeDashboardState extends State<EmployeeDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<Request> requests = []; // All requests
-  final ApiService apiService = ApiService(); // API instance
+  List<Request> requests = [];
+  final ApiService apiService = ApiService();
   String? authToken;
   bool _isLoading = true;
+
+  // Store avatar URL here to update after editing
+  String? currentAvatarUrl;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    currentAvatarUrl = widget.avatarUrl.isNotEmpty ? widget.avatarUrl : null;
     _loadAuthTokenAndRequests();
   }
 
@@ -67,74 +71,63 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     super.dispose();
   }
 
-  // === Only changed: robust parsing + mapping into your Request model ===
   Future<void> _loadAuthTokenAndRequests() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       authToken = prefs.getString('authToken');
 
       if (authToken != null) {
-        // Fetch reimbursements
         dynamic reimbursementResponse = await apiService.fetchReimbursements(
           authToken!,
         );
+        dynamic advanceResponse = await apiService.fetchAdvances(authToken!);
 
         List<Map<String, dynamic>> fetchedReimbursements = [];
-        if (reimbursementResponse is List) {
-          fetchedReimbursements = List<Map<String, dynamic>>.from(
-            reimbursementResponse,
-          );
-        } else if (reimbursementResponse is Map &&
-            reimbursementResponse.containsKey('data')) {
-          fetchedReimbursements = List<Map<String, dynamic>>.from(
-            reimbursementResponse['data'],
-          );
-        } else if (reimbursementResponse is Map &&
-            reimbursementResponse.containsKey('results')) {
-          fetchedReimbursements = List<Map<String, dynamic>>.from(
-            reimbursementResponse['results'],
-          );
-        } else {
-          // fallback: try casting if possible
-          try {
+        List<Map<String, dynamic>> fetchedAdvances = [];
+
+        // Parsing reimbursements
+        try {
+          if (reimbursementResponse is List) {
             fetchedReimbursements = List<Map<String, dynamic>>.from(
               reimbursementResponse,
             );
-          } catch (_) {
-            fetchedReimbursements = [];
+          } else if (reimbursementResponse is Map &&
+              reimbursementResponse.containsKey('data')) {
+            fetchedReimbursements = List<Map<String, dynamic>>.from(
+              reimbursementResponse['data'],
+            );
+          } else if (reimbursementResponse is Map &&
+              reimbursementResponse.containsKey('results')) {
+            fetchedReimbursements = List<Map<String, dynamic>>.from(
+              reimbursementResponse['results'],
+            );
           }
+        } catch (_) {
+          fetchedReimbursements = [];
         }
 
-        // Fetch advances
-        dynamic advanceResponse = await apiService.fetchAdvances(authToken!);
-
-        List<Map<String, dynamic>> fetchedAdvances = [];
-        if (advanceResponse is List) {
-          fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
-        } else if (advanceResponse is Map &&
-            advanceResponse.containsKey('data')) {
-          fetchedAdvances = List<Map<String, dynamic>>.from(
-            advanceResponse['data'],
-          );
-        } else if (advanceResponse is Map &&
-            advanceResponse.containsKey('results')) {
-          fetchedAdvances = List<Map<String, dynamic>>.from(
-            advanceResponse['results'],
-          );
-        } else {
-          try {
+        // Parsing advances
+        try {
+          if (advanceResponse is List) {
             fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
-          } catch (_) {
-            fetchedAdvances = [];
+          } else if (advanceResponse is Map &&
+              advanceResponse.containsKey('data')) {
+            fetchedAdvances = List<Map<String, dynamic>>.from(
+              advanceResponse['data'],
+            );
+          } else if (advanceResponse is Map &&
+              advanceResponse.containsKey('results')) {
+            fetchedAdvances = List<Map<String, dynamic>>.from(
+              advanceResponse['results'],
+            );
           }
+        } catch (_) {
+          fetchedAdvances = [];
         }
 
-        // Map backend data into Request model expected by your UI
         setState(() {
           requests = [
-            // reimbursements => map to Request with a single payment entry
             ...fetchedReimbursements.map((r) {
-              // build payments list: if backend already sends payments list use it, else create one
               List<Map<String, dynamic>> paymentsList = [];
               if (r.containsKey('payments') && r['payments'] != null) {
                 try {
@@ -151,21 +144,16 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                   },
                 ];
               }
-
               return Request(
                 type: "Reimbursement",
                 payments: paymentsList,
-                status: (r["status"] != null)
-                    ? (r["status"].toString().isNotEmpty
-                          ? r["status"].toString()
-                          : "Pending")
+                status:
+                    (r["status"] != null && r["status"].toString().isNotEmpty)
+                    ? r["status"].toString()
                     : "Pending",
-                currentStep: r["currentStep"] is int
-                    ? r["currentStep"]
-                    : 0, // default if backend doesn't send
+                currentStep: r["currentStep"] is int ? r["currentStep"] : 0,
               );
             }),
-            // advances => map to Request with a single payment entry
             ...fetchedAdvances.map((r) {
               List<Map<String, dynamic>> paymentsList = [];
               if (r.containsKey('payments') && r['payments'] != null) {
@@ -184,14 +172,12 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                   },
                 ];
               }
-
               return Request(
                 type: "Advance",
                 payments: paymentsList,
-                status: (r["status"] != null)
-                    ? (r["status"].toString().isNotEmpty
-                          ? r["status"].toString()
-                          : "Pending")
+                status:
+                    (r["status"] != null && r["status"].toString().isNotEmpty)
+                    ? r["status"].toString()
                     : "Pending",
                 currentStep: r["currentStep"] is int ? r["currentStep"] : 0,
               );
@@ -205,14 +191,12 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         });
       }
     } catch (error) {
-      // keep UI behavior same as before but log error
       print("Error in _loadAuthTokenAndRequests: $error");
       setState(() {
         _isLoading = false;
       });
     }
   }
-  // === end of modified section ===
 
   Widget _quickActionCard({
     required IconData icon,
@@ -262,7 +246,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
 
   Widget _requestCard(Request request, int index) {
     Gradient gradient;
-
     switch (request.status) {
       case "Pending":
         gradient = const LinearGradient(
@@ -289,13 +272,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         gradient = const LinearGradient(colors: [Colors.grey, Colors.grey]);
     }
 
-    // Calculate total amount safely
     double totalAmount = 0;
     for (var p in request.payments) {
       totalAmount += double.tryParse(p["amount"]?.toString() ?? "0") ?? 0;
     }
 
-    // Get earliest request date safely
     String requestDateStr = "-";
     if (request.payments.isNotEmpty) {
       List<DateTime> dates = request.payments.map((p) {
@@ -364,7 +345,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 employeeName: widget.employeeName,
                 requestTitle: "${request.type} Request #${index + 1}",
                 payments: request.payments.isNotEmpty ? request.payments : [],
-                currentStep: request.currentStep, // essential for stepper
+                currentStep: request.currentStep,
               ),
             ),
           );
@@ -398,13 +379,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               } else {
                 paymentsList = [submittedPayments];
               }
-
               setState(() {
                 requests.add(
                   Request(type: "Reimbursement", payments: paymentsList),
                 );
               });
-
               Navigator.pop(context);
             },
           ),
@@ -420,7 +399,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                   advanceData["payments"] != null
                   ? List<Map<String, dynamic>>.from(advanceData["payments"])
                   : [];
-
               setState(() {
                 requests.add(Request(type: "Advance", payments: paymentsList));
               });
@@ -439,6 +417,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
       appBar: AppBar(
         backgroundColor: const Color(0xFF1F222B),
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           "Xpensure",
           style: TextStyle(
@@ -451,17 +430,96 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             icon: Icon(Icons.notifications_outlined, color: Colors.grey[300]),
             onPressed: () {},
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: CircleAvatar(
+          IconButton(
+            icon: CircleAvatar(
               backgroundColor: const Color(0xFF849CFC),
-              child: Text(
-                (widget.employeeName.isNotEmpty ? widget.employeeName[0] : '?')
-                    .toUpperCase(),
-                style: const TextStyle(color: Colors.white),
-              ),
+              backgroundImage: currentAvatarUrl != null
+                  ? NetworkImage(currentAvatarUrl!)
+                  : null,
+              child: currentAvatarUrl == null
+                  ? Text(
+                      (widget.employeeName.isNotEmpty
+                              ? widget.employeeName[0]
+                              : '?')
+                          .toUpperCase(),
+                      style: const TextStyle(color: Colors.white),
+                    )
+                  : null,
             ),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                builder: (context) {
+                  return Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F222B),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.edit, color: Colors.white),
+                          title: const Text(
+                            "Edit Profile",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            final updatedAvatarUrl = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => EditProfileScreen(
+                                  employeeId: widget.employeeId,
+                                ),
+                              ),
+                            );
+                            if (updatedAvatarUrl != null &&
+                                updatedAvatarUrl is String) {
+                              setState(() {
+                                currentAvatarUrl = updatedAvatarUrl;
+                              });
+                            }
+                          },
+                        ),
+                        const Divider(color: Colors.grey),
+                        ListTile(
+                          leading: const Icon(Icons.lock, color: Colors.white),
+                          title: const Text(
+                            "Change Password",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChangePasswordScreen(
+                                  employeeId: widget.employeeId,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: Column(
@@ -515,71 +573,24 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: [
-                Builder(
-                  builder: (context) {
-                    if (_isLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    var pending = _filterRequests("Pending");
-                    return pending.isEmpty
-                        ? const Center(
-                            child: Text(
-                              "No pending requests",
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8),
-                            itemCount: pending.length,
-                            itemBuilder: (context, index) =>
-                                _requestCard(pending[index], index),
-                          );
-                  },
-                ),
-                Builder(
-                  builder: (context) {
-                    if (_isLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    var approved = _filterRequests("Approved");
-                    return approved.isEmpty
-                        ? const Center(
-                            child: Text(
-                              "No approved requests",
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8),
-                            itemCount: approved.length,
-                            itemBuilder: (context, index) =>
-                                _requestCard(approved[index], index),
-                          );
-                  },
-                ),
-                Builder(
-                  builder: (context) {
-                    if (_isLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    var rejected = _filterRequests("Rejected");
-                    return rejected.isEmpty
-                        ? const Center(
-                            child: Text(
-                              "No rejected requests",
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8),
-                            itemCount: rejected.length,
-                            itemBuilder: (context, index) =>
-                                _requestCard(rejected[index], index),
-                          );
-                  },
-                ),
-              ],
+              children: ["Pending", "Approved", "Rejected"].map((status) {
+                if (_isLoading)
+                  return const Center(child: CircularProgressIndicator());
+                var filtered = _filterRequests(status);
+                return filtered.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No requests",
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(top: 8),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) =>
+                            _requestCard(filtered[index], index),
+                      );
+              }).toList(),
             ),
           ),
         ],

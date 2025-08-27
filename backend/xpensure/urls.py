@@ -1,5 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from . import views
+
 from .views import (
     EmployeeListCreateView,
     EmployeeDetailView,
@@ -23,4 +25,8 @@ urlpatterns = [
     path('auth/login/', EmployeeLoginView.as_view(), name='employee-login'),
     path('api/reimbursements/', ReimbursementListCreateView.as_view(), name='reimbursement-list-create'),
     path('api/advances/', AdvanceRequestListCreateView.as_view(), name='advance-list-create'),
+    path('employees/<str:employee_id>/', views.EmployeeProfileView.as_view(), name='employee-profile'),
+    path('employees/<str:employee_id>/verify-password/', views.VerifyPasswordView.as_view(), name='employee-verify-password'),
+    path('employees/<str:employee_id>/change-password/', views.ChangePasswordView.as_view(), name='employee-change-password'),
+    
 ]

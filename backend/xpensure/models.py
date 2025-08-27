@@ -46,6 +46,10 @@ class Employee(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.employee_id
+    
+    avatar = models.ImageField(upload_to="profile_photos/", null=True, blank=True)
+
+
 
 # -----------------------------
 # Reimbursement Model

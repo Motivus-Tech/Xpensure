@@ -76,7 +76,6 @@ class ApiService {
         final data = jsonDecode(response.body);
         final employee = data["employee"] ?? {};
 
-        // Normalize keys for frontend
         return {
           "status": "success",
           "employee": {
@@ -84,7 +83,7 @@ class ApiService {
             "employee_id": employee["employee_id"] ?? "",
             "email": employee["email"] ?? "",
             "phone_number": employee["phone_number"] ?? "",
-            "avatar_url": employee["avatarUrl"] ?? "",
+            "avatar_url": employee["avatar"] ?? "",
             "department": employee["department"] ?? "",
             "aadhar_card": employee["aadhar_card"] ?? "",
           },
@@ -232,6 +231,106 @@ class ApiService {
       }
     } catch (e) {
       throw Exception("Error fetching advances: $e");
+    }
+  }
+
+  // -----------------------------
+  // Get Employee Profile
+  // -----------------------------
+  Future<Map<String, dynamic>> getProfile(String employeeId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/employees/$employeeId/'),
+            headers: headers,
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception("Failed to fetch profile: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error fetching profile: $e");
+    }
+  }
+
+  // -----------------------------
+  // Update Employee Profile
+  // -----------------------------
+  Future<Map<String, dynamic>?> updateProfile({
+    required String employeeId,
+    required String name,
+    required String email,
+    required String mobile,
+    File? profileImage,
+  }) async {
+    try {
+      var uri = Uri.parse('$baseUrl/api/employees/$employeeId/');
+      var request = http.MultipartRequest('PUT', uri);
+
+      request.fields['fullName'] = name;
+      request.fields['email'] = email;
+      request.fields['phone_number'] = mobile;
+
+      if (profileImage != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('avatar', profileImage.path),
+        );
+      }
+
+      var streamedResponse = await request.send().timeout(requestTimeout);
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // -----------------------------
+  // Change Password
+  // -----------------------------
+  Future<bool> verifyOldPassword({
+    required String employeeId,
+    required String oldPassword,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/employees/$employeeId/verify-password/'),
+            headers: headers,
+            body: jsonEncode({'old_password': oldPassword}),
+          )
+          .timeout(requestTimeout);
+
+      return response.statusCode == 200; // 200 = old password correct
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> changePassword({
+    required String employeeId,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/api/employees/$employeeId/change-password/'),
+            headers: headers,
+            body: jsonEncode({'new_password': newPassword}),
+          )
+          .timeout(requestTimeout);
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 

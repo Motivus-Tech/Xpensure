@@ -51,7 +51,7 @@ class RequestHistoryScreen extends StatelessWidget {
       "COO",
       "Account Verification",
       "CEO",
-      "Account Disbursement",
+      "Account For Final Payment",
     ];
 
     return Scaffold(
@@ -138,13 +138,13 @@ class RequestHistoryScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _summaryRow("Employee", employeeName),
+
                   _summaryRow("Total Payments", "${payments.length}"),
                   _summaryRow(
                     "Total Amount",
                     "₹${totalAmount.toStringAsFixed(2)}",
                   ),
-                  _summaryRow("Earliest Date", earliestRequestDate),
+                  _summaryRow("Date of Submission", earliestRequestDate),
                 ],
               ),
             ),
@@ -152,7 +152,7 @@ class RequestHistoryScreen extends StatelessWidget {
           const SizedBox(height: 16),
           // Payment Details
           ...payments.map((payment) {
-            final requestDate = _parseDate(payment["requestDate"]);
+            final requestDate = _parseDate(payment["Submittion Date"]);
             final projectDate = _parseDate(payment["projectDate"]);
             final amountStr = payment["amount"]?.toString() ?? "0";
             final particularsStr =
