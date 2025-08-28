@@ -11,8 +11,8 @@ import '../services/api_service.dart'; // ApiService
 class Request {
   final String type;
   final List<Map<String, dynamic>> payments;
-  final int currentStep;
   String status;
+  final int currentStep;
 
   Request({
     required this.type,
@@ -27,7 +27,7 @@ class EmployeeDashboard extends StatefulWidget {
   final String employeeId;
   final String email;
   final String mobile;
-  final String avatarUrl; // Backend avatar URL
+  final String avatarUrl;
   final String department;
   final String aadhaar;
 
@@ -54,14 +54,20 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
   String? authToken;
   bool _isLoading = true;
 
-  // Store avatar URL here to update after editing
   String? currentAvatarUrl;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    currentAvatarUrl = widget.avatarUrl.isNotEmpty ? widget.avatarUrl : null;
+
+    // Use the avatar URL from the backend if available
+    currentAvatarUrl = widget.avatarUrl.isNotEmpty
+        ? (widget.avatarUrl.startsWith("http")
+              ? widget.avatarUrl
+              : "http://10.0.2.2:8000${widget.avatarUrl}") // replace with real backend base URL
+        : null;
+
     _loadAuthTokenAndRequests();
   }
 
@@ -85,7 +91,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         List<Map<String, dynamic>> fetchedReimbursements = [];
         List<Map<String, dynamic>> fetchedAdvances = [];
 
-        // Parsing reimbursements
         try {
           if (reimbursementResponse is List) {
             fetchedReimbursements = List<Map<String, dynamic>>.from(
@@ -106,7 +111,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           fetchedReimbursements = [];
         }
 
-        // Parsing advances
         try {
           if (advanceResponse is List) {
             fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
@@ -191,7 +195,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         });
       }
     } catch (error) {
-      print("Error in _loadAuthTokenAndRequests: $error");
+      print("Error loading requests: $error");
       setState(() {
         _isLoading = false;
       });
@@ -221,7 +225,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             BoxShadow(
               color: Colors.black26,
               blurRadius: 8,
-              offset: Offset(0, 4),
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -446,7 +450,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                     )
                   : null,
             ),
-            onPressed: () {
+            onPressed: () async {
               showModalBottomSheet(
                 context: context,
                 backgroundColor: Colors.transparent,
@@ -457,13 +461,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                     decoration: BoxDecoration(
                       color: const Color(0xFF1F222B),
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -481,6 +478,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                               MaterialPageRoute(
                                 builder: (context) => EditProfileScreen(
                                   employeeId: widget.employeeId,
+                                  authToken: authToken ?? '',
                                 ),
                               ),
                             );
@@ -506,6 +504,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                               MaterialPageRoute(
                                 builder: (context) => ChangePasswordScreen(
                                   employeeId: widget.employeeId,
+                                  authToken: authToken ?? '',
                                 ),
                               ),
                             );

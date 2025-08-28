@@ -79,15 +79,21 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
       _isLoading = true;
     });
 
+    // Fix: Ensure fullName is never empty
+    final fullName = _nameController.text.trim().isEmpty
+        ? "Unknown"
+        : _nameController.text.trim();
+
     final response = await _apiService.registerEmployee(
       employeeId: _employeeIdController.text.trim(),
-      fullName: _nameController.text.trim(), // matches Django serializer
+      fullName: fullName,
       email: _emailController.text.trim(),
       department: _departmentController.text.trim(),
       phoneNumber: _phoneController.text.trim(),
       aadharNumber: _aadharController.text.trim(),
       password: _passwordController.text.trim(),
       confirmPassword: _confirmPasswordController.text.trim(),
+      avatar: _profileImage,
     );
 
     setState(() {
@@ -156,8 +162,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Full Name
                     _buildTextField(_nameController, "Full Name", Icons.person),
                     const SizedBox(height: 12),
                     _buildTextField(
@@ -193,8 +197,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                       keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 12),
-
-                    // Password
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
@@ -223,8 +225,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                           : null,
                     ),
                     const SizedBox(height: 12),
-
-                    // Confirm Password
                     TextFormField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
@@ -254,8 +254,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                           : null,
                     ),
                     const SizedBox(height: 20),
-
-                    // Sign Up Button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -281,8 +279,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Back to Sign In
                     TextButton(
                       onPressed: () => Navigator.pushReplacement(
                         context,

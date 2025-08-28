@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart'; // for debugPrint
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
@@ -8,7 +9,7 @@ class ApiService {
       "http://10.0.2.2:8000"; // Use PC LAN IP for real device
   final Duration requestTimeout = const Duration(seconds: 15);
 
-  static const Map<String, String> headers = {
+  static const Map<String, String> defaultHeaders = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
@@ -25,25 +26,35 @@ class ApiService {
     required String aadharNumber,
     required String password,
     required String confirmPassword,
+    File? avatar,
   }) async {
     try {
-      final url = Uri.parse('$baseUrl/api/auth/signup/');
-      final response = await http
-          .post(
-            url,
-            headers: headers,
-            body: jsonEncode({
-              'employee_id': employeeId,
-              'email': email,
-              'fullName': fullName,
-              'department': department,
-              'phone_number': phoneNumber,
-              'aadhar_card': aadharNumber,
-              'password': password,
-              'confirm_password': confirmPassword,
-            }),
-          )
-          .timeout(requestTimeout);
+      var uri = Uri.parse('$baseUrl/api/auth/signup/');
+      var request = http.MultipartRequest('POST', uri);
+
+      request.fields['employee_id'] = employeeId;
+      request.fields['fullName'] = fullName;
+      request.fields['email'] = email;
+      request.fields['department'] = department;
+      request.fields['phone_number'] = phoneNumber;
+      request.fields['aadhar_card'] = aadharNumber;
+      request.fields['password'] = password;
+      request.fields['confirm_password'] = confirmPassword;
+
+      if (avatar != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('avatar', avatar.path),
+        );
+      }
+
+      request.fields.forEach((key, value) {
+        debugPrint("Signup Field: $key = $value");
+      });
+
+      var streamedResponse = await request.send().timeout(requestTimeout);
+      var response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint("Signup Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         return "Sign Up Successful!";
@@ -56,7 +67,7 @@ class ApiService {
   }
 
   // -----------------------------
-  // Employee Login via employee_id
+  // Employee Login
   // -----------------------------
   Future<Map<String, dynamic>> loginEmployeeMap({
     required String employeeId,
@@ -67,25 +78,23 @@ class ApiService {
       final response = await http
           .post(
             url,
-            headers: headers,
+            headers: defaultHeaders,
             body: jsonEncode({'employee_id': employeeId, 'password': password}),
           )
           .timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final employee = data["employee"] ?? {};
-
         return {
           "status": "success",
           "employee": {
-            "fullName": employee["fullName"] ?? "",
-            "employee_id": employee["employee_id"] ?? "",
-            "email": employee["email"] ?? "",
-            "phone_number": employee["phone_number"] ?? "",
-            "avatar_url": employee["avatar"] ?? "",
-            "department": employee["department"] ?? "",
-            "aadhar_card": employee["aadhar_card"] ?? "",
+            "fullName": data["fullName"] ?? "",
+            "employee_id": data["employee_id"] ?? "",
+            "email": data["email"] ?? "",
+            "phone_number": data["phone_number"] ?? "",
+            "avatar_url": data["avatar"] ?? "",
+            "department": data["department"] ?? "",
+            "aadhar_card": data["aadhar_card"] ?? "",
           },
           "token": data["token"] ?? "",
         };
@@ -99,6 +108,56 @@ class ApiService {
       }
     } catch (e) {
       return {"status": "error", "message": "Error: $e"};
+    }
+  }
+
+  // -----------------------------
+  // Update Employee Profile
+  // -----------------------------
+  Future<Map<String, dynamic>?> updateProfile({
+    required String employeeId,
+    required String authToken,
+    required String fullName,
+    required String email,
+    required String phone_number,
+    File? profileImage,
+  }) async {
+    try {
+      var uri = Uri.parse('$baseUrl/api/employees/$employeeId/profile/');
+      var request = http.MultipartRequest('PUT', uri);
+
+      request.headers['Authorization'] = 'Token $authToken';
+
+      request.fields['fullName'] = fullName.trim();
+      request.fields['email'] = email.trim();
+      request.fields['phone_number'] = phone_number.trim();
+
+      if (profileImage != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('avatar', profileImage.path),
+        );
+      }
+
+      request.fields.forEach((key, value) {
+        debugPrint("Update Field: $key = $value");
+      });
+
+      var streamedResponse = await request.send().timeout(requestTimeout);
+      var response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint("Update Response: ${response.statusCode} - ${response.body}");
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        debugPrint(
+          "Failed to update profile: ${response.statusCode} - ${response.body}",
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Error updating profile: $e");
+      return null;
     }
   }
 
@@ -235,21 +294,29 @@ class ApiService {
   }
 
   // -----------------------------
-  // Get Employee Profile
+  // Get Employee Profile (Requires Token)
   // -----------------------------
-  Future<Map<String, dynamic>> getProfile(String employeeId) async {
+  Future<Map<String, dynamic>> getProfile({
+    required String employeeId,
+    required String authToken,
+  }) async {
     try {
       final response = await http
           .get(
-            Uri.parse('$baseUrl/api/employees/$employeeId/'),
-            headers: headers,
+            Uri.parse('$baseUrl/api/employees/$employeeId/profile/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Accept': 'application/json',
+            },
           )
           .timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception("Failed to fetch profile: ${response.statusCode}");
+        throw Exception(
+          "Failed to fetch profile: ${response.statusCode} - ${response.body}",
+        );
       }
     } catch (e) {
       throw Exception("Error fetching profile: $e");
@@ -257,59 +324,26 @@ class ApiService {
   }
 
   // -----------------------------
-  // Update Employee Profile
-  // -----------------------------
-  Future<Map<String, dynamic>?> updateProfile({
-    required String employeeId,
-    required String name,
-    required String email,
-    required String mobile,
-    File? profileImage,
-  }) async {
-    try {
-      var uri = Uri.parse('$baseUrl/api/employees/$employeeId/');
-      var request = http.MultipartRequest('PUT', uri);
-
-      request.fields['fullName'] = name;
-      request.fields['email'] = email;
-      request.fields['phone_number'] = mobile;
-
-      if (profileImage != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('avatar', profileImage.path),
-        );
-      }
-
-      var streamedResponse = await request.send().timeout(requestTimeout);
-      var response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return null;
-      }
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // -----------------------------
-  // Change Password
+  // Change Password (Requires Token)
   // -----------------------------
   Future<bool> verifyOldPassword({
     required String employeeId,
     required String oldPassword,
+    required String authToken,
   }) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/api/employees/$employeeId/verify-password/'),
-            headers: headers,
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+            },
             body: jsonEncode({'old_password': oldPassword}),
           )
           .timeout(requestTimeout);
 
-      return response.statusCode == 200; // 200 = old password correct
+      return response.statusCode == 200;
     } catch (e) {
       return false;
     }
@@ -318,12 +352,16 @@ class ApiService {
   Future<bool> changePassword({
     required String employeeId,
     required String newPassword,
+    required String authToken,
   }) async {
     try {
       final response = await http
           .put(
             Uri.parse('$baseUrl/api/employees/$employeeId/change-password/'),
-            headers: headers,
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+            },
             body: jsonEncode({'new_password': newPassword}),
           )
           .timeout(requestTimeout);

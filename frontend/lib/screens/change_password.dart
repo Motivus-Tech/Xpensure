@@ -3,7 +3,13 @@ import '../services/api_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String employeeId;
-  const ChangePasswordScreen({super.key, required this.employeeId});
+  final String authToken; // Required auth token
+
+  const ChangePasswordScreen({
+    super.key,
+    required this.employeeId,
+    required this.authToken,
+  });
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -19,7 +25,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _isLoading = false;
   final ApiService apiService = ApiService();
 
-  // NEW: Toggle visibility for each password field
   bool _showOldPassword = false;
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
@@ -38,10 +43,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Step 1: Verify old password
+      // Verify old password
       bool oldPasswordValid = await apiService.verifyOldPassword(
         employeeId: widget.employeeId,
         oldPassword: _oldPasswordController.text.trim(),
+        authToken: widget.authToken,
       );
 
       if (!oldPasswordValid) {
@@ -52,10 +58,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         return;
       }
 
-      // Step 2: Update to new password
+      // Change password
       bool success = await apiService.changePassword(
         employeeId: widget.employeeId,
         newPassword: _newPasswordController.text.trim(),
+        authToken: widget.authToken,
       );
 
       setState(() => _isLoading = false);
@@ -93,8 +100,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             Color.fromARGB(255, 188, 198, 238),
             Color.fromARGB(255, 188, 198, 238),
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -108,20 +113,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       child: TextFormField(
         controller: controller,
         obscureText: !showPassword,
-        style: const TextStyle(color: Color.fromARGB(255, 9, 8, 8)),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(color: Color.fromARGB(179, 19, 18, 18)),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
-            vertical: 16,
             horizontal: 16,
+            vertical: 16,
           ),
           suffixIcon: IconButton(
-            icon: Icon(
-              showPassword ? Icons.visibility : Icons.visibility_off,
-              color: Colors.grey[700],
-            ),
+            icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
             onPressed: togglePassword,
           ),
         ),
@@ -154,15 +154,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            Text(
-              "Change Your Password",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[200],
-              ),
-            ),
-            const SizedBox(height: 24),
             Form(
               key: _formKey,
               child: Column(
@@ -202,13 +193,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             Color.fromARGB(255, 88, 120, 248),
                           ],
                         ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 8,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
                       ),
                       child: Center(
                         child: _isLoading

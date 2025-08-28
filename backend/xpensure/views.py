@@ -3,8 +3,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
-from .serializers import EmployeeSignupSerializer, ReimbursementSerializer, AdvanceRequestSerializer
+from .serializers import EmployeeSignupSerializer, ReimbursementSerializer, AdvanceRequestSerializer, EmployeeProfileSerializer
 from .models import Reimbursement, AdvanceRequest
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.authentication import TokenAuthentication
+from django.contrib.auth.hashers import check_password
 
 User = get_user_model()
 
@@ -13,12 +16,10 @@ User = get_user_model()
 # -----------------------------
 class EmployeeSignupView(APIView):
     permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser]  # Necessary for Flutter MultipartRequest
 
     def post(self, request):
-        data = request.data.copy()
-        if 'fullName' in data:
-            data['fullName'] = data.pop('fullName')
-        serializer = EmployeeSignupSerializer(data=data)
+        serializer = EmployeeSignupSerializer(data=request.data)
         if serializer.is_valid():
             employee = serializer.save()
             token, _ = Token.objects.get_or_create(user=employee)
@@ -29,8 +30,8 @@ class EmployeeSignupView(APIView):
                 'department': employee.department,
                 'phone_number': employee.phone_number,
                 'aadhar_card': employee.aadhar_card,
+                "avatar": request.build_absolute_uri(employee.avatar.url) if employee.avatar and employee.avatar.url else None,
                 'token': token.key
-
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -59,6 +60,7 @@ class EmployeeLoginView(APIView):
                 'department': user.department,
                 'phone_number': user.phone_number,
                 'aadhar_card': user.aadhar_card,
+                'avatar': request.build_absolute_uri(user.avatar.url) if user.avatar and user.avatar.url else None,
                 'token': token.key
             })
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -110,17 +112,16 @@ class AdvanceRequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(employee=self.request.user)
         
+
 # Reimbursements API
 class ReimbursementListCreateView(generics.ListCreateAPIView):
     serializer_class = ReimbursementSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only return reimbursements for the logged-in user
         return Reimbursement.objects.filter(employee=self.request.user)
 
     def perform_create(self, serializer):
-        # Assign the logged-in user as the employee
         serializer.save(employee=self.request.user)
 
 
@@ -130,29 +131,16 @@ class AdvanceRequestListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only return advances for the logged-in user
         return AdvanceRequest.objects.filter(employee=self.request.user)
 
     def perform_create(self, serializer):
-        # Assign the logged-in user as the employee
         serializer.save(employee=self.request.user)
 
-from rest_framework import status, permissions
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import check_password
-from .serializers import EmployeeProfileSerializer
-from rest_framework.authentication import TokenAuthentication
 
-User = get_user_model()
-
+# -----------------------------
+# Employee Profile
+# -----------------------------
 class EmployeeProfileView(APIView):
-    """
-    GET /api/employees/<employee_id>/
-    PUT /api/employees/<employee_id>/  (multipart/form-data accepted for avatar)
-    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -168,7 +156,6 @@ class EmployeeProfileView(APIView):
         if obj is None:
             return Response({"detail": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # allow employees to view their own profile or staff to view any
         if request.user != obj and not request.user.is_staff:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -180,7 +167,6 @@ class EmployeeProfileView(APIView):
         if obj is None:
             return Response({"detail": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # only owner or staff can update
         if request.user != obj and not request.user.is_staff:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -192,12 +178,10 @@ class EmployeeProfileView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# -----------------------------
+# Verify Password
+# -----------------------------
 class VerifyPasswordView(APIView):
-    """
-    POST /api/employees/<employee_id>/verify-password/
-    Body: {"old_password": "..."}
-    Returns 200 if old_password is correct, 400/401 otherwise.
-    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
@@ -207,7 +191,6 @@ class VerifyPasswordView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # only owner or staff can verify
         if request.user != user and not request.user.is_staff:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -221,11 +204,10 @@ class VerifyPasswordView(APIView):
             return Response({"detail": "Incorrect password."}, status=status.HTTP_401_UNAUTHORIZED)
 
 
+# -----------------------------
+# Change Password
+# -----------------------------
 class ChangePasswordView(APIView):
-    """
-    PUT /api/employees/<employee_id>/change-password/
-    Body: {"old_password": "...", "new_password": "..."}
-    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
@@ -247,7 +229,6 @@ class ChangePasswordView(APIView):
         if not user.check_password(old_password):
             return Response({"detail": "Incorrect old password."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # basic validation: length (you can add more checks)
         if len(new_password) < 6:
             return Response({"detail": "New password must be at least 6 characters."}, status=status.HTTP_400_BAD_REQUEST)
 
