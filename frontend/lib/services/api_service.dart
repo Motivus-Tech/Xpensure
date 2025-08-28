@@ -385,4 +385,47 @@ class ApiService {
       return false;
     }
   }
+
+  // -----------------------------
+  // Admin Login (Mock for now)
+  // -----------------------------
+  Future<Map<String, dynamic>> loginAdminMap({
+    required String adminId,
+    required String password,
+  }) async {
+    try {
+      // 🔹 When backend is ready, replace URL
+      final url = Uri.parse('$baseUrl/api/auth/admin/login/');
+
+      final response = await http
+          .post(
+            url,
+            headers: defaultHeaders,
+            body: jsonEncode({'admin_id': adminId, 'password': password}),
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          "status": "success",
+          "admin": {
+            "admin_id": data["admin_id"] ?? "",
+            "fullName": data["fullName"] ?? "",
+            "email": data["email"] ?? "",
+          },
+          "token": data["token"] ?? "",
+        };
+      } else if (response.statusCode == 401) {
+        return {"status": "error", "message": "Invalid admin credentials!"};
+      } else {
+        return {
+          "status": "error",
+          "message": "Error: ${response.statusCode} - ${response.body}",
+        };
+      }
+    } catch (e) {
+      return {"status": "error", "message": "Error: $e"};
+    }
+  }
 }

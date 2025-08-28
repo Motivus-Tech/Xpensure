@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'employee_signin.dart'; // Correct relative import
+import 'admin_signin.dart'; // Added import for Admin page
 
 class RoleSelection extends StatelessWidget {
   const RoleSelection({super.key});
@@ -52,7 +53,13 @@ class RoleSelection extends StatelessWidget {
                               description: "Manage approvals & reports",
                               color: Colors.blueAccent,
                               onTap: () {
-                                // Admin navigation can be added later
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const AdminSignInPage(),
+                                  ),
+                                );
                               },
                             ),
                             const SizedBox(width: 40),
@@ -81,7 +88,15 @@ class RoleSelection extends StatelessWidget {
                               title: "Admin",
                               description: "Manage approvals & reports",
                               color: Colors.blueAccent,
-                              onTap: () {},
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const AdminSignInPage(),
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 20),
                             _AnimatedRoleCard(
@@ -153,6 +168,8 @@ class _AnimatedRoleCardState extends State<_AnimatedRoleCard> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior:
+          HitTestBehavior.translucent, // <-- Added for proper tap recognition
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
       onTapCancel: _onTapCancel,
