@@ -1,4 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+import 'hr_dashboard.dart';
+import 'ceo_dashboard.dart';
+import 'finance_dashboard.dart';
+import 'common_dashboard.dart';
 
 class AdminSignInPage extends StatefulWidget {
   const AdminSignInPage({super.key});
@@ -15,7 +22,7 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
   bool _isLoading = false;
   String _message = "";
 
-  void _loginAdmin() {
+  void _loginAdmin() async {
     final employeeId = _employeeIdController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -31,19 +38,69 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
       _message = "";
     });
 
-    // TODO: Replace with real backend API call
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Replace with your Django backend URL
+      final response = await http.post(
+        Uri.parse("http://10.0.2.2:8000/api/auth/login/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "employee_id": employeeId,
+          "password": password,
+        }),
+      );
+
       setState(() {
         _isLoading = false;
       });
 
-      // Example success message
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Login Successful!")));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
 
-      // TODO: Navigate to Admin Dashboard page
-    });
+        if (data['success'] == true) {
+          final role = data['role'];
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Login Successful!")),
+          );
+
+          // Navigate to dashboard based on role
+          if (role == 'HR') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HRDashboard()),
+            );
+          } else if (role == 'CEO') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => CEODashboard()),
+            );
+          } else if (role == 'Finance') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => FinanceDashboard()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => CommonDashboard()),
+            );
+          }
+        } else {
+          setState(() {
+            _message = data['message'] ?? "Invalid credentials";
+          });
+        }
+      } else {
+        setState(() {
+          _message = "Server error: ${response.statusCode}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _message = "Error connecting to server";
+      });
+    }
   }
 
   @override
@@ -144,7 +201,14 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
                       ),
                       onPressed: _loginAdmin,
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
                           : const Text(
                               "Sign In",
                               style: TextStyle(
