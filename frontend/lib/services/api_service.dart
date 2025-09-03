@@ -244,15 +244,13 @@ class ApiService {
     String authToken,
   ) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/api/reimbursements/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(requestTimeout);
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/reimbursements/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
@@ -272,15 +270,13 @@ class ApiService {
   // -----------------------------
   Future<List<Map<String, dynamic>>> fetchAdvances(String authToken) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/api/advances/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(requestTimeout);
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/advances/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
@@ -301,15 +297,13 @@ class ApiService {
     required String authToken,
   }) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/api/employees/$employeeId/profile/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(requestTimeout);
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/employees/$employeeId/profile/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -387,14 +381,13 @@ class ApiService {
   }
 
   // -----------------------------
-  // Admin Login (Mock for now)
+  // Admin Login
   // -----------------------------
   Future<Map<String, dynamic>> loginAdminMap({
     required String adminId,
     required String password,
   }) async {
     try {
-      // 🔹 When backend is ready, replace URL
       final url = Uri.parse('$baseUrl/api/auth/admin/login/');
 
       final response = await http
@@ -426,6 +419,81 @@ class ApiService {
       }
     } catch (e) {
       return {"status": "error", "message": "Error: $e"};
+    }
+  }
+
+  // -----------------------------
+  // HR/Admin-specific Methods
+  // -----------------------------
+
+  // Update Employee Status (Active/Inactive)
+  Future<bool> updateEmployeeStatus({
+    required String authToken,
+    required String employeeId,
+    required bool isActive,
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/employees/$employeeId/status/');
+      final response = await http
+          .put(
+            url,
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'is_active': isActive}),
+          )
+          .timeout(requestTimeout);
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Error updating employee status: $e");
+      return false;
+    }
+  }
+
+  // Add Activity for Employee
+  Future<bool> addActivity({
+    required String authToken,
+    required String employeeId,
+    required String activity,
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/employees/$employeeId/activities/');
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'activity': activity}),
+          )
+          .timeout(requestTimeout);
+
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint("Error adding activity: $e");
+      return false;
+    }
+  }
+
+  // Delete Employee
+  Future<bool> deleteEmployee({
+    required String authToken,
+    required String employeeId,
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/employees/$employeeId/');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Token $authToken'},
+      ).timeout(requestTimeout);
+
+      return response.statusCode == 204;
+    } catch (e) {
+      debugPrint("Error deleting employee: $e");
+      return false;
     }
   }
 }

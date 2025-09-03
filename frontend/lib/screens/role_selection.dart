@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'employee_signin.dart'; // Correct relative import
-import 'admin_signin.dart'; // Added import for Admin page
+import 'employee_signin.dart';
+import 'admin_signin.dart';
+import 'approver_signin.dart';
 
 class RoleSelection extends StatelessWidget {
   const RoleSelection({super.key});
@@ -19,30 +20,31 @@ class RoleSelection extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              const SizedBox(height: 40),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
 
-              // App Title
-              const Text(
-                "XPENSURE",
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                  color: Colors.white,
+                // App Title
+                const Text(
+                  "XPENSURE",
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Smart Expense Management",
-                style: TextStyle(fontSize: 16, color: Colors.white70),
-              ),
-              const SizedBox(height: 50),
+                const SizedBox(height: 8),
+                const Text(
+                  "Smart Expense Management",
+                  style: TextStyle(fontSize: 16, color: Colors.white70),
+                ),
+                const SizedBox(height: 30),
 
-              // Role Cards
-              Expanded(
-                child: Center(
+                // Role Cards
+                Center(
                   child: isWide
                       ? Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -50,31 +52,46 @@ class RoleSelection extends StatelessWidget {
                             _AnimatedRoleCard(
                               icon: Icons.admin_panel_settings,
                               title: "Admin",
-                              description: "Manage approvals & reports",
+                              description: "Manage HR tasks",
                               color: Colors.blueAccent,
+                              width: 220,
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const AdminSignInPage(),
-                                  ),
+                                      builder: (_) => const AdminSignInPage()),
                                 );
                               },
                             ),
-                            const SizedBox(width: 40),
+                            const SizedBox(width: 20),
+                            _AnimatedRoleCard(
+                              icon: Icons.business_center,
+                              title: "Approver",
+                              description: "Review & approve expenses",
+                              color: const Color.fromARGB(255, 100, 187, 234),
+                              width: 220,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ApproverSignInPage()),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 20),
                             _AnimatedRoleCard(
                               icon: Icons.work_outline,
                               title: "Employee",
                               description: "Submit & track expenses",
                               color: Colors.teal,
+                              width: 220,
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const EmployeeSignInPage(),
-                                  ),
+                                      builder: (_) =>
+                                          const EmployeeSignInPage()),
                                 );
                               },
                             ),
@@ -86,48 +103,65 @@ class RoleSelection extends StatelessWidget {
                             _AnimatedRoleCard(
                               icon: Icons.admin_panel_settings,
                               title: "Admin",
-                              description: "Manage approvals & reports",
+                              description: "Manage HR tasks",
                               color: Colors.blueAccent,
+                              width: 260,
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const AdminSignInPage(),
-                                  ),
+                                      builder: (_) => const AdminSignInPage()),
                                 );
                               },
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 15),
+                            _AnimatedRoleCard(
+                              icon: Icons.business_center,
+                              title: "Approver",
+                              description: "Review & approve expenses",
+                              color: const Color.fromARGB(255, 100, 187, 234),
+                              width: 260,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const ApproverSignInPage()),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 15),
                             _AnimatedRoleCard(
                               icon: Icons.work_outline,
                               title: "Employee",
                               description: "Submit & track expenses",
                               color: Colors.teal,
+                              width: 260,
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const EmployeeSignInPage(),
-                                  ),
+                                      builder: (_) =>
+                                          const EmployeeSignInPage()),
                                 );
                               },
                             ),
                           ],
                         ),
                 ),
-              ),
 
-              // Footer
-              const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: Text(
-                  "Powered by Motivus • v1.0.0",
-                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                const SizedBox(height: 20),
+
+                // Footer
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text(
+                    "Powered by Motivus • v1.0.0",
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -140,6 +174,7 @@ class _AnimatedRoleCard extends StatefulWidget {
   final String title;
   final String description;
   final Color color;
+  final double width;
   final VoidCallback onTap;
 
   const _AnimatedRoleCard({
@@ -147,6 +182,7 @@ class _AnimatedRoleCard extends StatefulWidget {
     required this.title,
     required this.description,
     required this.color,
+    required this.width,
     required this.onTap,
   });
 
@@ -168,8 +204,7 @@ class _AnimatedRoleCardState extends State<_AnimatedRoleCard> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      behavior:
-          HitTestBehavior.translucent, // <-- Added for proper tap recognition
+      behavior: HitTestBehavior.translucent,
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
       onTapCancel: _onTapCancel,
@@ -177,7 +212,7 @@ class _AnimatedRoleCardState extends State<_AnimatedRoleCard> {
         scale: _scale,
         duration: const Duration(milliseconds: 100),
         child: Container(
-          width: 260,
+          width: widget.width,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.9),
@@ -198,7 +233,7 @@ class _AnimatedRoleCardState extends State<_AnimatedRoleCard> {
                 backgroundColor: widget.color.withOpacity(0.15),
                 child: Icon(widget.icon, size: 36, color: widget.color),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               Text(
                 widget.title,
                 style: TextStyle(
@@ -207,7 +242,7 @@ class _AnimatedRoleCardState extends State<_AnimatedRoleCard> {
                   color: widget.color,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 widget.description,
                 style: const TextStyle(fontSize: 14, color: Colors.black54),

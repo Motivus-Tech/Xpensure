@@ -1,104 +1,110 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-// Mock service to simulate backend API calls
+// Backend service fully connected to your Django API
 class EmployeeService {
-  static List<Map<String, dynamic>> _employees = [
-    {
-      "id": "1",
-      "employeeId": "EMP001",
-      "name": "Alice Smith",
-      "department": "Finance",
-      "position": "Manager",
-      "role": "Team Lead",
-      "status": "Active",
-      "joinDate": "2023-01-10",
-      "email": "alice@company.com",
-      "phone": "1234567890",
-      "aadharNo": "1234-5678-9012",
-      "reportTo": "John Director",
-    },
-    {
-      "id": "2",
-      "employeeId": "EMP002",
-      "name": "Bob Johnson",
-      "department": "HR",
-      "position": "Executive",
-      "role": "Recruiter",
-      "status": "Left",
-      "joinDate": "2022-05-12",
-      "email": "bob@company.com",
-      "phone": "9876543210",
-      "aadharNo": "9876-5432-1098",
-      "reportTo": "HR Head",
-    },
-  ];
+  static const String baseUrl =
+      "http://10.0.2.2:8000/api"; // Replace with your actual Django API URL
 
-  static List<Map<String, dynamic>> _activities = [
-    {
-      "id": "1",
-      "title": "New hire joined",
-      "timestamp": "2 hours ago",
-      "icon": Icons.person_add,
-      "color": Colors.green,
-    },
-    {
-      "id": "2",
-      "title": "Reimbursement request",
-      "timestamp": "1 day ago",
-      "icon": Icons.request_page,
-      "color": Colors.blue,
-    },
-  ];
-
-  // Simulate API call to fetch employees
-  static Future<List<Map<String, dynamic>>> getEmployees() async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    return _employees;
+  static Map<String, String> getHeaders(String? token) {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Token $token',
+    };
   }
 
-  // Simulate API call to add a new employee
-  static Future<bool> addEmployee(Map<String, dynamic> employee) async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    employee['id'] = DateTime.now().millisecondsSinceEpoch.toString();
-    _employees.add(employee);
-    return true;
-  }
+  // Employee Login
+  static Future<Map<String, dynamic>> login(
+      String employeeId, String password) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/login/'),
+      headers: getHeaders(null),
+      body: json.encode({
+        'employee_id': employeeId,
+        'password': password,
+      }),
+    );
 
-  // Simulate API call to delete an employee
-  static Future<bool> deleteEmployee(String id) async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    _employees.removeWhere((employee) => employee['id'] == id);
-    return true;
-  }
-
-  // Simulate API call to update employee status
-  static Future<bool> updateEmployeeStatus(String id, String status) async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    int index = _employees.indexWhere((employee) => employee['id'] == id);
-    if (index != -1) {
-      _employees[index]['status'] = status;
-      return true;
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception(
+          'Failed to login: ${response.statusCode} - ${response.body}');
     }
-    return false;
   }
 
-  // Simulate API call to fetch activities
-  static Future<List<Map<String, dynamic>>> getActivities() async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    return _activities;
+  // Fetch all employees (Admin only)
+  static Future<List<Map<String, dynamic>>> getEmployees(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/employees/'),
+      headers: getHeaders(token),
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((e) => e as Map<String, dynamic>).toList();
+    } else {
+      throw Exception('Failed to fetch employees: ${response.statusCode}');
+    }
   }
 
-  // Simulate API call to add a new activity
-  static Future<bool> addActivity(Map<String, dynamic> activity) async {
-    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    activity['id'] = DateTime.now().millisecondsSinceEpoch.toString();
-    _activities.insert(0, activity);
-    return true;
+  // Add a new employee (Admin only)
+  static Future<Map<String, dynamic>> addEmployee(
+      Map<String, dynamic> employee, String token) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/employees/'),
+      headers: getHeaders(token),
+      body: json.encode(employee),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception(
+          'Failed to add employee: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  // Delete an employee (Admin only)
+  static Future<bool> deleteEmployee(String employeeId, String token) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/employees/$employeeId/'),
+      headers: getHeaders(token),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return true;
+    } else {
+      throw Exception('Failed to delete employee: ${response.statusCode}');
+    }
+  }
+
+  // Update employee status (Admin only)
+  static Future<bool> updateEmployeeStatus(
+      String employeeId, bool isActive, String token) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/employees/$employeeId/'),
+      headers: getHeaders(token),
+      body: json.encode({'is_active': isActive}),
+    );
+
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      throw Exception(
+          'Failed to update employee status: ${response.statusCode}');
+    }
   }
 }
 
 class HRDashboard extends StatefulWidget {
-  const HRDashboard({super.key});
+  final String authToken;
+  final Map<String, dynamic> userData;
+
+  const HRDashboard(
+      {super.key, required this.authToken, required this.userData});
 
   @override
   State<HRDashboard> createState() => _HRDashboardState();
@@ -108,9 +114,8 @@ class _HRDashboardState extends State<HRDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String searchQuery = "";
-  String employeeFilter = "All"; // "All", "Active", "Left"
+  String employeeFilter = "All"; // "All", "Active", "Inactive"
   List<Map<String, dynamic>> employees = [];
-  List<Map<String, dynamic>> activities = [];
   bool isLoading = true;
   Map<String, dynamic>? selectedEmployee;
 
@@ -122,160 +127,90 @@ class _HRDashboardState extends State<HRDashboard>
   }
 
   Future<void> _loadData() async {
+    setState(() => isLoading = true);
     try {
-      final employeesData = await EmployeeService.getEmployees();
-      final activitiesData = await EmployeeService.getActivities();
+      final employeesData =
+          await EmployeeService.getEmployees(widget.authToken);
 
       setState(() {
         employees = employeesData;
-        activities = activitiesData;
         isLoading = false;
       });
     } catch (e) {
-      // Handle error
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to load data: $e'),
+            backgroundColor: Colors.red),
+      );
     }
   }
 
   void _addEmployee(Map<String, dynamic> newEmployee) async {
-    setState(() {
-      isLoading = true;
-    });
-
+    setState(() => isLoading = true);
     try {
-      final success = await EmployeeService.addEmployee(newEmployee);
-
-      if (success) {
-        // Add activity for new hire
-        await EmployeeService.addActivity({
-          "title": "New hire: ${newEmployee['name']}",
-          "timestamp": "Just now",
-          "icon": Icons.person_add,
-          "color": Colors.green,
-        });
-
-        // Refresh data
-        await _loadData();
-
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${newEmployee['name']} added successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // Switch to employees tab
-        _tabController.animateTo(2);
-      }
-    } catch (e) {
-      // Handle error
-      setState(() {
-        isLoading = false;
-      });
-
+      await EmployeeService.addEmployee(newEmployee, widget.authToken);
+      await _loadData();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to add employee'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(
+            content: Text('${newEmployee['fullName']} added successfully'),
+            backgroundColor: Colors.green),
+      );
+      _tabController.animateTo(2);
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to add employee: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
 
-  void _markEmployeeAsLeft(String id, String name) async {
-    setState(() {
-      isLoading = true;
-    });
-
+  void _toggleEmployeeStatus(
+      String employeeId, String name, bool currentStatus) async {
+    setState(() => isLoading = true);
     try {
-      final success = await EmployeeService.updateEmployeeStatus(id, "Left");
-
-      if (success) {
-        // Add activity for employee leaving
-        await EmployeeService.addActivity({
-          "title": "Employee left: $name",
-          "timestamp": "Just now",
-          "icon": Icons.person_remove,
-          "color": Colors.red,
-        });
-
-        // Refresh data
-        await _loadData();
-
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$name marked as left'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      // Handle error
-      setState(() {
-        isLoading = false;
-      });
-
+      await EmployeeService.updateEmployeeStatus(
+          employeeId, !currentStatus, widget.authToken);
+      await _loadData();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to update employee status'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(
+            content: Text('$name status updated'),
+            backgroundColor: Colors.orange),
+      );
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to update employee status: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
 
-  void _deleteEmployee(String id, String name) async {
-    setState(() {
-      isLoading = true;
-    });
-
+  void _deleteEmployee(String employeeId, String name) async {
+    setState(() => isLoading = true);
     try {
-      final success = await EmployeeService.deleteEmployee(id);
-
-      if (success) {
-        // Add activity for employee deletion
-        await EmployeeService.addActivity({
-          "title": "Employee deleted: $name",
-          "timestamp": "Just now",
-          "icon": Icons.delete,
-          "color": Colors.red,
-        });
-
-        // Refresh data
-        await _loadData();
-
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+      await EmployeeService.deleteEmployee(employeeId, widget.authToken);
+      await _loadData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
             content: Text('$name deleted successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+            backgroundColor: Colors.green),
+      );
     } catch (e) {
-      // Handle error
-      setState(() {
-        isLoading = false;
-      });
-
+      setState(() => isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to delete employee'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(
+            content: Text('Failed to delete employee: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
 
   void _showEmployeeDetails(Map<String, dynamic> employee) {
-    setState(() {
-      selectedEmployee = employee;
-    });
-
+    setState(() => selectedEmployee = employee);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -286,45 +221,42 @@ class _HRDashboardState extends State<HRDashboard>
       builder: (context) {
         return EmployeeDetailsSheet(
           employee: employee,
-          onMarkAsLeft: () {
+          onToggleStatus: () {
             Navigator.of(context).pop();
-            _markEmployeeAsLeft(employee['id'], employee['name']);
+            _toggleEmployeeStatus(employee['employee_id'], employee['fullName'],
+                employee['is_active']);
           },
           onDelete: () {
             Navigator.of(context).pop();
-            _showDeleteConfirmation(employee['id'], employee['name']);
+            _showDeleteConfirmation(
+                employee['employee_id'], employee['fullName']);
           },
         );
       },
     );
   }
 
-  void _showDeleteConfirmation(String id, String name) {
+  void _showDeleteConfirmation(String employeeId, String name) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text(
-            "Confirm Delete",
-            style: TextStyle(color: Colors.white),
-          ),
+          title: const Text("Confirm Delete",
+              style: TextStyle(color: Colors.white)),
           content: Text(
-            "Are you sure you want to delete $name? This action cannot be undone.",
-            style: const TextStyle(color: Colors.white70),
-          ),
+              "Are you sure you want to delete $name? This action cannot be undone.",
+              style: const TextStyle(color: Colors.white70)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                "Cancel",
-                style: TextStyle(color: Colors.white54),
-              ),
+              child:
+                  const Text("Cancel", style: TextStyle(color: Colors.white54)),
             ),
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                _deleteEmployee(id, name);
+                _deleteEmployee(employeeId, name);
               },
               child: const Text("Delete", style: TextStyle(color: Colors.red)),
             ),
@@ -415,12 +347,13 @@ class _HRDashboardState extends State<HRDashboard>
                 end: Alignment.bottomRight,
               ),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                "HR",
-                style: TextStyle(
+                widget.userData['role'] ?? "HR",
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  fontSize: 12,
                 ),
               ),
             ),
@@ -454,17 +387,9 @@ class _HRDashboardState extends State<HRDashboard>
 
   Widget _buildOverviewTab() {
     final activeEmployees =
-        employees.where((e) => e["status"] == "Active").length;
-    final leftEmployees = employees.where((e) => e["status"] == "Left").length;
-    final newHires = employees
-        .where(
-          (e) =>
-              e["joinDate"] != null &&
-              DateTime.parse(
-                e["joinDate"],
-              ).isAfter(DateTime.now().subtract(const Duration(days: 30))),
-        )
-        .length;
+        employees.where((e) => e["is_active"] == true).length;
+    final inactiveEmployees =
+        employees.where((e) => e["is_active"] == false).length;
 
     final stats = [
       {
@@ -480,16 +405,10 @@ class _HRDashboardState extends State<HRDashboard>
         "icon": Icons.check_circle,
       },
       {
-        "title": "Employees Left",
-        "value": leftEmployees,
+        "title": "Left Employees",
+        "value": inactiveEmployees,
         "color": Colors.red,
         "icon": Icons.exit_to_app,
-      },
-      {
-        "title": "New Hires",
-        "value": newHires,
-        "color": Colors.purple,
-        "icon": Icons.person_add,
       },
     ];
 
@@ -580,18 +499,23 @@ class _HRDashboardState extends State<HRDashboard>
     List<Map<String, dynamic>> filteredEmployees = employees
         .where(
           (e) =>
-              e["name"].toLowerCase().contains(searchQuery.toLowerCase()) ||
-              e["department"].toLowerCase().contains(
-                    searchQuery.toLowerCase(),
-                  ) ||
-              e["employeeId"].toLowerCase().contains(searchQuery.toLowerCase()),
+              e["fullName"].toLowerCase().contains(searchQuery.toLowerCase()) ||
+              e["department"]
+                      ?.toLowerCase()
+                      .contains(searchQuery.toLowerCase()) ==
+                  true ||
+              e["employee_id"]
+                  .toLowerCase()
+                  .contains(searchQuery.toLowerCase()),
         )
         .toList();
 
     // Apply status filter
     if (employeeFilter != "All") {
       filteredEmployees = filteredEmployees
-          .where((e) => e["status"] == employeeFilter)
+          .where((e) => employeeFilter == "Active"
+              ? e["is_active"] == true
+              : e["is_active"] == false)
           .toList();
     }
 
@@ -644,8 +568,8 @@ class _HRDashboardState extends State<HRDashboard>
                       child: Text("Active Only"),
                     ),
                     const PopupMenuItem<String>(
-                      value: "Left",
-                      child: Text("Left Only"),
+                      value: "Inactive",
+                      child: Text("Inactive Only"),
                     ),
                   ],
                   child: Padding(
@@ -660,7 +584,7 @@ class _HRDashboardState extends State<HRDashboard>
                               ? "All"
                               : employeeFilter == "Active"
                                   ? "Active"
-                                  : "Left",
+                                  : "Inactive",
                           style: const TextStyle(color: Colors.white),
                         ),
                         const Icon(Icons.arrow_drop_down, color: Colors.white),
@@ -703,18 +627,18 @@ class _HRDashboardState extends State<HRDashboard>
                 child: ListTile(
                   onTap: () => _showEmployeeDetails(e),
                   title: Text(
-                    e["name"],
+                    e["fullName"],
                     style: const TextStyle(color: Colors.white),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "${e["position"]} - ${e["department"]}",
+                        "${e["role"] ?? "Employee"} - ${e["department"] ?? "No Department"}",
                         style: const TextStyle(color: Colors.white70),
                       ),
                       Text(
-                        "ID: ${e["employeeId"]}",
+                        "ID: ${e["employee_id"]}",
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 12,
@@ -728,12 +652,11 @@ class _HRDashboardState extends State<HRDashboard>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color:
-                          e["status"] == "Active" ? Colors.green : Colors.red,
+                      color: e["is_active"] == true ? Colors.green : Colors.red,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      e["status"],
+                      e["is_active"] == true ? "Active" : "Inactive",
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
@@ -747,15 +670,14 @@ class _HRDashboardState extends State<HRDashboard>
   }
 
   void _showAddEmployeeDialog(BuildContext context) {
-    final nameController = TextEditingController();
     final employeeIdController = TextEditingController();
     final emailController = TextEditingController();
-    final phoneController = TextEditingController();
+    final fullNameController = TextEditingController();
     final departmentController = TextEditingController();
+    final phoneController = TextEditingController();
     final aadharController = TextEditingController();
-    final reportToController = TextEditingController();
-    final roleController = TextEditingController();
-    String selectedStatus = "Active";
+    final reportingIdController = TextEditingController();
+    String selectedRole = "Common";
 
     showDialog(
       context: context,
@@ -783,95 +705,55 @@ class _HRDashboardState extends State<HRDashboard>
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // First row of fields
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          nameController,
-                          "Full Name",
-                          Icons.person,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          employeeIdController,
-                          "Employee ID",
-                          Icons.badge,
-                        ),
-                      ),
-                    ],
+                  // All fields in a single column
+                  _buildTextField(
+                    employeeIdController,
+                    "Employee ID",
+                    Icons.badge,
                   ),
                   const SizedBox(height: 12),
-                  // Second row of fields
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          emailController,
-                          "Email ID",
-                          Icons.email,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          phoneController,
-                          "Phone No",
-                          Icons.phone,
-                        ),
-                      ),
-                    ],
+                  _buildTextField(
+                    fullNameController,
+                    "Full Name",
+                    Icons.person,
                   ),
                   const SizedBox(height: 12),
-                  // Third row of fields
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          departmentController,
-                          "Department",
-                          Icons.business,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          aadharController,
-                          "Aadhar No",
-                          Icons.credit_card,
-                        ),
-                      ),
-                    ],
+                  _buildTextField(
+                    emailController,
+                    "Email ID",
+                    Icons.email,
                   ),
                   const SizedBox(height: 12),
-                  // Fourth row of fields
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          reportToController,
-                          "Report To",
-                          Icons.supervisor_account,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          roleController,
-                          "Role",
-                          Icons.work,
-                        ),
-                      ),
-                    ],
+                  _buildTextField(
+                    phoneController,
+                    "Phone No",
+                    Icons.phone,
                   ),
                   const SizedBox(height: 12),
-                  // Status dropdown
+                  _buildTextField(
+                    departmentController,
+                    "Department",
+                    Icons.business,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    aadharController,
+                    "Aadhar No",
+                    Icons.credit_card,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    reportingIdController,
+                    "Reporting ID",
+                    Icons.supervisor_account,
+                  ),
+                  const SizedBox(height: 12),
+                  // Role dropdown
                   DropdownButtonFormField<String>(
                     dropdownColor: const Color(0xFF1E1E1E),
-                    value: selectedStatus,
-                    items: ["Active", "Left"].map((String value) {
+                    value: selectedRole,
+                    items:
+                        ["Common", "HR", "CEO", "Finance"].map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(
@@ -881,13 +763,13 @@ class _HRDashboardState extends State<HRDashboard>
                       );
                     }).toList(),
                     onChanged: (newValue) {
-                      selectedStatus = newValue!;
+                      selectedRole = newValue!;
                     },
                     decoration: InputDecoration(
-                      labelText: "Status",
+                      labelText: "Role",
                       labelStyle: const TextStyle(color: Colors.white70),
                       prefixIcon: const Icon(
-                        Icons.circle,
+                        Icons.work,
                         color: Colors.white54,
                       ),
                       border: OutlineInputBorder(
@@ -921,12 +803,13 @@ class _HRDashboardState extends State<HRDashboard>
                         ),
                         child: ElevatedButton(
                           onPressed: () {
-                            if (nameController.text.isEmpty ||
-                                employeeIdController.text.isEmpty) {
+                            if (employeeIdController.text.isEmpty ||
+                                fullNameController.text.isEmpty ||
+                                emailController.text.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'Name and Employee ID are required',
+                                    'Employee ID, Full Name, and Email are required',
                                   ),
                                   backgroundColor: Colors.red,
                                 ),
@@ -935,18 +818,14 @@ class _HRDashboardState extends State<HRDashboard>
                             }
 
                             final newEmployee = {
-                              "name": nameController.text,
-                              "employeeId": employeeIdController.text,
+                              "employee_id": employeeIdController.text,
                               "email": emailController.text,
-                              "phone": phoneController.text,
+                              "fullName": fullNameController.text,
                               "department": departmentController.text,
-                              "aadharNo": aadharController.text,
-                              "reportTo": reportToController.text,
-                              "position": roleController.text,
-                              "status": selectedStatus,
-                              "joinDate": DateTime.now().toString().split(
-                                    " ",
-                                  )[0],
+                              "phone_number": phoneController.text,
+                              "aadhar_card": aadharController.text,
+                              "report_to": reportingIdController.text,
+                              "role": selectedRole,
                             };
 
                             _addEmployee(newEmployee);
@@ -979,10 +858,12 @@ class _HRDashboardState extends State<HRDashboard>
   Widget _buildTextField(
     TextEditingController controller,
     String hint,
-    IconData icon,
-  ) {
+    IconData icon, {
+    bool isPassword = false,
+  }) {
     return TextField(
       controller: controller,
+      obscureText: isPassword,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         hintText: hint,
@@ -999,34 +880,13 @@ class _HRDashboardState extends State<HRDashboard>
   }
 
   Widget _buildActivityTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: ListView.builder(
-        itemCount: activities.length,
-        itemBuilder: (context, index) {
-          final a = activities[index];
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1F1F1F),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: a["color"],
-                child: Icon(a["icon"], color: Colors.white, size: 20),
-              ),
-              title: Text(
-                a["title"],
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                a["timestamp"],
-                style: const TextStyle(color: Colors.white54),
-              ),
-            ),
-          );
-        },
+    return const Padding(
+      padding: EdgeInsets.all(16),
+      child: Center(
+        child: Text(
+          "No recent activity",
+          style: TextStyle(color: Colors.white54, fontSize: 16),
+        ),
       ),
     );
   }
@@ -1034,13 +894,13 @@ class _HRDashboardState extends State<HRDashboard>
 
 class EmployeeDetailsSheet extends StatelessWidget {
   final Map<String, dynamic> employee;
-  final VoidCallback onMarkAsLeft;
+  final VoidCallback onToggleStatus;
   final VoidCallback onDelete;
 
   const EmployeeDetailsSheet({
     super.key,
     required this.employee,
-    required this.onMarkAsLeft,
+    required this.onToggleStatus,
     required this.onDelete,
   });
 
@@ -1076,11 +936,11 @@ class EmployeeDetailsSheet extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: employee["status"] == "Active"
+                    backgroundColor: employee["is_active"] == true
                         ? Colors.green
                         : Colors.red,
                     child: Text(
-                      employee["name"].substring(0, 1),
+                      employee["fullName"].substring(0, 1),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -1094,7 +954,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          employee["name"],
+                          employee["fullName"],
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
@@ -1102,7 +962,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          "${employee["position"]} - ${employee["department"]}",
+                          "${employee["role"] ?? "Employee"} - ${employee["department"] ?? "No Department"}",
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 14,
@@ -1115,13 +975,15 @@ class EmployeeDetailsSheet extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: employee["status"] == "Active"
+                            color: employee["is_active"] == true
                                 ? Colors.green
                                 : Colors.red,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            employee["status"],
+                            employee["is_active"] == true
+                                ? "Active"
+                                : "Inactive",
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -1143,33 +1005,40 @@ class EmployeeDetailsSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildDetailRow("Employee ID", employee["employeeId"]),
+              _buildDetailRow("Employee ID", employee["employee_id"]),
               _buildDetailRow("Email", employee["email"]),
-              _buildDetailRow("Phone", employee["phone"]),
-              _buildDetailRow("Aadhar No", employee["aadharNo"]),
-              _buildDetailRow("Reports To", employee["reportTo"]),
-              _buildDetailRow("Join Date", employee["joinDate"]),
+              _buildDetailRow(
+                  "Phone", employee["phone_number"] ?? "Not provided"),
+              _buildDetailRow(
+                  "Aadhar No", employee["aadhar_card"] ?? "Not provided"),
+              _buildDetailRow(
+                  "Department", employee["department"] ?? "Not assigned"),
+              _buildDetailRow("Role", employee["role"] ?? "Employee"),
+              _buildDetailRow(
+                  "Reporting ID", employee["report_to"] ?? "Not assigned"),
               const SizedBox(height: 24),
-              if (employee["status"] == "Active") ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: onMarkAsLeft,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      "Mark as Left",
-                      style: TextStyle(color: Colors.white),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onToggleStatus,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: employee["is_active"] == true
+                        ? Colors.orange
+                        : Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                  child: Text(
+                    employee["is_active"] == true
+                        ? "Deactivate Employee"
+                        : "Activate Employee",
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
-                const SizedBox(height: 12),
-              ],
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -1214,26 +1083,25 @@ class EmployeeDetailsSheet extends StatelessWidget {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w500,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(value, style: const TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(value, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        ));
   }
 }

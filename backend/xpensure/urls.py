@@ -1,7 +1,5 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
-
 from .views import (
     EmployeeListCreateView,
     EmployeeDetailView,
@@ -42,13 +40,13 @@ urlpatterns = [
     path('api/reimbursements/', ReimbursementListCreateView.as_view(), name='reimbursement-list-create'),
     path('api/advances/', AdvanceRequestListCreateView.as_view(), name='advance-list-create'),
 
-    # -----------------------------
     # Employee Profile
-    # -----------------------------
-    # GET / PUT employee profile
     path('employees/<str:employee_id>/profile/', EmployeeProfileView.as_view(), name='employee-profile'),
 
     # Password endpoints
     path('employees/<str:employee_id>/verify-password/', VerifyPasswordView.as_view(), name='employee-verify-password'),
     path('employees/<str:employee_id>/change-password/', ChangePasswordView.as_view(), name='employee-change-password'),
+    path("api/employees/", EmployeeListCreateView.as_view(), name="employee-list-create"),
+
+   
 ]

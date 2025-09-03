@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-import 'hr_dashboard.dart';
+import 'ceo_dashboard.dart';
+import 'finance_dashboard.dart';
+import 'common_dashboard.dart';
 
-class AdminSignInPage extends StatefulWidget {
-  const AdminSignInPage({super.key});
+class ApproverSignInPage extends StatefulWidget {
+  const ApproverSignInPage({super.key});
 
   @override
-  State<AdminSignInPage> createState() => _AdminSignInPageState();
+  State<ApproverSignInPage> createState() => _ApproverSignInPageState();
 }
 
-class _AdminSignInPageState extends State<AdminSignInPage> {
+class _ApproverSignInPageState extends State<ApproverSignInPage> {
   final TextEditingController _employeeIdController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -19,7 +21,7 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
   bool _isLoading = false;
   String _message = "";
 
-  void _loginAdmin() async {
+  void _loginApprover() async {
     final employeeId = _employeeIdController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -54,29 +56,46 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
         final data = jsonDecode(response.body);
 
         if (data['success'] == true) {
+          final role = data['role'];
+          // Extract user data from the response
+          final userId =
+              data['user_id'] ?? employeeId; // Use employee ID as fallback
+          final userName =
+              data['user_name'] ?? 'Approver User'; // Default fallback
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Login Successful!")),
           );
 
-          // Pass the token and user data to HRDashboard
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HRDashboard(
-                authToken: data['token'],
-                userData: {
-                  'employee_id': data['employee_id'],
-                  'fullName': data['fullName'],
-                  'email': data['email'],
-                  'department': data['department'],
-                  'phone_number': data['phone_number'],
-                  'aadhar_card': data['aadhar_card'],
-                  'role': data['role'],
-                  'avatar': data['avatar'],
-                },
-              ),
-            ),
-          );
+          // Navigate to appropriate dashboard
+          if (role == 'CEO') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => CEODashboard()),
+            );
+          } else if (role == 'Finance') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => FinanceDashboard()),
+            );
+          } else if (role == 'Common') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => CommonDashboard(
+                        userData: {
+                          'id': userId,
+                          'name': userName,
+                          'employeeId': employeeId,
+                        },
+                      )),
+            );
+          } else {
+            // fallback or invalid role
+            setState(() {
+              _message = "Role not authorized for Approver";
+            });
+          }
         } else {
           setState(() {
             _message = data['message'] ?? "Invalid credentials";
@@ -90,7 +109,7 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _message = "Error connecting to server: $e";
+        _message = "Error connecting to server";
       });
     }
   }
@@ -126,13 +145,13 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
-                    Icons.admin_panel_settings,
+                    Icons.business_center,
                     size: 60,
                     color: Color(0xFF1A237E),
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    "Admin Sign In",
+                    "Approver Sign In",
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -191,7 +210,7 @@ class _AdminSignInPageState extends State<AdminSignInPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: _loginAdmin,
+                      onPressed: _loginApprover,
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,

@@ -13,7 +13,7 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'employee_id', 'email', 'fullName', 'department',
-            'phone_number', 'aadhar_card', 'password', 'confirm_password', 'avatar'
+            'phone_number', 'aadhar_card', 'report_to','password', 'confirm_password', 'avatar'
         ]
 
     def validate(self, attrs):
@@ -26,13 +26,15 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         fullName = validated_data.pop('fullName')
         password = validated_data.pop('password')
         avatar = validated_data.pop('avatar', None)
-        validated_data['username'] = validated_data['employee_id']
+       
 
         employee = Employee(**validated_data)
-        employee.fullName = fullName
+        employee.fullName = fullName 
         if avatar:
             employee.avatar = avatar
+           # Important: HR-created employees don’t set password yet
         employee.set_password(password)
+
         employee.save()
         return employee
 
@@ -70,6 +72,8 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "aadhar_card",
             "avatar",
+            "report_to",
+            "role",
         ]
         read_only_fields = ["employee_id", "email"]
 
@@ -92,3 +96,22 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         else:
             data["avatar"] = None
         return data
+    # -----------------------------
+# Employee HR Create Serializer
+# -----------------------------
+class EmployeeHRCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = [
+            'employee_id', 'email', 'fullName', 'department',
+            'phone_number', 'aadhar_card', 'report_to', 'avatar', 'role'
+        ]
+def create(self, validated_data):
+    validated_data['username'] = validated_data.get('employee_id')
+    fullName = validated_data.pop('fullName', None)
+    employee = Employee(**validated_data)
+    if fullName:
+        employee.fullName = fullName
+    employee.save()
+    return employee
+

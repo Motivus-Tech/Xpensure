@@ -3,20 +3,25 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
-from .serializers import EmployeeSignupSerializer, ReimbursementSerializer, AdvanceRequestSerializer, EmployeeProfileSerializer
+from .serializers import (
+    EmployeeSignupSerializer,
+    ReimbursementSerializer,
+    AdvanceRequestSerializer,
+    EmployeeProfileSerializer,
+    EmployeeHRCreateSerializer
+)
 from .models import Reimbursement, AdvanceRequest
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.authentication import TokenAuthentication
-from django.contrib.auth.hashers import check_password
 
 User = get_user_model()
 
 # -----------------------------
-# Employee Signup
+# Employee Signup (Self signup)
 # -----------------------------
 class EmployeeSignupView(APIView):
     permission_classes = [permissions.AllowAny]
-    parser_classes = [MultiPartParser, FormParser]  # Necessary for Flutter MultipartRequest
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         serializer = EmployeeSignupSerializer(data=request.data)
@@ -30,7 +35,7 @@ class EmployeeSignupView(APIView):
                 'department': employee.department,
                 'phone_number': employee.phone_number,
                 'aadhar_card': employee.aadhar_card,
-                "avatar": request.build_absolute_uri(employee.avatar.url) if employee.avatar and employee.avatar.url else None,
+                'avatar': request.build_absolute_uri(employee.avatar.url) if employee.avatar and employee.avatar.url else None,
                 'token': token.key
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -45,25 +50,31 @@ class EmployeeLoginView(APIView):
     def post(self, request):
         employee_id = request.data.get('employee_id')
         password = request.data.get('password')
+
         if not employee_id or not password:
-            return Response({'error': 'Both employee_id and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'message': 'Both employee_id and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             user = User.objects.get(employee_id=employee_id)
         except User.DoesNotExist:
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'success': False, 'message': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
         if user.check_password(password):
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
+                'success': True,
                 'employee_id': user.employee_id,
-                'email': user.email,
                 'fullName': user.fullName,
+                'email': user.email,
                 'department': user.department,
                 'phone_number': user.phone_number,
                 'aadhar_card': user.aadhar_card,
                 'avatar': request.build_absolute_uri(user.avatar.url) if user.avatar and user.avatar.url else None,
+                'role': user.role,
                 'token': token.key
             })
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            return Response({'success': False, 'message': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 # -----------------------------
@@ -71,7 +82,7 @@ class EmployeeLoginView(APIView):
 # -----------------------------
 class EmployeeListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
-    serializer_class = EmployeeSignupSerializer
+    serializer_class = EmployeeHRCreateSerializer  # HR serializer (no password required)
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -80,7 +91,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
 # -----------------------------
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
-    serializer_class = EmployeeSignupSerializer
+    serializer_class = EmployeeHRCreateSerializer  # HR serializer (no password required)
     lookup_field = 'employee_id'
     permission_classes = [permissions.IsAdminUser]
 
@@ -111,9 +122,11 @@ class AdvanceRequestViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(employee=self.request.user)
-        
 
-# Reimbursements API
+
+# -----------------------------
+# Reimbursement API
+# -----------------------------
 class ReimbursementListCreateView(generics.ListCreateAPIView):
     serializer_class = ReimbursementSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -125,7 +138,9 @@ class ReimbursementListCreateView(generics.ListCreateAPIView):
         serializer.save(employee=self.request.user)
 
 
+# -----------------------------
 # Advance Requests API
+# -----------------------------
 class AdvanceRequestListCreateView(generics.ListCreateAPIView):
     serializer_class = AdvanceRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
