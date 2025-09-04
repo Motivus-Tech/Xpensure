@@ -27,20 +27,23 @@ class EmployeeSignupView(APIView):
     def post(self, request):
         serializer = EmployeeSignupSerializer(data=request.data)
         if serializer.is_valid():
-            employee = serializer.save()
+            employee = serializer.save()  # Updates existing HR row
+
             token, _ = Token.objects.get_or_create(user=employee)
-            return Response({
+
+            response_data = {
                 'employee_id': employee.employee_id,
                 'email': employee.email,
                 'fullName': employee.fullName,
                 'department': employee.department,
                 'phone_number': employee.phone_number,
                 'aadhar_card': employee.aadhar_card,
-                'avatar': request.build_absolute_uri(employee.avatar.url) if employee.avatar and employee.avatar.url else None,
+                'avatar': request.build_absolute_uri(employee.avatar.url) if employee.avatar else None,
                 'token': token.key
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            }
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # -----------------------------
 # Employee Login
@@ -93,10 +96,22 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
 # -----------------------------
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
-    serializer_class = EmployeeHRCreateSerializer  # HR serializer (no password required)
+    serializer_class = EmployeeHRCreateSerializer  # HR serializer
     lookup_field = 'employee_id'
     authentication_classes = [TokenAuthentication] 
     permission_classes = [permissions.IsAdminUser]
+
+    def put(self, request, *args, **kwargs):
+        emp = self.get_object()
+        # If password field is sent, set it properly
+        new_password = request.data.get("password")
+        if new_password:
+            emp.set_password(new_password)
+            emp.save()
+            # Remove password from request data so serializer doesn't complain
+            request.data._mutable = True
+            request.data.pop("password")
+        return super().put(request, *args, **kwargs)
 
 
 # -----------------------------

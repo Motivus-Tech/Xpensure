@@ -4,10 +4,13 @@ from .models import Employee, Reimbursement, AdvanceRequest
 # -----------------------------
 # Employee Signup Serializer
 # -----------------------------
+from rest_framework import serializers
+from .models import Employee, Reimbursement, AdvanceRequest
+
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=6)
-    fullName = serializers.CharField(write_only=True, required=False)
+    fullName = serializers.CharField(required=False)
     avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
@@ -16,6 +19,10 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
             'employee_id', 'email', 'fullName', 'department',
             'phone_number', 'aadhar_card', 'password', 'confirm_password', 'avatar'
         ]
+        extra_kwargs = {
+            'employee_id': {'validators': []},  # bypass unique validator
+            'email': {'validators': []},        # bypass unique validator
+        }
 
     def validate(self, attrs):
         # Password match check
@@ -24,24 +31,26 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
 
         # Check if employee exists in DB (added by HR)
         try:
-            hr_employee = Employee.objects.get(employee_id=attrs['employee_id'], email=attrs['email'])
+            self.employee = Employee.objects.get(
+                employee_id=attrs['employee_id'],
+                email=attrs['email']
+            )
         except Employee.DoesNotExist:
             raise serializers.ValidationError({"detail": "Employee details not found. Please contact HR."})
 
-        # Prevent double signup
-        if hr_employee.has_usable_password():
+        # Prevent multiple signups
+        if self.hr_employee.has_usable_password():
             raise serializers.ValidationError({"detail": "Employee has already signed up."})
 
         return attrs
 
-    
     def create(self, validated_data):
         validated_data.pop('confirm_password')
         password = validated_data.pop('password')
         avatar = validated_data.pop('avatar', None)
 
-        # Update the existing HR-added employee
-        employee = Employee.objects.get(employee_id=validated_data['employee_id'])
+        # Update existing HR-created employee
+        employee = self.hr_employee
         employee.fullName = validated_data.get('fullName', employee.fullName)
         employee.department = validated_data.get('department', employee.department)
         employee.phone_number = validated_data.get('phone_number', employee.phone_number)
@@ -52,6 +61,8 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         employee.set_password(password)
         employee.save()
         return employee
+
+
 # -----------------------------
 # Reimbursement Serializer
 # -----------------------------
@@ -61,6 +72,7 @@ class ReimbursementSerializer(serializers.ModelSerializer):
         fields = ['id', 'employee', 'amount', 'description', 'attachment', 'date', 'created_at']
         read_only_fields = ['employee', 'created_at']
 
+
 # -----------------------------
 # Advance Request Serializer
 # -----------------------------
@@ -69,6 +81,7 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
         model = AdvanceRequest
         fields = ['id', 'employee', 'amount', 'description', 'request_date', 'project_date', 'attachment', 'created_at']
         read_only_fields = ['employee', 'created_at']
+
 
 # -----------------------------
 # Employee Profile Serializer
@@ -90,9 +103,6 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["employee_id", "email"]
 
     def to_representation(self, instance):
-        """
-        Override to return absolute URL for avatar if available.
-        """
         data = super().to_representation(instance)
         request = self.context.get("request")
         avatar = data.get("avatar")
@@ -108,6 +118,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         else:
             data["avatar"] = None
         return data
+
 
 # -----------------------------
 # HR/Admin Employee Serializer (no password)
