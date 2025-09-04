@@ -7,37 +7,51 @@ from .models import Employee, Reimbursement, AdvanceRequest
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=6)
-    fullName = serializers.CharField(write_only=True)
+    fullName = serializers.CharField(write_only=True, required=False)
+    avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Employee
         fields = [
             'employee_id', 'email', 'fullName', 'department',
-            'phone_number', 'aadhar_card', 'report_to','password', 'confirm_password', 'avatar'
+            'phone_number', 'aadhar_card', 'password', 'confirm_password', 'avatar'
         ]
 
     def validate(self, attrs):
+        # Password match check
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Passwords do not match"})
+
+        # Check if employee exists in DB (added by HR)
+        try:
+            hr_employee = Employee.objects.get(employee_id=attrs['employee_id'], email=attrs['email'])
+        except Employee.DoesNotExist:
+            raise serializers.ValidationError({"detail": "Employee details not found. Please contact HR."})
+
+        # Prevent double signup
+        if hr_employee.has_usable_password():
+            raise serializers.ValidationError({"detail": "Employee has already signed up."})
+
         return attrs
 
+    
     def create(self, validated_data):
         validated_data.pop('confirm_password')
-        fullName = validated_data.pop('fullName')
         password = validated_data.pop('password')
         avatar = validated_data.pop('avatar', None)
-       
 
-        employee = Employee(**validated_data)
-        employee.fullName = fullName 
+        # Update the existing HR-added employee
+        employee = Employee.objects.get(employee_id=validated_data['employee_id'])
+        employee.fullName = validated_data.get('fullName', employee.fullName)
+        employee.department = validated_data.get('department', employee.department)
+        employee.phone_number = validated_data.get('phone_number', employee.phone_number)
+        employee.aadhar_card = validated_data.get('aadhar_card', employee.aadhar_card)
         if avatar:
             employee.avatar = avatar
-           # Important: HR-created employees don’t set password yet
-        employee.set_password(password)
 
+        employee.set_password(password)
         employee.save()
         return employee
-
 # -----------------------------
 # Reimbursement Serializer
 # -----------------------------
@@ -72,8 +86,6 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "aadhar_card",
             "avatar",
-            "report_to",
-            "role",
         ]
         read_only_fields = ["employee_id", "email"]
 
@@ -96,22 +108,23 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         else:
             data["avatar"] = None
         return data
-    # -----------------------------
-# Employee HR Create Serializer
+
+# -----------------------------
+# HR/Admin Employee Serializer (no password)
 # -----------------------------
 class EmployeeHRCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            'employee_id', 'email', 'fullName', 'department',
-            'phone_number', 'aadhar_card', 'report_to', 'avatar', 'role'
+            "employee_id",
+            "email",
+            "fullName",
+            "department",
+            "phone_number",
+            "aadhar_card",
+            "avatar",
+            "role",
+            "is_active",
+            "is_staff",
+            "report_to",
         ]
-def create(self, validated_data):
-    validated_data['username'] = validated_data.get('employee_id')
-    fullName = validated_data.pop('fullName', None)
-    employee = Employee(**validated_data)
-    if fullName:
-        employee.fullName = fullName
-    employee.save()
-    return employee
-

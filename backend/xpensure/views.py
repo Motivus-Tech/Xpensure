@@ -1,6 +1,7 @@
 from rest_framework import status, permissions, generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from .models import Employee
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
 from .serializers import (
@@ -83,6 +84,7 @@ class EmployeeLoginView(APIView):
 class EmployeeListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeHRCreateSerializer  # HR serializer (no password required)
+    authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -93,6 +95,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = EmployeeHRCreateSerializer  # HR serializer (no password required)
     lookup_field = 'employee_id'
+    authentication_classes = [TokenAuthentication] 
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -250,3 +253,9 @@ class ChangePasswordView(APIView):
         user.set_password(new_password)
         user.save()
         return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
+    
+class EmployeeDeleteView(generics.DestroyAPIView):
+    queryset = Employee.objects.all()
+    serializer_class = EmployeeSignupSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "employee_id"

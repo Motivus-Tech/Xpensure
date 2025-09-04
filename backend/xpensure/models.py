@@ -39,13 +39,8 @@ class Employee(AbstractBaseUser, PermissionsMixin):
     aadhar_card = models.CharField(max_length=12, blank=True, null=True)
 
     # hierarchy
-    report_to = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="subordinates"
-    )
+    report_to = models.CharField(max_length=50, null=True, blank=True)
+
 
     avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)
 

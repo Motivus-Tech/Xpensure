@@ -11,7 +11,9 @@ from .views import (
     AdvanceRequestListCreateView,
     EmployeeProfileView,
     VerifyPasswordView,
-    ChangePasswordView
+    ChangePasswordView,
+    EmployeeDeleteView
+
 )
 
 # -----------------------------
@@ -46,6 +48,8 @@ urlpatterns = [
     # Password endpoints
     path('employees/<str:employee_id>/verify-password/', VerifyPasswordView.as_view(), name='employee-verify-password'),
     path('employees/<str:employee_id>/change-password/', ChangePasswordView.as_view(), name='employee-change-password'),
+    path("employees/<str:employee_id>/", EmployeeDeleteView.as_view(), name="delete-employee"),
+
     path("api/employees/", EmployeeListCreateView.as_view(), name="employee-list-create"),
 
    
