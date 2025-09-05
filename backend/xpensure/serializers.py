@@ -4,9 +4,6 @@ from .models import Employee, Reimbursement, AdvanceRequest
 # -----------------------------
 # Employee Signup Serializer
 # -----------------------------
-from rest_framework import serializers
-from .models import Employee, Reimbursement, AdvanceRequest
-
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=6)
@@ -17,30 +14,41 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'employee_id', 'email', 'fullName', 'department',
-            'phone_number', 'aadhar_card', 'password', 'confirm_password', 'avatar'
+            'phone_number', 'aadhar_card', 
+            'password', 'confirm_password', 'avatar'
         ]
         extra_kwargs = {
-            'employee_id': {'validators': []},  # bypass unique validator
-            'email': {'validators': []},        # bypass unique validator
+            'employee_id': {'validators': []},
+            'email': {'validators': []},
         }
 
     def validate(self, attrs):
-        # Password match check
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Passwords do not match"})
 
-        # Check if employee exists in DB (added by HR)
+        # Try to get employee record from DB
         try:
-            self.employee = Employee.objects.get(
+            self.hr_employee = Employee.objects.get(
                 employee_id=attrs['employee_id'],
-                email=attrs['email']
+                email__iexact=attrs['email']
             )
         except Employee.DoesNotExist:
             raise serializers.ValidationError({"detail": "Employee details not found. Please contact HR."})
 
-        # Prevent multiple signups
-        if self.hr_employee.has_usable_password():
-            raise serializers.ValidationError({"detail": "Employee has already signed up."})
+        # Check important fields against HR record (case-insensitive for strings)
+        mismatches = []
+        if self.hr_employee.fullName.lower() != attrs.get('fullName', '').lower():
+            mismatches.append("fullName")
+        if self.hr_employee.department.lower() != attrs.get('department', '').lower():
+            mismatches.append("department")
+        if self.hr_employee.phone_number != attrs.get('phone_number', ''):
+            mismatches.append("phone_number")
+        if self.hr_employee.aadhar_card != attrs.get('aadhar_card', ''):
+            mismatches.append("aadhar_card")
+
+        if mismatches:
+            raise serializers.ValidationError({"detail": f"Employee data mismatch on: {', '.join(mismatches)}. Please contact HR."})
+
 
         return attrs
 
@@ -49,7 +57,6 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         avatar = validated_data.pop('avatar', None)
 
-        # Update existing HR-created employee
         employee = self.hr_employee
         employee.fullName = validated_data.get('fullName', employee.fullName)
         employee.department = validated_data.get('department', employee.department)
@@ -58,6 +65,7 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         if avatar:
             employee.avatar = avatar
 
+        # ✅ Set password and save
         employee.set_password(password)
         employee.save()
         return employee

@@ -20,30 +20,46 @@ User = get_user_model()
 # -----------------------------
 # Employee Signup (Self signup)
 # -----------------------------
+# -----------------------------
+# Employee Signup (Self signup)
+# -----------------------------
 class EmployeeSignupView(APIView):
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         serializer = EmployeeSignupSerializer(data=request.data)
-        if serializer.is_valid():
-            employee = serializer.save()  # Updates existing HR row
+        
+        # Validate serializer
+        if not serializer.is_valid():
+            # Return errors in a consistent JSON format
+            return Response({
+                "success": False,
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-            token, _ = Token.objects.get_or_create(user=employee)
+        # Save employee (updates HR-created row)
+        employee = serializer.save()
 
-            response_data = {
-                'employee_id': employee.employee_id,
-                'email': employee.email,
-                'fullName': employee.fullName,
-                'department': employee.department,
-                'phone_number': employee.phone_number,
-                'aadhar_card': employee.aadhar_card,
-                'avatar': request.build_absolute_uri(employee.avatar.url) if employee.avatar else None,
-                'token': token.key
-            }
-            return Response(response_data, status=status.HTTP_201_CREATED)
+        # Create auth token
+        token, _ = Token.objects.get_or_create(user=employee)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Build response
+        response_data = {
+            "success": True,
+            "employee_id": employee.employee_id,
+            "email": employee.email,
+            "fullName": employee.fullName,
+            "department": employee.department,
+            "phone_number": employee.phone_number,
+            "aadhar_card": employee.aadhar_card,
+            "role": employee.role,
+            "report_to": employee.report_to,
+            "avatar": request.build_absolute_uri(employee.avatar.url) if employee.avatar else None,
+            "token": token.key
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 # -----------------------------
 # Employee Login
@@ -253,14 +269,10 @@ class ChangePasswordView(APIView):
         if request.user != user and not request.user.is_staff:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
-        old_password = request.data.get("old_password")
         new_password = request.data.get("new_password")
 
-        if not old_password or not new_password:
-            return Response({"detail": "old_password and new_password are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not user.check_password(old_password):
-            return Response({"detail": "Incorrect old password."}, status=status.HTTP_401_UNAUTHORIZED)
+        if not new_password:
+            return Response({"detail": "new_password is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         if len(new_password) < 6:
             return Response({"detail": "New password must be at least 6 characters."}, status=status.HTTP_400_BAD_REQUEST)
@@ -268,6 +280,7 @@ class ChangePasswordView(APIView):
         user.set_password(new_password)
         user.save()
         return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
+
     
 class EmployeeDeleteView(generics.DestroyAPIView):
     queryset = Employee.objects.all()

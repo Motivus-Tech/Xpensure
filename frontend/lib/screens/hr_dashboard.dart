@@ -97,6 +97,22 @@ class EmployeeService {
           'Failed to update employee status: ${response.statusCode}');
     }
   }
+
+  // Update an employee (Admin only)
+  static Future<bool> updateEmployee(String employeeId,
+      Map<String, dynamic> employeeData, String token) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/employees/$employeeId/'),
+      headers: getHeaders(token),
+      body: json.encode(employeeData),
+    );
+
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      throw Exception('Failed to update employee: ${response.statusCode}');
+    }
+  }
 }
 
 class HRDashboard extends StatefulWidget {
@@ -231,6 +247,10 @@ class _HRDashboardState extends State<HRDashboard>
             _showDeleteConfirmation(
                 employee['employee_id'], employee['fullName']);
           },
+          onEdit: () {
+            Navigator.of(context).pop();
+            _showEditEmployeeDialog(context, employee);
+          },
         );
       },
     );
@@ -261,6 +281,224 @@ class _HRDashboardState extends State<HRDashboard>
               child: const Text("Delete", style: TextStyle(color: Colors.red)),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _showEditEmployeeDialog(
+      BuildContext context, Map<String, dynamic> employee) {
+    final employeeIdController =
+        TextEditingController(text: employee["employee_id"]);
+    final emailController = TextEditingController(text: employee["email"]);
+    final fullNameController =
+        TextEditingController(text: employee["fullName"]);
+    final departmentController =
+        TextEditingController(text: employee["department"] ?? "");
+    final phoneController =
+        TextEditingController(text: employee["phone_number"] ?? "");
+    final aadharController =
+        TextEditingController(text: employee["aadhar_card"] ?? "");
+    final reportingIdController =
+        TextEditingController(text: employee["report_to"] ?? "");
+    String selectedRole = employee["role"] ?? "Common";
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(
+                    child: Text(
+                      "Edit Employee",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // All fields in a single column
+                  _buildTextField(
+                    employeeIdController,
+                    "Employee ID",
+                    Icons.badge,
+                    enabled: false, // Employee ID should not be editable
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    fullNameController,
+                    "Full Name",
+                    Icons.person,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    emailController,
+                    "Email ID",
+                    Icons.email,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    phoneController,
+                    "Phone No",
+                    Icons.phone,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    departmentController,
+                    "Department",
+                    Icons.business,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    aadharController,
+                    "Aadhar No",
+                    Icons.credit_card,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    reportingIdController,
+                    "Reporting ID",
+                    Icons.supervisor_account,
+                  ),
+                  const SizedBox(height: 12),
+                  // Role dropdown
+                  DropdownButtonFormField<String>(
+                    dropdownColor: const Color(0xFF1E1E1E),
+                    value: selectedRole,
+                    items:
+                        ["Common", "HR", "CEO", "Finance"].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(
+                          value,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) {
+                      selectedRole = newValue!;
+                    },
+                    decoration: InputDecoration(
+                      labelText: "Role",
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      prefixIcon: const Icon(
+                        Icons.work,
+                        color: Colors.white54,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF1F1F1F),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text(
+                          "Cancel",
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Colors.deepPurple, Colors.purpleAccent],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (fullNameController.text.isEmpty ||
+                                emailController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Full Name and Email are required',
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return;
+                            }
+
+                            final updatedEmployee = {
+                              "employee_id": employeeIdController.text,
+                              "email": emailController.text,
+                              "fullName": fullNameController.text,
+                              "department": departmentController.text,
+                              "phone_number": phoneController.text,
+                              "aadhar_card": aadharController.text,
+                              "report_to": reportingIdController.text,
+                              "role": selectedRole,
+                              "is_active":
+                                  employee["is_active"], // Preserve status
+                            };
+
+                            setState(() => isLoading = true);
+                            try {
+                              await EmployeeService.updateEmployee(
+                                  employee["employee_id"],
+                                  updatedEmployee,
+                                  widget.authToken);
+                              await _loadData();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      '${fullNameController.text} updated successfully'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              Navigator.of(context).pop();
+                            } catch (e) {
+                              setState(() => isLoading = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content:
+                                      Text('Failed to update employee: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            "Update Employee",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
@@ -395,19 +633,19 @@ class _HRDashboardState extends State<HRDashboard>
       {
         "title": "Total Employees",
         "value": employees.length,
-        "color": Colors.blue,
+        "color": const Color.fromARGB(255, 61, 166, 182),
         "icon": Icons.group,
       },
       {
         "title": "Active Employees",
         "value": activeEmployees,
-        "color": Colors.green,
+        "color": const Color.fromARGB(255, 87, 178, 68),
         "icon": Icons.check_circle,
       },
       {
         "title": "Left Employees",
         "value": inactiveEmployees,
-        "color": Colors.red,
+        "color": const Color.fromARGB(255, 209, 111, 104),
         "icon": Icons.exit_to_app,
       },
     ];
@@ -511,12 +749,21 @@ class _HRDashboardState extends State<HRDashboard>
         .toList();
 
     // Apply status filter
+    // Apply status/department filter
     if (employeeFilter != "All") {
-      filteredEmployees = filteredEmployees
-          .where((e) => employeeFilter == "Active"
-              ? e["is_active"] == true
-              : e["is_active"] == false)
-          .toList();
+      if (["Active", "Inactive"].contains(employeeFilter)) {
+        filteredEmployees = filteredEmployees
+            .where((e) => employeeFilter == "Active"
+                ? e["is_active"] == true
+                : e["is_active"] == false)
+            .toList();
+      } else {
+        // Department filter
+        filteredEmployees = filteredEmployees
+            .where(
+                (e) => (e["department"] ?? "").toUpperCase() == employeeFilter)
+            .toList();
+      }
     }
 
     return Column(
@@ -548,51 +795,99 @@ class _HRDashboardState extends State<HRDashboard>
               ),
               const SizedBox(width: 12),
               Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F1F1F),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: PopupMenuButton<String>(
-                  onSelected: (value) {
-                    setState(() {
-                      employeeFilter = value;
-                    });
-                  },
-                  itemBuilder: (BuildContext context) => [
-                    const PopupMenuItem<String>(
-                      value: "All",
-                      child: Text("All Employees"),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: "Active",
-                      child: Text("Active Only"),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: "Inactive",
-                      child: Text("Inactive Only"),
-                    ),
-                  ],
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          employeeFilter == "All"
-                              ? "All"
-                              : employeeFilter == "Active"
-                                  ? "Active"
-                                  : "Inactive",
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        const Icon(Icons.arrow_drop_down, color: Colors.white),
-                      ],
-                    ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F1F1F),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white12),
                   ),
-                ),
-              ),
+                  child: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      setState(() {
+                        employeeFilter = value;
+                      });
+                    },
+                    color: const Color(0xFF2A2A2A), // Dark popup background
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 4), // internal padding
+                    itemBuilder: (BuildContext context) => [
+                      const PopupMenuItem<String>(
+                        value: "All",
+                        height: 36,
+                        child: Text(
+                          "All Employees",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ), // white text)),
+                      const PopupMenuItem<String>(
+                        value: "Active",
+                        height: 36,
+                        child: Text(
+                          "Active Only",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ), // white text)),
+                      const PopupMenuItem<String>(
+                        value: "Inactive",
+                        height: 36,
+                        child: Text(
+                          "Inactive Only",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ), // )),
+                      const PopupMenuItem<String>(
+                        value: "MIPL",
+                        height: 36,
+                        child: Text(
+                          "MIPL",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ), // )),
+                      const PopupMenuItem<String>(
+                          value: "MIPPL",
+                          height: 36,
+                          child: Text(
+                            "MIPPL",
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          )),
+                      const PopupMenuItem<String>(
+                        value: "MINPL",
+                        height: 36,
+                        child: Text(
+                          "MINPL",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ), // )),
+                      const PopupMenuItem<String>(
+                        value: "MTIPL",
+                        height: 36,
+                        child: Text(
+                          "MTIPL",
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                      ), // )),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          Text(employeeFilter,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              )),
+                          const Icon(Icons.arrow_drop_down,
+                              color: Colors.white),
+                        ],
+                      ),
+                    ),
+                  )),
               const SizedBox(width: 12),
               Container(
                 decoration: BoxDecoration(
@@ -860,6 +1155,7 @@ class _HRDashboardState extends State<HRDashboard>
     String hint,
     IconData icon, {
     bool isPassword = false,
+    bool enabled = true, //
   }) {
     return TextField(
       controller: controller,
@@ -896,12 +1192,14 @@ class EmployeeDetailsSheet extends StatelessWidget {
   final Map<String, dynamic> employee;
   final VoidCallback onToggleStatus;
   final VoidCallback onDelete;
+  final VoidCallback onEdit; // Add this callback
 
   const EmployeeDetailsSheet({
     super.key,
     required this.employee,
     required this.onToggleStatus,
     required this.onDelete,
+    required this.onEdit, // Add this parameter
   });
 
   @override
@@ -1017,14 +1315,33 @@ class EmployeeDetailsSheet extends StatelessWidget {
               _buildDetailRow(
                   "Reporting ID", employee["report_to"] ?? "Not assigned"),
               const SizedBox(height: 24),
+              // EDIT BUTTON - Added here
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onEdit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color.fromARGB(255, 161, 125, 224),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    "Edit Employee",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: onToggleStatus,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: employee["is_active"] == true
-                        ? Colors.orange
-                        : Colors.green,
+                        ? const Color.fromARGB(255, 219, 127, 74)
+                        : const Color.fromARGB(255, 109, 226, 113),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -1044,7 +1361,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: onDelete,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color.fromARGB(255, 233, 107, 98),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -1056,24 +1373,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    "Close",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
+              // REMOVED the Close button as requested
             ],
           ),
         );
@@ -1104,4 +1404,28 @@ class EmployeeDetailsSheet extends StatelessWidget {
           ],
         ));
   }
+}
+
+Widget _buildDetailRow(String label, String value) {
+  return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(value, style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ));
 }
