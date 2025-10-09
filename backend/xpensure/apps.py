@@ -6,13 +6,4 @@ class XpensureConfig(AppConfig):
     name = 'Xpensure'
 
     def ready(self):
-        from .models import Employee
-
-        def set_unusable_password(sender, **kwargs):
-            for emp in Employee.objects.all():
-                # agar password set hai aur employee abhi signup nahi kiya
-                if emp.has_usable_password():
-                    emp.set_unusable_password()
-                    emp.save()
-
-        post_migrate.connect(set_unusable_password, sender=self)
+        pass

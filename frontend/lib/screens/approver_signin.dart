@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'ceo_dashboard.dart';
-import 'finance_dashboard.dart';
-import 'common_dashboard.dart';
+import 'finance_dashboard.dart' as finance;
+import 'common_dashboard.dart' as common;
 
 class ApproverSignInPage extends StatefulWidget {
   const ApproverSignInPage({super.key});
@@ -38,7 +38,6 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
     });
 
     try {
-      // Replace with your Django backend URL
       final response = await http.post(
         Uri.parse("http://10.0.2.2:8000/api/auth/login/"),
         headers: {"Content-Type": "application/json"},
@@ -55,61 +54,91 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        if (data['success'] == true) {
-          final role = data['role'];
-          // Extract user data from the response
-          final userId =
-              data['user_id'] ?? employeeId; // Use employee ID as fallback
-          final userName =
-              data['user_name'] ?? 'Approver User'; // Default fallback
+        // Check different response formats
+        final bool success = data['success'] == true ||
+            data['status'] == 'success' ||
+            data['token'] != null;
+
+        if (success) {
+          final role = data['role'] ??
+              'Common'; // Default to Common if role not specified
+          final userId = data['user_id'] ?? data['employee_id'] ?? employeeId;
+          final userName = data['fullName'] ??
+              data['user_name'] ??
+              data['employee_name'] ??
+              'Employee';
+          final avatarUrl = data['avatar'] ?? data['avatar_url'] ?? null;
+          final token = data['token'] ?? '';
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Login Successful!")),
           );
 
+          // Prepare user data for dashboard
+          final userData = {
+            'id': userId,
+            'fullName': userName,
+            'employeeId': employeeId,
+            'avatar': avatarUrl,
+            'role': role,
+          };
+
           // Navigate to appropriate dashboard
-          if (role == 'CEO') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => CEODashboard()),
-            );
-          } else if (role == 'Finance') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => FinanceDashboard()),
-            );
-          } else if (role == 'Common') {
+          if (role == 'CEO' || role == 'ceo') {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                  builder: (context) => CommonDashboard(
-                        userData: {
-                          'id': userId,
-                          'name': userName,
-                          'employeeId': employeeId,
-                        },
-                      )),
+                builder: (context) => CEODashboard(
+                  userData: userData,
+                  authToken: token,
+                ),
+              ),
+            );
+          } else if (role == 'Finance' || role == 'finance') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => finance.FinanceDashboard(
+                  userData: userData,
+                  authToken: token,
+                ),
+              ),
+            );
+          } else if (role == 'Common' ||
+              role == 'common' ||
+              role == 'Employee') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => common.CommonDashboard(
+                  userData: userData,
+                  authToken: token,
+                ),
+              ),
             );
           } else {
-            // fallback or invalid role
             setState(() {
-              _message = "Role not authorized for Approver";
+              _message = "Role '$role' not authorized for Approver access";
             });
           }
         } else {
           setState(() {
-            _message = data['message'] ?? "Invalid credentials";
+            _message =
+                data['message'] ?? data['error'] ?? "Invalid credentials";
           });
         }
       } else {
+        final errorData = jsonDecode(response.body);
         setState(() {
-          _message = "Server error: ${response.statusCode}";
+          _message = errorData['message'] ??
+              errorData['error'] ??
+              "Server error: ${response.statusCode}";
         });
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _message = "Error connecting to server";
+        _message = "Error connecting to server: $e";
       });
     }
   }
@@ -230,7 +259,20 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text(_message, style: const TextStyle(color: Colors.red)),
+                  if (_message.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red),
+                      ),
+                      child: Text(
+                        _message,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                 ],
               ),
             ),

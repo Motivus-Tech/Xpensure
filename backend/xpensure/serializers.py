@@ -26,7 +26,7 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Passwords do not match"})
 
-        # Try to get employee record from DB
+        # Get employee record from DB (HR-created)
         try:
             self.hr_employee = Employee.objects.get(
                 employee_id=attrs['employee_id'],
@@ -35,7 +35,7 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         except Employee.DoesNotExist:
             raise serializers.ValidationError({"detail": "Employee details not found. Please contact HR."})
 
-        # Check important fields against HR record (case-insensitive for strings)
+        # Validate key fields
         mismatches = []
         if self.hr_employee.fullName.lower() != attrs.get('fullName', '').lower():
             mismatches.append("fullName")
@@ -48,7 +48,6 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
 
         if mismatches:
             raise serializers.ValidationError({"detail": f"Employee data mismatch on: {', '.join(mismatches)}. Please contact HR."})
-
 
         return attrs
 
@@ -65,30 +64,41 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         if avatar:
             employee.avatar = avatar
 
-        # ✅ Set password and save
+        # Set password and save
         employee.set_password(password)
-        employee.save()
+        employee.save(update_fields=['password'])  # ensure password is written immediately
+        employee.refresh_from_db()  # refresh object from DB
+
         return employee
 
-
-# -----------------------------
-# Reimbursement Serializer
-# -----------------------------
 class ReimbursementSerializer(serializers.ModelSerializer):
+    employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
+    
+
     class Meta:
         model = Reimbursement
-        fields = ['id', 'employee', 'amount', 'description', 'attachment', 'date', 'created_at']
-        read_only_fields = ['employee', 'created_at']
+        fields = [
+            'id', 'employee_id', 'amount', 'description', 'attachment', 
+            'date', 'status', 'currentStep', 'current_approver_id', 
+            'rejection_reason', 'payments', 'created_at', 'updated_at',
+            'payment_date', 'final_approver', 'approved_by_ceo', 'approved_by_finance'  # ✅ ADDED NEW FIELDS
+        ]
+        read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
 
-# -----------------------------
-# Advance Request Serializer
-# -----------------------------
 class AdvanceRequestSerializer(serializers.ModelSerializer):
+    employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
+
     class Meta:
         model = AdvanceRequest
-        fields = ['id', 'employee', 'amount', 'description', 'request_date', 'project_date', 'attachment', 'created_at']
-        read_only_fields = ['employee', 'created_at']
+        fields = [
+            'id', 'employee_id', 'amount', 'description', 'request_date', 
+            'project_date', 'attachment', 'status', 'currentStep', 
+            'current_approver_id', 'rejection_reason', 'payments', 
+            'created_at', 'updated_at', 'payment_date', 'final_approver', 
+            'approved_by_ceo', 'approved_by_finance'  # ✅ ADDED NEW FIELDS
+        ]
+        read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
 
 # -----------------------------
@@ -147,3 +157,13 @@ class EmployeeHRCreateSerializer(serializers.ModelSerializer):
             "is_staff",
             "report_to",
         ]
+
+    def create(self, validated_data):
+        employee = super().create(validated_data)
+        employee.set_unusable_password()  # mark password unusable
+        employee.save()
+        return employee
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        return instance

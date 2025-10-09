@@ -3,7 +3,7 @@ import '../services/api_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String employeeId;
-  final String authToken; // Required auth token
+  final String authToken;
 
   const ChangePasswordScreen({
     super.key,
@@ -43,11 +43,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Verify old password
+      // Verify old password - FIXED METHOD CALL
       bool oldPasswordValid = await apiService.verifyOldPassword(
+        authToken: widget.authToken, // ✅ FIXED: Add authToken parameter
         employeeId: widget.employeeId,
         oldPassword: _oldPasswordController.text.trim(),
-        authToken: widget.authToken,
       );
 
       if (!oldPasswordValid) {
@@ -58,11 +58,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         return;
       }
 
-      // Change password
+      // Change password - FIXED METHOD CALL
       bool success = await apiService.changePassword(
+        authToken: widget.authToken, // ✅ FIXED: Add authToken parameter
         employeeId: widget.employeeId,
         newPassword: _newPasswordController.text.trim(),
-        authToken: widget.authToken,
       );
 
       setState(() => _isLoading = false);
@@ -80,9 +80,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       if (success) Navigator.pop(context);
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 

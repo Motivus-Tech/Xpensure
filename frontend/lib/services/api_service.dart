@@ -1,12 +1,11 @@
-import 'package:flutter/foundation.dart'; // for debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
 class ApiService {
-  final String baseUrl =
-      "http://10.0.2.2:8000"; // Use PC LAN IP for real device
+  final String baseUrl = "http://10.0.2.2:8000";
   final Duration requestTimeout = const Duration(seconds: 15);
 
   static const Map<String, String> defaultHeaders = {
@@ -75,6 +74,7 @@ class ApiService {
   }) async {
     try {
       final url = Uri.parse('$baseUrl/api/auth/login/');
+
       final response = await http
           .post(
             url,
@@ -162,7 +162,7 @@ class ApiService {
   }
 
   // -----------------------------
-  // Submit Reimbursement
+  // Submit Reimbursement - FIXED
   // -----------------------------
   Future<String> submitReimbursement({
     required String authToken,
@@ -170,6 +170,7 @@ class ApiService {
     String? description,
     File? attachment,
     required String date,
+    required List<Map<String, dynamic>> payments, // ✅ ADDED
   }) async {
     try {
       var uri = Uri.parse('$baseUrl/api/reimbursements/');
@@ -178,6 +179,7 @@ class ApiService {
       request.fields['amount'] = amount;
       request.fields['description'] = description ?? '';
       request.fields['date'] = date;
+      request.fields['payments'] = jsonEncode(payments); // ✅ ADDED
 
       if (attachment != null) {
         request.files.add(
@@ -199,7 +201,7 @@ class ApiService {
   }
 
   // -----------------------------
-  // Submit Advance
+  // Submit Advance - FIXED
   // -----------------------------
   Future<String> submitAdvanceRequest({
     required String authToken,
@@ -208,6 +210,7 @@ class ApiService {
     required String requestDate,
     required String projectDate,
     File? attachment,
+    required List<Map<String, dynamic>> payments, // ✅ ADDED
   }) async {
     try {
       var uri = Uri.parse('$baseUrl/api/advances/');
@@ -217,6 +220,7 @@ class ApiService {
       request.fields['description'] = description;
       request.fields['request_date'] = requestDate;
       request.fields['project_date'] = projectDate;
+      request.fields['payments'] = jsonEncode(payments); // ✅ ADDED
 
       if (attachment != null) {
         request.files.add(
@@ -366,13 +370,174 @@ class ApiService {
     }
   }
 
+// -----------------------------
+// Finance Dashboard APIs
+// -----------------------------
+  Future<Map<String, dynamic>> getFinanceRequests({
+    required String authToken,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/finance/dashboard/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'Finance Dashboard Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(
+            'Failed to load finance requests: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error in getFinanceRequests: $e');
+      throw Exception('Failed to load finance requests: $e');
+    }
+  }
+
+// -----------------------------
+// Finance Approve Request
+// -----------------------------
+  Future<bool> financeApproveRequest({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/finance/approve-request/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'request_id': requestId,
+              'request_type': requestType,
+            }),
+          )
+          .timeout(requestTimeout);
+
+      debugPrint(
+          'Finance Approve Response: ${response.statusCode} - ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error in financeApproveRequest: $e');
+      return false;
+    }
+  }
+
+// -----------------------------
+// Finance Reject Request
+// -----------------------------
+  Future<bool> financeRejectRequest({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+    required String reason,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/finance/reject-request/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'request_id': requestId,
+              'request_type': requestType,
+              'reason': reason, // ensure this matches DRF serializer
+            }),
+          )
+          .timeout(requestTimeout);
+
+      debugPrint(
+          'Finance Reject Response: ${response.statusCode} - ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error in financeRejectRequest: $e');
+      return false;
+    }
+  }
+
+// -----------------------------
+// Mark Request as Paid
+// -----------------------------
+  Future<bool> markAsPaid({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/finance/mark-paid/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'request_id': requestId,
+              'request_type': requestType,
+            }),
+          )
+          .timeout(requestTimeout);
+
+      debugPrint(
+          'Mark As Paid Response: ${response.statusCode} - ${response.body}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error in markAsPaid: $e');
+      return false;
+    }
+  }
+
+// -----------------------------
+// Generate Finance Report
+// -----------------------------
+  Future<http.Response> generateFinanceReport({
+    required String authToken,
+    required int months,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/finance/generate-report/?months=$months'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'Generate Finance Report Response: ${response.statusCode} - ${response.body}');
+
+      return response;
+    } catch (e) {
+      debugPrint('Error in generateFinanceReport: $e');
+      rethrow;
+    }
+  }
+
   // -----------------------------
   // Optional: Server Health Check
   // -----------------------------
   Future<bool> checkServerStatus() async {
     try {
       final response = await http
-          .get(Uri.parse('$baseUrl/health/'))
+          .get(Uri.parse('$baseUrl/api/health/'))
           .timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (_) {
@@ -425,8 +590,6 @@ class ApiService {
   // -----------------------------
   // HR/Admin-specific Methods
   // -----------------------------
-
-  // Update Employee Status (Active/Inactive)
   Future<bool> updateEmployeeStatus({
     required String authToken,
     required String employeeId,
@@ -452,7 +615,6 @@ class ApiService {
     }
   }
 
-  // Add Activity for Employee
   Future<bool> addActivity({
     required String authToken,
     required String employeeId,
@@ -478,7 +640,6 @@ class ApiService {
     }
   }
 
-  // Delete Employee
   Future<bool> deleteEmployee({
     required String authToken,
     required String employeeId,
@@ -494,6 +655,456 @@ class ApiService {
     } catch (e) {
       debugPrint("Error deleting employee: $e");
       return false;
+    }
+  }
+
+  Future<bool> testConnection() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/health/'),
+        headers: {'Accept': 'application/json'},
+      ).timeout(Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Connection test failed: $e");
+      return false;
+    }
+  }
+
+  // -----------------------------
+  // Multi-level Approval Workflow
+  // -----------------------------
+
+  // Fetch Pending Approvals for Logged-in Manager
+  Future<Map<String, dynamic>> getPendingApprovals({
+    required String authToken,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/approvals/pending/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data;
+      } else {
+        throw Exception(
+          "Failed to fetch pending approvals: ${response.statusCode} - ${response.body}",
+        );
+      }
+    } catch (e) {
+      throw Exception("Error fetching pending approvals: $e");
+    }
+  }
+
+  Future<bool> approveRequest({
+    required String authToken,
+    required int requestId,
+    required String requestType, // "reimbursement" or "advance"
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/approvals/$requestId/approve/'),
+      headers: {
+        'Authorization': 'Token $authToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({"request_type": requestType}),
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<bool> rejectRequest({
+    required String authToken,
+    required int requestId,
+    required String requestType, // "reimbursement" or "advance"
+    required String reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/approvals/$requestId/reject/'),
+      headers: {
+        'Authorization': 'Token $authToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "request_type": requestType,
+        "rejection_reason": reason,
+      }),
+    );
+    return response.statusCode == 200;
+  }
+// In your ApiService class, update the CEO methods:
+// services/api_service.dart - CEO Methods add karo
+
+// -----------------------------
+// CEO Dashboard APIs - ACTUAL
+// -----------------------------
+  Future<Map<String, dynamic>> getCEODashboardData({
+    required String authToken,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/dashboard/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Dashboard Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. CEO role required.');
+      } else {
+        throw Exception('Failed to load CEO dashboard: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error in getCEODashboardData: $e');
+      throw Exception('Failed to load CEO dashboard: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getCEOAnalytics({
+    required String authToken,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/analytics/'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Analytics Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. CEO role required.');
+      } else {
+        // Return empty analytics data if endpoint fails
+        return {
+          'monthly_spending': 0,
+          'monthly_growth': 0,
+          'total_requests': 0,
+          'reimbursement_count': 0,
+          'advance_count': 0,
+          'approval_rate': 0,
+          'approved_count': 0,
+          'rejected_count': 0,
+          'pending_count': 0,
+          'department_stats': [],
+          'average_request_amount': 0,
+          'top_department': 'N/A'
+        };
+      }
+    } catch (e) {
+      debugPrint('Error in getCEOAnalytics: $e');
+      // Return default analytics data on error
+      return {
+        'monthly_spending': 0,
+        'monthly_growth': 0,
+        'total_requests': 0,
+        'reimbursement_count': 0,
+        'advance_count': 0,
+        'approval_rate': 0,
+        'approved_count': 0,
+        'rejected_count': 0,
+        'pending_count': 0,
+        'department_stats': [],
+        'average_request_amount': 0,
+        'top_department': 'N/A'
+      };
+    }
+  }
+
+  // -----------------------------
+// CEO History - FIXED
+// -----------------------------
+  // In your ApiService class, update the getCEOHistory method:
+
+// -----------------------------
+// CEO History - FIXED
+// -----------------------------
+  Future<List<dynamic>> getCEOHistory({
+    required String authToken,
+    String period = 'last_30_days',
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/history/?period=$period'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO History Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        // Handle both response formats:
+        // 1. Direct list response: [item1, item2, ...]
+        // 2. Map response with 'history' key: {'history': [item1, item2, ...]}
+        if (data is List) {
+          return data; // Direct list response
+        } else if (data is Map && data.containsKey('history')) {
+          return List<dynamic>.from(
+              data['history'] ?? []); // Map with history key
+        } else {
+          return []; // Unknown format, return empty
+        }
+      } else if (response.statusCode == 403) {
+        throw Exception('Access denied. CEO role required.');
+      } else {
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Error in getCEOHistory: $e');
+      return [];
+    }
+  }
+  // Add these methods to your existing ApiService class:
+
+// In your ApiService class, update the CEO approval methods:
+
+// -----------------------------
+// CEO Approval/Rejection APIs - FIXED
+// -----------------------------
+  Future<bool> approveCEORequest({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/ceo/approve-request/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'request_id': requestId,
+              'request_type': requestType,
+            }),
+          )
+          .timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Approve Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint('CEO Approve Failed: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error in approveCEORequest: $e');
+      return false;
+    }
+  }
+
+  Future<bool> rejectCEORequest({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+    required String reason,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/ceo/reject-request/'),
+            headers: {
+              'Authorization': 'Token $authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'request_id': requestId,
+              'request_type': requestType,
+              'reason': reason,
+            }),
+          )
+          .timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Reject Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        debugPrint('CEO Reject Failed: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error in rejectCEORequest: $e');
+      return false;
+    }
+  }
+
+// -----------------------------
+// CEO Request Details - FIXED
+// -----------------------------
+  Future<Map<String, dynamic>> getCEORequestDetails({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            '$baseUrl/api/ceo/request-details/$requestId/?request_type=$requestType'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Request Details Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+            'Failed to load request details: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error in getCEORequestDetails: $e');
+      throw Exception('Failed to load request details: $e');
+    }
+  }
+
+// -----------------------------
+// CEO Reports Generation
+// -----------------------------
+  Future<Map<String, dynamic>> generateCEOReport({
+    required String authToken,
+    required String reportType,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/generate-report/?report_type=$reportType'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Report Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+            'Failed to generate CEO report: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error in generateCEOReport: $e');
+      throw Exception('Failed to generate CEO report: $e');
+    }
+  }
+
+  Future<bool> downloadCEOReport({
+    required String authToken,
+    required String reportName,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/download-report/?report_name=$reportName'),
+        headers: {
+          'Authorization': 'Token $authToken',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint('CEO Download Report Response: ${response.statusCode}');
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error in downloadCEOReport: $e');
+      return false;
+    }
+  }
+
+// -----------------------------
+// CEO Enhanced Analytics
+// -----------------------------
+  Future<Map<String, dynamic>> getCEODetailedAnalytics({
+    required String authToken,
+    String period = 'this_month',
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ceo/detailed-analytics/?period=$period'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+          'CEO Detailed Analytics Response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        // Return enhanced default analytics
+        return {
+          'monthly_approved_count': 0,
+          'monthly_spending': 0,
+          'total_requests_this_month': 0,
+          'average_request_amount': 0,
+          'approval_rate': 0,
+          'monthly_trend': [],
+          'department_stats': [],
+          'recent_reports': [],
+          'monthly_growth': 0,
+          'reimbursement_count': 0,
+          'advance_count': 0,
+          'approved_count': 0,
+          'rejected_count': 0,
+          'pending_count': 0,
+          'top_department': 'N/A'
+        };
+      }
+    } catch (e) {
+      debugPrint('Error in getCEODetailedAnalytics: $e');
+      return {
+        'monthly_approved_count': 0,
+        'monthly_spending': 0,
+        'total_requests_this_month': 0,
+        'average_request_amount': 0,
+        'approval_rate': 0,
+        'monthly_trend': [],
+        'department_stats': [],
+        'recent_reports': [],
+        'monthly_growth': 0,
+        'reimbursement_count': 0,
+        'advance_count': 0,
+        'approved_count': 0,
+        'rejected_count': 0,
+        'pending_count': 0,
+        'top_department': 'N/A'
+      };
     }
   }
 }

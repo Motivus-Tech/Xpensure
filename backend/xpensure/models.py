@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.conf import settings
 
-
 # -----------------------------
 # Employee / Custom User Model
 # -----------------------------
@@ -17,7 +16,7 @@ class EmployeeManager(BaseUserManager):
             fullName=fullName,
             **extra_fields
         )
-        if password:  # allow HR/employees without password too
+        if password:
             user.set_password(password)
         else:
             user.set_unusable_password()
@@ -40,7 +39,6 @@ class Employee(AbstractBaseUser, PermissionsMixin):
 
     # hierarchy
     report_to = models.CharField(max_length=50, null=True, blank=True)
-
 
     avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)
 
@@ -72,7 +70,10 @@ class Reimbursement(models.Model):
         ("Pending", "Pending"),
         ("Approved", "Approved"),
         ("Rejected", "Rejected"),
+        ("Paid", "Paid"),  # ✅ ADDED PAID STATUS
     ]
+  
+    
 
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -88,8 +89,15 @@ class Reimbursement(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
     currentStep = models.IntegerField(default=0)
+    current_approver_id = models.CharField(max_length=50, null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, null=True)
     payments = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    payment_date = models.DateTimeField(null=True, blank=True)  # ✅ ADDED PAYMENT DATE FIELD
+    final_approver = models.CharField(max_length=50, null=True, blank=True)  # ✅ ADDED FINAL APPROVER FIELD
+    approved_by_ceo = models.BooleanField(default=False)  # ✅ ADDED CEO APPROVAL FLAG
+    approved_by_finance = models.BooleanField(default=False)  # ✅ ADDED FINANCE APPROVAL FLAG
 
     def __str__(self):
         return f"{self.employee_id_display} - {self.amount}"
@@ -97,6 +105,8 @@ class Reimbursement(models.Model):
     @property
     def employee_id_display(self):
         return self.employee.employee_id if self.employee else "Deleted Employee"
+    
+    
 
 
 # -----------------------------
@@ -107,6 +117,7 @@ class AdvanceRequest(models.Model):
         ("Pending", "Pending"),
         ("Approved", "Approved"),
         ("Rejected", "Rejected"),
+        ("Paid", "Paid"),  # ✅ ADDED PAID STATUS
     ]
 
     employee = models.ForeignKey(
@@ -124,8 +135,15 @@ class AdvanceRequest(models.Model):
     attachment = models.FileField(upload_to="advances/", blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
     currentStep = models.IntegerField(default=0)
+    current_approver_id = models.CharField(max_length=50, null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, null=True)
     payments = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    payment_date = models.DateTimeField(null=True, blank=True)  # ✅ ADDED PAYMENT DATE FIELD
+    final_approver = models.CharField(max_length=50, null=True, blank=True)  # ✅ ADDED FINAL APPROVER FIELD
+    approved_by_ceo = models.BooleanField(default=False)  # ✅ ADDED CEO APPROVAL FLAG
+    approved_by_finance = models.BooleanField(default=False)  # ✅ ADDED FINANCE APPROVAL FLAG
 
     def __str__(self):
         return f"{self.employee_id_display} - {self.amount}"

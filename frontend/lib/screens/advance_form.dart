@@ -52,7 +52,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
   }
 
   void _removePayment(int index) {
-    if (payments.length <= 1) return; // Prevent removing last entry
+    if (payments.length <= 1) return;
     setState(() {
       payments[index].dispose();
       payments.removeAt(index);
@@ -60,9 +60,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
   }
 
   Future<void> _pickRequestDate(
-    BuildContext context,
-    PaymentEntry entry,
-  ) async {
+      BuildContext context, PaymentEntry entry) async {
     final picked = await showDatePicker(
       context: context,
       initialDate: entry.requestDate ?? DateTime.now(),
@@ -81,14 +79,15 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
         child: child!,
       ),
     );
-    if (picked != null) entry.requestDate = picked;
-    setState(() {});
+    if (picked != null) {
+      setState(() {
+        entry.requestDate = picked;
+      });
+    }
   }
 
   Future<void> _pickProjectDate(
-    BuildContext context,
-    PaymentEntry entry,
-  ) async {
+      BuildContext context, PaymentEntry entry) async {
     final picked = await showDatePicker(
       context: context,
       initialDate: entry.projectDate ?? DateTime.now(),
@@ -107,75 +106,88 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
         child: child!,
       ),
     );
-    if (picked != null) entry.projectDate = picked;
-    setState(() {});
+    if (picked != null) {
+      setState(() {
+        entry.projectDate = picked;
+      });
+    }
   }
 
   Future<void> _pickAttachment(PaymentEntry entry) async {
     final result = await FilePicker.platform.pickFiles();
     if (result != null && result.files.single.path != null) {
-      entry.attachmentPath = result.files.single.path!;
+      setState(() {
+        entry.attachmentPath = result.files.single.path!;
+      });
     }
-    setState(() {});
   }
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Validate all payments first
+    for (var payment in payments) {
+      if (payment.requestDate == null ||
+          payment.projectDate == null ||
+          payment.amountController.text.isEmpty ||
+          payment.particularsController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please fill all payment fields!")));
+        return;
+      }
+    }
 
     setState(() => _isSubmitting = true);
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? authToken = prefs.getString('authToken');
     if (authToken == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Auth token missing!")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Auth token missing!")));
       setState(() => _isSubmitting = false);
       return;
     }
 
-    bool allSuccess = true;
-
+    // Calculate total amount
+    double totalAmount = 0;
     for (var payment in payments) {
-      if (payment.requestDate == null || payment.projectDate == null) {
-        allSuccess = false;
-        continue;
-      }
-
-      File? attachment = payment.attachmentPath != null
-          ? File(payment.attachmentPath!)
-          : null;
-
-      String result = await apiService.submitAdvanceRequest(
-        authToken: authToken,
-        amount: payment.amountController.text,
-        description: payment.particularsController.text,
-        requestDate: payment.requestDate!.toIso8601String().split("T")[0],
-        projectDate: payment.projectDate!.toIso8601String().split("T")[0],
-        attachment: attachment,
-      );
-
-      if (!result.toLowerCase().contains("success")) allSuccess = false;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(result)));
+      totalAmount += double.tryParse(payment.amountController.text) ?? 0;
     }
 
+    // Prepare payments data for JSON
     List<Map<String, dynamic>> paymentData = payments.map((p) {
       return {
-        "requestDate": p.requestDate,
-        "projectDate": p.projectDate,
+        "requestDate": p.requestDate!.toIso8601String().split("T")[0],
+        "projectDate": p.projectDate!.toIso8601String().split("T")[0],
         "amount": p.amountController.text,
         "particulars": p.particularsController.text,
         "attachmentPath": p.attachmentPath,
       };
     }).toList();
 
+    // Get the main attachment (use first payment's attachment or null)
+    File? mainAttachment =
+        payments.isNotEmpty && payments[0].attachmentPath != null
+            ? File(payments[0].attachmentPath!)
+            : null;
+
+    // ✅ FIXED: Send ONE API call with all payments
+    String result = await apiService.submitAdvanceRequest(
+      authToken: authToken,
+      amount: totalAmount.toString(),
+      description: payments.first.particularsController.text,
+      requestDate: payments.first.requestDate!.toIso8601String().split("T")[0],
+      projectDate: payments.first.projectDate!.toIso8601String().split("T")[0],
+      attachment: mainAttachment,
+      payments: paymentData, // ✅ Send all payments in one request
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+
     Map<String, dynamic> advanceData = {
       "projectId": projectIdController.text,
       "payments": paymentData,
-      "status": allSuccess ? "Pending" : "Error",
+      "status": result.toLowerCase().contains("success") ? "Pending" : "Error",
     };
 
     widget.onSubmit(advanceData);
@@ -235,6 +247,15 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          "Payment ${index + 1}",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         GestureDetector(
                           onTap: () => _pickRequestDate(context, entry),
                           child: AbsorbPointer(
@@ -243,12 +264,11 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                               decoration: InputDecoration(
                                 labelText: entry.requestDate == null
                                     ? "Request Date"
-                                    : entry.requestDate.toString().split(
-                                        " ",
-                                      )[0],
-                                labelStyle: const TextStyle(
-                                  color: Colors.white70,
-                                ),
+                                    : entry.requestDate
+                                        .toString()
+                                        .split(" ")[0],
+                                labelStyle:
+                                    const TextStyle(color: Colors.white70),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -270,12 +290,11 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                               decoration: InputDecoration(
                                 labelText: entry.projectDate == null
                                     ? "Project Date"
-                                    : entry.projectDate.toString().split(
-                                        " ",
-                                      )[0],
-                                labelStyle: const TextStyle(
-                                  color: Colors.white70,
-                                ),
+                                    : entry.projectDate
+                                        .toString()
+                                        .split(" ")[0],
+                                labelStyle:
+                                    const TextStyle(color: Colors.white70),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -294,7 +313,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            labelText: "Total Amount",
+                            labelText: "Amount",
                             labelStyle: const TextStyle(color: Colors.white70),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -303,7 +322,7 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                             fillColor: const Color(0xFF2A2A2A),
                           ),
                           validator: (value) => value == null || value.isEmpty
-                              ? "Enter total amount"
+                              ? "Enter amount"
                               : null,
                         ),
                         const SizedBox(height: 12),
@@ -354,13 +373,14 @@ class _AdvanceRequestFormScreenState extends State<AdvanceRequestFormScreen> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              onPressed: () => _removePayment(index),
-                              icon: const Icon(
-                                Icons.delete,
-                                color: Colors.redAccent,
+                            if (payments.length > 1)
+                              IconButton(
+                                onPressed: () => _removePayment(index),
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.redAccent,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ],

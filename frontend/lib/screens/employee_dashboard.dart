@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'reimbursement_form.dart';
 import 'request_history.dart';
 import 'advance_form.dart';
@@ -13,12 +12,14 @@ class Request {
   final List<Map<String, dynamic>> payments;
   String status;
   final int currentStep;
+  final String? rejectionReason; // 👈 add this
 
   Request({
     required this.type,
     required this.payments,
     this.status = "Pending",
     this.currentStep = 0,
+    this.rejectionReason,
   });
 }
 
@@ -64,8 +65,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     // Use the avatar URL from the backend if available
     currentAvatarUrl = widget.avatarUrl.isNotEmpty
         ? (widget.avatarUrl.startsWith("http")
-              ? widget.avatarUrl
-              : "http://10.0.2.2:8000${widget.avatarUrl}") // replace with real backend base URL
+            ? widget.avatarUrl
+            : "http://10.0.2.2:8000${widget.avatarUrl}") // replace with real backend base URL
         : null;
 
     _loadAuthTokenAndRequests();
@@ -83,28 +84,19 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
       authToken = prefs.getString('authToken');
 
       if (authToken != null) {
-        dynamic reimbursementResponse = await apiService.fetchReimbursements(
-          authToken!,
+        // ✅ FIXED: Use the dashboard endpoint that includes ALL statuses
+        dynamic dashboardResponse = await apiService.getPendingApprovals(
+          authToken: authToken!,
         );
-        dynamic advanceResponse = await apiService.fetchAdvances(authToken!);
 
         List<Map<String, dynamic>> fetchedReimbursements = [];
         List<Map<String, dynamic>> fetchedAdvances = [];
 
         try {
-          if (reimbursementResponse is List) {
+          if (dashboardResponse is Map &&
+              dashboardResponse.containsKey('my_reimbursements')) {
             fetchedReimbursements = List<Map<String, dynamic>>.from(
-              reimbursementResponse,
-            );
-          } else if (reimbursementResponse is Map &&
-              reimbursementResponse.containsKey('data')) {
-            fetchedReimbursements = List<Map<String, dynamic>>.from(
-              reimbursementResponse['data'],
-            );
-          } else if (reimbursementResponse is Map &&
-              reimbursementResponse.containsKey('results')) {
-            fetchedReimbursements = List<Map<String, dynamic>>.from(
-              reimbursementResponse['results'],
+              dashboardResponse['my_reimbursements'],
             );
           }
         } catch (_) {
@@ -112,17 +104,10 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         }
 
         try {
-          if (advanceResponse is List) {
-            fetchedAdvances = List<Map<String, dynamic>>.from(advanceResponse);
-          } else if (advanceResponse is Map &&
-              advanceResponse.containsKey('data')) {
+          if (dashboardResponse is Map &&
+              dashboardResponse.containsKey('my_advances')) {
             fetchedAdvances = List<Map<String, dynamic>>.from(
-              advanceResponse['data'],
-            );
-          } else if (advanceResponse is Map &&
-              advanceResponse.containsKey('results')) {
-            fetchedAdvances = List<Map<String, dynamic>>.from(
-              advanceResponse['results'],
+              dashboardResponse['my_advances'],
             );
           }
         } catch (_) {
@@ -153,9 +138,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 payments: paymentsList,
                 status:
                     (r["status"] != null && r["status"].toString().isNotEmpty)
-                    ? r["status"].toString()
-                    : "Pending",
+                        ? r["status"].toString()
+                        : "Pending",
                 currentStep: r["currentStep"] is int ? r["currentStep"] : 0,
+                rejectionReason:
+                    r["rejection_reason"] ?? r["reason"] ?? "", // ✅ Added
               );
             }),
             ...fetchedAdvances.map((r) {
@@ -181,9 +168,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 payments: paymentsList,
                 status:
                     (r["status"] != null && r["status"].toString().isNotEmpty)
-                    ? r["status"].toString()
-                    : "Pending",
+                        ? r["status"].toString()
+                        : "Pending",
                 currentStep: r["currentStep"] is int ? r["currentStep"] : 0,
+                rejectionReason:
+                    r["rejection_reason"] ?? r["rejectionReason"], // 👈 new
               );
             }),
           ];
@@ -264,6 +253,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           colors: [Color.fromARGB(255, 125, 193, 100), Color(0xFFA5D6A7)],
         );
         break;
+      case "Paid": // ✅ ADDED PAID STATUS
+        gradient = const LinearGradient(
+          colors: [Color.fromARGB(255, 86, 157, 229), Color(0xFF90CAF9)],
+        );
+        break;
       case "Rejected":
         gradient = const LinearGradient(
           colors: [
@@ -334,6 +328,13 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               "Date: $requestDateStr",
               style: const TextStyle(color: Colors.white70),
             ),
+            Text(
+              "Status: ${request.status}", // ✅ ADDED STATUS DISPLAY
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
         trailing: const Icon(
@@ -350,6 +351,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 requestTitle: "${request.type} Request #${index + 1}",
                 payments: request.payments.isNotEmpty ? request.payments : [],
                 currentStep: request.currentStep,
+                status: request.status, // 👈 add this line
+                rejectionReason: request.rejectionReason, // 👈 add this
               ),
             ),
           );
@@ -358,8 +361,15 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     );
   }
 
-  List<Request> _filterRequests(String status) =>
-      requests.where((r) => r.status == status).toList();
+  List<Request> _filterRequests(String status) {
+    if (status == "Approved") {
+      // ✅ FIXED: Show both "Approved" and "Paid" in Approved tab
+      return requests
+          .where((r) => r.status == "Approved" || r.status == "Paid")
+          .toList();
+    }
+    return requests.where((r) => r.status == status).toList();
+  }
 
   Future<void> _createRequest(String type) async {
     if (authToken == null) {
@@ -401,8 +411,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
             onSubmit: (advanceData) {
               List<Map<String, dynamic>> paymentsList =
                   advanceData["payments"] != null
-                  ? List<Map<String, dynamic>>.from(advanceData["payments"])
-                  : [];
+                      ? List<Map<String, dynamic>>.from(advanceData["payments"])
+                      : [];
               setState(() {
                 requests.add(Request(type: "Advance", payments: paymentsList));
               });

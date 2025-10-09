@@ -5,7 +5,7 @@ import '../services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReimbursementFormScreen extends StatefulWidget {
-  final Function(Map<String, dynamic>) onSubmit; // local callback
+  final Function(Map<String, dynamic>) onSubmit;
 
   const ReimbursementFormScreen({super.key, required this.onSubmit});
 
@@ -130,6 +130,17 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Validate all payments first
+    for (var payment in payments) {
+      if (payment.paymentDate == null ||
+          payment.amountController.text.isEmpty ||
+          payment.descriptionController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please fill all payment fields!")));
+        return;
+      }
+    }
+
     setState(() {
       _isSubmitting = true;
     });
@@ -138,47 +149,24 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
     String? authToken = prefs.getString('authToken');
 
     if (authToken == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Auth token missing!")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Auth token missing!")));
       setState(() {
         _isSubmitting = false;
       });
       return;
     }
 
-    bool allSuccess = true;
-
+    // Calculate total amount
+    double totalAmount = 0;
     for (var payment in payments) {
-      if (payment.paymentDate == null ||
-          payment.amountController.text.isEmpty ||
-          payment.descriptionController.text.isEmpty) {
-        allSuccess = false;
-        continue;
-      }
-
-      File? attachment = payment.attachmentPath != null
-          ? File(payment.attachmentPath!)
-          : null;
-
-      String result = await apiService.submitReimbursement(
-        authToken: authToken,
-        amount: payment.amountController.text,
-        description: payment.descriptionController.text,
-        attachment: attachment,
-        date: payment.paymentDate!.toIso8601String().split("T")[0],
-      );
-
-      if (!result.toLowerCase().contains("success")) allSuccess = false;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(result)));
+      totalAmount += double.tryParse(payment.amountController.text) ?? 0;
     }
 
+    // Prepare payments data for JSON
     List<Map<String, dynamic>> paymentData = payments.map((p) {
       return {
-        "paymentDate": p.paymentDate,
+        "date": p.paymentDate!.toIso8601String().split("T")[0],
         "amount": p.amountController.text,
         "description": p.descriptionController.text,
         "claimType": p.claimType,
@@ -186,15 +174,36 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       };
     }).toList();
 
+    // Get the main attachment (use first payment's attachment or null)
+    File? mainAttachment =
+        payments.isNotEmpty && payments[0].attachmentPath != null
+            ? File(payments[0].attachmentPath!)
+            : null;
+
+    // ✅ FIXED: Send ONE API call with all payments
+    String result = await apiService.submitReimbursement(
+      authToken: authToken,
+      amount: totalAmount.toString(),
+      description: payments
+          .first.descriptionController.text, // Use first payment description
+      attachment: mainAttachment,
+      date: reimbursementDate!.toIso8601String().split("T")[0],
+      payments: paymentData, // ✅ Send all payments in one request
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+
+    // Prepare data for callback
     Map<String, dynamic> reimbursementData = {
       "reimbursementDate": reimbursementDate,
       "projectId": projectIdController.text,
       "payments": paymentData,
-      "status": allSuccess ? "Pending" : "Error",
+      "status": result.toLowerCase().contains("success") ? "Pending" : "Error",
     };
 
     widget.onSubmit(reimbursementData);
 
+    // Reset form
     setState(() {
       reimbursementDate = null;
       projectIdController.clear();
@@ -275,6 +284,15 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          "Payment ${index + 1}",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         GestureDetector(
                           onTap: () => _pickPaymentDate(context, entry),
                           child: AbsorbPointer(
@@ -283,12 +301,11 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                               decoration: InputDecoration(
                                 labelText: entry.paymentDate == null
                                     ? "Payment Date"
-                                    : entry.paymentDate.toString().split(
-                                        " ",
-                                      )[0],
-                                labelStyle: const TextStyle(
-                                  color: Colors.white70,
-                                ),
+                                    : entry.paymentDate
+                                        .toString()
+                                        .split(" ")[0],
+                                labelStyle:
+                                    const TextStyle(color: Colors.white70),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -413,13 +430,14 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              onPressed: () => _removePayment(index),
-                              icon: const Icon(
-                                Icons.delete,
-                                color: Color.fromARGB(255, 161, 53, 45),
+                            if (payments.length > 1)
+                              IconButton(
+                                onPressed: () => _removePayment(index),
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Color.fromARGB(255, 161, 53, 45),
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ],
