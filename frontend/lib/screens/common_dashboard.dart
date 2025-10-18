@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'approver_request_details.dart';
 
 class Request {
@@ -95,42 +96,250 @@ class _CommonDashboardState extends State<CommonDashboard>
       final pendingData =
           await apiService.getPendingApprovals(authToken: widget.authToken);
 
+      // ✅ DEBUG: Print the entire API response structure
+      debugPrint("=== FULL API RESPONSE ===");
+      debugPrint(pendingData.toString());
+      debugPrint("=========================");
+
       setState(() {
         reimbursementRequests =
-            (pendingData['reimbursements_to_approve'] as List)
-                .map((r) => Request(
-                      id: r['id'],
-                      employeeId: r['employee_id'] ?? 'Unknown',
-                      employeeName: r['employee_name'] ?? 'Unknown',
-                      avatarUrl: r['employee_avatar'],
-                      submissionDate: r['date']?.toString() ?? '',
-                      amount: double.tryParse(r['amount'].toString()) ?? 0,
-                      description: r['description'] ?? '',
-                      payments: r['payments'] ?? [],
-                      requestType: 'reimbursement',
-                    ))
-                .toList();
+            (pendingData['reimbursements_to_approve'] as List).map((r) {
+          // ✅ DEBUG: Print each reimbursement structure
+          debugPrint("=== REIMBURSEMENT ITEM ===");
+          debugPrint("Keys: ${r.keys.toList()}");
+          debugPrint("Payments type: ${r['payments']?.runtimeType}");
+          if (r['payments'] is List) {
+            debugPrint("Payments length: ${r['payments'].length}");
+            if (r['payments'].isNotEmpty) {
+              debugPrint(
+                  "First payment keys: ${r['payments'][0].keys.toList()}");
+            }
+          }
+          debugPrint("Project ID: ${r['projectId']}");
+          debugPrint("=========================");
 
-        advanceRequests = (pendingData['advances_to_approve'] as List)
-            .map((r) => Request(
-                  id: r['id'],
-                  employeeId: r['employee_id'] ?? 'Unknown',
-                  employeeName: r['employee_name'] ?? 'Unknown',
-                  avatarUrl: r['employee_avatar'],
-                  submissionDate: r['request_date']?.toString() ?? '',
-                  amount: double.tryParse(r['amount'].toString()) ?? 0,
-                  description: r['description'] ?? '',
-                  payments: r['payments'] ?? [],
-                  requestType: 'advance',
-                ))
-            .toList();
+          return Request(
+            id: r['id'],
+            employeeId: r['employee_id'] ?? 'Unknown',
+            employeeName: r['employee_name'] ?? 'Unknown',
+            avatarUrl: r['employee_avatar'],
+            submissionDate: r['date']?.toString() ?? '',
+            amount: double.tryParse(r['amount'].toString()) ?? 0,
+            description: r['description'] ?? '',
+            payments: _parseReimbursementPayments(r),
+            requestType: 'reimbursement',
+          );
+        }).toList();
+
+        advanceRequests = (pendingData['advances_to_approve'] as List).map((r) {
+          // ✅ DEBUG: Print each advance structure
+          debugPrint("=== ADVANCE ITEM ===");
+          debugPrint("Keys: ${r.keys.toList()}");
+          debugPrint("Payments type: ${r['payments']?.runtimeType}");
+          if (r['payments'] is List) {
+            debugPrint("Payments length: ${r['payments'].length}");
+            if (r['payments'].isNotEmpty) {
+              debugPrint(
+                  "First payment keys: ${r['payments'][0].keys.toList()}");
+            }
+          }
+          debugPrint("Project ID: ${r['projectId']}");
+          debugPrint("Project Name: ${r['projectName']}");
+          debugPrint("====================");
+
+          return Request(
+            id: r['id'],
+            employeeId: r['employee_id'] ?? 'Unknown',
+            employeeName: r['employee_name'] ?? 'Unknown',
+            avatarUrl: r['employee_avatar'],
+            submissionDate: r['request_date']?.toString() ?? '',
+            amount: double.tryParse(r['amount'].toString()) ?? 0,
+            description: r['description'] ?? '',
+            payments: _parseAdvancePayments(r),
+            requestType: 'advance',
+          );
+        }).toList();
       });
     } catch (e) {
       debugPrint("Error fetching requests: $e");
     }
   }
 
-  // Filter methods
+// ✅ IMPROVED: Parse reimbursement payments with better field detection
+  List<dynamic> _parseReimbursementPayments(
+      Map<String, dynamic> reimbursement) {
+    try {
+      List<dynamic> payments = [];
+
+      // Check if payments array exists
+      if (reimbursement['payments'] is List &&
+          reimbursement['payments'].isNotEmpty) {
+        payments = reimbursement['payments'].map((payment) {
+          // Try different possible field names for each field
+          return {
+            'amount': payment['amount']?.toString() ??
+                payment['Amount']?.toString() ??
+                '0',
+            'paymentDate': payment['paymentDate'] ??
+                payment['payment_date'] ??
+                payment['date'] ??
+                payment['Date'] ??
+                reimbursement['date'],
+            'claimType': payment['claimType'] ??
+                payment['claim_type'] ??
+                payment['type'] ??
+                'Not specified',
+            'customClaimType': payment['customClaimType'] ??
+                payment['custom_claim_type'] ??
+                payment['otherType'],
+            'description': payment['description'] ??
+                payment['Description'] ??
+                payment['desc'] ??
+                reimbursement['description'],
+            'projectId': payment['projectId'] ??
+                payment['project_id'] ??
+                payment['projectID'] ??
+                reimbursement['projectId'] ??
+                reimbursement['project_id'],
+            'attachmentPath': payment['attachmentPath'] ??
+                payment['attachment_path'] ??
+                payment['filePath'] ??
+                payment['attachment'],
+            'attachmentPaths': payment['attachmentPaths'] ??
+                payment['attachment_paths'] ??
+                payment['files'] ??
+                [],
+          };
+        }).toList();
+      } else {
+        // If no payments array, create one from main reimbursement data
+        payments = [
+          {
+            'amount': reimbursement['amount']?.toString() ?? '0',
+            'paymentDate': reimbursement['date'] ??
+                reimbursement['paymentDate'] ??
+                reimbursement['payment_date'],
+            'claimType': reimbursement['claimType'] ??
+                reimbursement['claim_type'] ??
+                'Not specified',
+            'customClaimType': reimbursement['customClaimType'] ??
+                reimbursement['custom_claim_type'],
+            'description': reimbursement['description'] ?? '',
+            'projectId': reimbursement['projectId'] ??
+                reimbursement['project_id'] ??
+                reimbursement['projectID'],
+            'attachmentPath': reimbursement['attachmentPath'] ??
+                reimbursement['attachment_path'],
+            'attachmentPaths': reimbursement['attachmentPaths'] ??
+                reimbursement['attachment_paths'] ??
+                [],
+          }
+        ];
+      }
+
+      // ✅ DEBUG: Print parsed reimbursement payments
+      debugPrint("=== PARSED REIMBURSEMENT PAYMENTS ===");
+      debugPrint("Number of payments: ${payments.length}");
+      if (payments.isNotEmpty) {
+        debugPrint("First payment keys: ${payments[0].keys.toList()}");
+        debugPrint("Project ID in payment: ${payments[0]['projectId']}");
+        debugPrint("Payment Date in payment: ${payments[0]['paymentDate']}");
+      }
+      debugPrint("===================================");
+
+      return payments;
+    } catch (e) {
+      debugPrint("Error parsing reimbursement payments: $e");
+      return [];
+    }
+  }
+
+// ✅ IMPROVED: Parse advance payments with better field detection
+  List<dynamic> _parseAdvancePayments(Map<String, dynamic> advance) {
+    try {
+      List<dynamic> payments = [];
+
+      // Check if payments array exists
+      if (advance['payments'] is List && advance['payments'].isNotEmpty) {
+        payments = advance['payments'].map((payment) {
+          // Try different possible field names for each field
+          return {
+            'amount': payment['amount']?.toString() ??
+                payment['Amount']?.toString() ??
+                '0',
+            'requestDate': payment['requestDate'] ??
+                payment['request_date'] ??
+                payment['date'] ??
+                payment['Date'] ??
+                advance['request_date'],
+            'projectDate': payment['projectDate'] ??
+                payment['project_date'] ??
+                payment['projectDate'] ??
+                advance['project_date'],
+            'particulars': payment['particulars'] ??
+                payment['Particulars'] ??
+                payment['description'] ??
+                payment['Description'] ??
+                advance['description'],
+            'projectId': payment['projectId'] ??
+                payment['project_id'] ??
+                payment['projectID'] ??
+                advance['projectId'] ??
+                advance['project_id'],
+            'projectName': payment['projectName'] ??
+                payment['project_name'] ??
+                payment['projectName'] ??
+                advance['projectName'] ??
+                advance['project_name'],
+            'attachmentPath': payment['attachmentPath'] ??
+                payment['attachment_path'] ??
+                payment['filePath'] ??
+                payment['attachment'],
+            'attachmentPaths': payment['attachmentPaths'] ??
+                payment['attachment_paths'] ??
+                payment['files'] ??
+                [],
+          };
+        }).toList();
+      } else {
+        // If no payments array, create one from main advance data
+        payments = [
+          {
+            'amount': advance['amount']?.toString() ?? '0',
+            'requestDate': advance['request_date'] ?? advance['requestDate'],
+            'projectDate': advance['project_date'] ?? advance['projectDate'],
+            'particulars':
+                advance['particulars'] ?? advance['description'] ?? '',
+            'projectId': advance['projectId'] ??
+                advance['project_id'] ??
+                advance['projectID'],
+            'projectName': advance['projectName'] ?? advance['project_name'],
+            'attachmentPath':
+                advance['attachmentPath'] ?? advance['attachment_path'],
+            'attachmentPaths':
+                advance['attachmentPaths'] ?? advance['attachment_paths'] ?? [],
+          }
+        ];
+      }
+
+      // ✅ DEBUG: Print parsed advance payments
+      debugPrint("=== PARSED ADVANCE PAYMENTS ===");
+      debugPrint("Number of payments: ${payments.length}");
+      if (payments.isNotEmpty) {
+        debugPrint("First payment keys: ${payments[0].keys.toList()}");
+        debugPrint("Project ID in payment: ${payments[0]['projectId']}");
+        debugPrint("Project Name in payment: ${payments[0]['projectName']}");
+      }
+      debugPrint("==============================");
+
+      return payments;
+    } catch (e) {
+      debugPrint("Error parsing advance payments: $e");
+      return [];
+    }
+  }
+
+//filter methods
   List<Request> _getFilteredReimbursementRequests() {
     return _applyFilter(reimbursementRequests, _currentReimbursementFilter);
   }
@@ -314,6 +523,168 @@ class _CommonDashboardState extends State<CommonDashboard>
           ),
         ],
       ),
+    );
+  }
+
+  // 👇 CSV Download function for Common Dashboard
+  Future<void> _downloadCSV(String period) async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // For Mobile - Download from backend and share
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _downloadAndShareCSV(period);
+      }
+      // For Web - Direct download
+      else {
+        await _downloadCSVForWeb(period);
+      }
+    } catch (error) {
+      if (mounted) Navigator.pop(context);
+      print("Error generating CSV: $error");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error downloading CSV: $error"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 👇 Download from backend and share for Mobile
+  Future<void> _downloadAndShareCSV(String period) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
+        headers: {
+          'Authorization': 'Token ${widget.authToken}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final directory = await getTemporaryDirectory();
+        final fileName =
+            'Xpensure_${period.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.csv';
+        final filePath = '${directory.path}/$fileName';
+
+        final File file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (mounted) Navigator.pop(context);
+
+        await Share.shareXFiles(
+          [XFile(filePath)],
+          text: 'Xpensure Requests - $period Period',
+          subject: 'Xpensure CSV Export',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("CSV exported successfully!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Failed to download CSV: ${response.statusCode}');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 👇 Direct download for Web
+  Future<void> _downloadCSVForWeb(String period) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
+        headers: {
+          'Authorization': 'Token ${widget.authToken}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) Navigator.pop(context);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("CSV downloaded successfully for $period period!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        print("CSV Content Length: ${response.body.length} characters");
+      } else {
+        throw Exception('Failed to download CSV: ${response.statusCode}');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 👇 CSV Download Menu for App Bar
+  Widget _buildCSVDownloadMenu() {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.download, color: Colors.grey[300]),
+      onSelected: _downloadCSV,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: "1 Month",
+          child: Row(
+            children: [
+              Icon(Icons.calendar_today, size: 20, color: Colors.white),
+              SizedBox(width: 8),
+              Text("1 Month", style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: "3 Months",
+          child: Row(
+            children: [
+              Icon(Icons.calendar_view_month, size: 20, color: Colors.white),
+              SizedBox(width: 8),
+              Text("3 Months", style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: "6 Months",
+          child: Row(
+            children: [
+              Icon(Icons.date_range, size: 20, color: Colors.white),
+              SizedBox(width: 8),
+              Text("6 Months", style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: "1 Year",
+          child: Row(
+            children: [
+              Icon(Icons.calendar_view_day, size: 20, color: Colors.white),
+              SizedBox(width: 8),
+              Text("1 Year", style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      ],
+      color: Color(0xFF1E1E1E),
     );
   }
 
@@ -719,6 +1090,8 @@ class _CommonDashboardState extends State<CommonDashboard>
                     fontSize: 18),
               ),
             ),
+            _buildCSVDownloadMenu(), // ✅ ADD CSV DOWNLOAD BUTTON
+            const SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
               backgroundColor: Colors.grey[700],

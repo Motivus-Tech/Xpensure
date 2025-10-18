@@ -42,11 +42,25 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     return path.toLowerCase().endsWith('.pdf');
   }
 
+  // Get all attachment paths from a payment (handles both single and multiple)
+  List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
+    // First check for multiple attachmentPaths
+    if (payment["attachmentPaths"] is List) {
+      return List<String>.from(payment["attachmentPaths"] ?? []);
+    }
+    // Fallback to single attachmentPath
+    else if (payment["attachmentPath"] is String &&
+        payment["attachmentPath"].toString().isNotEmpty) {
+      return [payment["attachmentPath"].toString()];
+    }
+    return [];
+  }
+
   void _showImageDialog(String imagePath) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color.fromARGB(255, 28, 28, 28),
         insetPadding: const EdgeInsets.all(20),
         child: Stack(
           children: [
@@ -123,14 +137,14 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('File downloaded to: ${file.path}'),
-            backgroundColor: const Color.fromARGB(255, 136, 218, 138),
+            backgroundColor: const Color(0xFF1E8C3E),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('File location: $filePath'),
-            backgroundColor: Colors.blue,
+            backgroundColor: const Color(0xFF1A237E),
           ),
         );
       }
@@ -138,19 +152,23 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error downloading file: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFFB71C1C),
         ),
       );
     }
   }
 
-  Widget _buildAttachmentPreview(String attachmentPath) {
+  Widget _buildSingleAttachmentPreview(String attachmentPath) {
     final isImage = _isImageFile(attachmentPath);
     final isPdf = _isPdfFile(attachmentPath);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      color: Colors.grey[900],
+      color: const Color(0xFF0D0D0D),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey[800]!, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -168,7 +186,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                       ? Colors.amber
                       : isPdf
                           ? Colors.red
-                          : Colors.grey,
+                          : Colors.grey[400],
                   size: 24,
                 ),
                 const SizedBox(width: 8),
@@ -176,7 +194,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                   child: Text(
                     _getFileName(attachmentPath),
                     style: const TextStyle(
-                      color: Colors.white70,
+                      color: Colors.white,
                       fontWeight: FontWeight.w500,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -191,7 +209,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white24),
+                  border: Border.all(color: Colors.grey[700]!),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -208,11 +226,14 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                     child: ElevatedButton.icon(
                       onPressed: () => _showImageDialog(attachmentPath),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color.fromARGB(255, 215, 135, 229),
+                        backgroundColor: const Color(0xFF7B1FA2),
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      icon: const Icon(Icons.visibility),
+                      icon: const Icon(Icons.visibility, size: 18),
                       label: const Text('View'),
                     ),
                   ),
@@ -222,10 +243,14 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                     child: ElevatedButton.icon(
                       onPressed: () => _openPdf(attachmentPath),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
+                        backgroundColor: const Color(0xFFC62828),
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      icon: const Icon(Icons.open_in_new),
+                      icon: const Icon(Icons.open_in_new, size: 18),
                       label: const Text('Open PDF'),
                     ),
                   ),
@@ -234,10 +259,14 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                   child: OutlinedButton.icon(
                     onPressed: () => _downloadFile(attachmentPath),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blueAccent,
-                      side: const BorderSide(color: Colors.blueAccent),
+                      foregroundColor: const Color(0xFF1976D2),
+                      side: const BorderSide(color: Color(0xFF1976D2)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    icon: const Icon(Icons.download),
+                    icon: const Icon(Icons.download, size: 18),
                     label: const Text('Download'),
                   ),
                 ),
@@ -246,6 +275,37 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAttachmentsSection(List<String> attachmentPaths) {
+    if (attachmentPaths.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'No attachments',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Text(
+          'Attachments:',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...attachmentPaths
+            .map((path) => _buildSingleAttachmentPreview(path))
+            .toList(),
+      ],
     );
   }
 
@@ -262,17 +322,25 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Request Approved Successfully'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: const Text('Request Approved Successfully'),
+          backgroundColor: const Color(0xFF1E8C3E),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
       );
       Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to approve request'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: const Text('Failed to approve request'),
+          backgroundColor: const Color(0xFFB71C1C),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
       );
     }
@@ -283,13 +351,18 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        backgroundColor: const Color(0xFF0D0D0D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey[800]!, width: 1),
+        ),
+        title: Row(
           children: [
-            Icon(Icons.warning_amber, color: Color.fromARGB(255, 242, 119, 82)),
-            SizedBox(width: 8),
-            Text('Reject Request', style: TextStyle(color: Colors.white)),
+            Icon(Icons.warning_amber, color: Colors.orange[700]),
+            const SizedBox(width: 8),
+            const Text('Reject Request',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -298,7 +371,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
           children: [
             const Text(
               'Please provide a reason for rejection:',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -306,14 +379,21 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Enter rejection reason...',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: const TextStyle(color: Colors.grey),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[700]!),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: Colors.redAccent),
                 ),
+                filled: true,
+                fillColor: const Color(0xFF1A1A1A),
               ),
               maxLines: 3,
             ),
@@ -322,8 +402,10 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey,
+            ),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -351,16 +433,20 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
 
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Request Rejected'),
-                    backgroundColor: Colors.red,
+                  SnackBar(
+                    content: const Text('Request Rejected'),
+                    backgroundColor: const Color(0xFFB71C1C),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 );
                 Navigator.pop(context, true);
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
+              backgroundColor: const Color(0xFFC62828),
               foregroundColor: Colors.white,
             ),
             child: const Text('Reject'),
@@ -373,7 +459,12 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
   Widget _buildDetailCard(String title, List<Widget> children) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      color: const Color(0xFF1E1E1E),
+      color: const Color(0xFF0D0D0D),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey[800]!, width: 1),
+      ),
+      elevation: 4,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -402,11 +493,11 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: 140,
             child: Text(
               '$label:',
               style: TextStyle(
-                color: Colors.white70,
+                color: Colors.grey[400],
                 fontWeight: FontWeight.w500,
                 fontSize: 14,
               ),
@@ -417,7 +508,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
             child: Text(
               value,
               style: TextStyle(
-                color: isImportant ? Colors.tealAccent : Colors.white,
+                color: isImportant ? const Color(0xFF00E5FF) : Colors.white,
                 fontWeight: isImportant ? FontWeight.bold : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -431,6 +522,27 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
   @override
   Widget build(BuildContext context) {
     final request = widget.request;
+    final isReimbursement =
+        request.requestType.toLowerCase().contains("reimbursement");
+
+    // Better project info detection
+    bool hasProjectInfo = false;
+    String? projectId;
+    String? projectName;
+
+    if (request.payments.isNotEmpty) {
+      final firstPayment = request.payments[0];
+
+      // Try different field names for project ID
+      projectId = firstPayment['projectId'] ??
+          firstPayment['project_id'] ??
+          firstPayment['projectID'];
+
+      // Try different field names for project name
+      projectName = firstPayment['projectName'] ?? firstPayment['project_name'];
+
+      hasProjectInfo = projectId != null || projectName != null;
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -439,13 +551,11 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
           'Request Details',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Color.fromARGB(255, 179, 176, 176),
+            color: Colors.white,
           ),
         ),
-        backgroundColor: const Color(0xFF1E1E1E),
-        iconTheme: const IconThemeData(
-          color: Color.fromARGB(255, 179, 176, 176),
-        ), // Black back arrow
+        backgroundColor: const Color(0xFF0D0D0D),
+        iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
       body: _isProcessing
@@ -453,11 +563,11 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Colors.tealAccent),
+                  CircularProgressIndicator(color: Color(0xFF00E5FF)),
                   SizedBox(height: 16),
                   Text(
                     'Processing...',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
@@ -471,24 +581,37 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                   _buildDetailCard('Request Overview', [
                     _detailItem('Employee', request.employeeName,
                         isImportant: true),
+                    _detailItem('Request Type', request.requestType),
                     _detailItem('Date', request.submissionDate),
                     _detailItem(
                         'Amount', '₹${request.amount.toStringAsFixed(2)}',
                         isImportant: true),
                   ]),
+
+                  // Project Information Card with flexible field detection
+                  if (hasProjectInfo)
+                    _buildDetailCard('Project Information', [
+                      if (projectId != null)
+                        _detailItem('Project ID', projectId!),
+                      if (!isReimbursement && projectName != null)
+                        _detailItem('Project Name', projectName!),
+                    ]),
+
                   // Payment Details Card
                   _buildDetailCard('Payment Details', [
                     if (request.payments.isNotEmpty)
                       ...request.payments.asMap().entries.map((entry) {
                         final index = entry.key;
                         final payment = entry.value;
+                        final attachmentPaths = _getAttachmentPaths(payment);
+
                         return Container(
                           margin: EdgeInsets.only(top: index > 0 ? 12 : 0),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.grey[850],
+                            color: const Color(0xFF1A1A1A),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white12),
+                            border: Border.all(color: Colors.grey[800]!),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,49 +619,120 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                               Text(
                                 'Payment ${index + 1}',
                                 style: const TextStyle(
-                                  color: Colors.tealAccent,
+                                  color: Color(0xFF00E5FF),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
                                 ),
                               ),
                               const SizedBox(height: 8),
+
+                              // Common fields for both types
                               _detailItem(
                                   'Amount', '₹${payment['amount'] ?? '0'}'),
 
-                              // ✅ FIXED: Corrected if-else structure
-                              if (payment['particulars'] != null &&
-                                  payment['particulars']!.isNotEmpty)
-                                _detailItem(
-                                    'Particulars', payment['particulars']!)
-                              else if (payment['description'] != null &&
-                                  payment['description']!.isNotEmpty)
-                                _detailItem(
-                                    'Description', payment['description']!),
+                              // REIMBURSEMENT SPECIFIC FIELDS
+                              if (isReimbursement) ...[
+                                // Try multiple field names for payment date
+                                if (_getFieldValue(payment, [
+                                      'paymentDate',
+                                      'payment_date',
+                                      'date'
+                                    ]) !=
+                                    null)
+                                  _detailItem(
+                                      'Payment Date',
+                                      _getFieldValue(payment, [
+                                        'paymentDate',
+                                        'payment_date',
+                                        'date'
+                                      ])!),
 
-                              if (payment['claimType'] != null)
-                                _detailItem(
-                                    'Claim Type', payment['claimType']!),
-                              if (payment['date'] != null)
-                                _detailItem('Date', payment['date']!),
-                              if (payment['attachmentPath'] != null)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 8),
-                                    const Text(
-                                      'Attachment:',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _buildAttachmentPreview(
-                                        payment['attachmentPath']!),
-                                  ],
-                                )
-                              else
-                                _detailItem('Attachment', 'No attachment'),
+                                // Try multiple field names for claim type
+                                if (_getFieldValue(payment,
+                                        ['claimType', 'claim_type', 'type']) !=
+                                    null)
+                                  _detailItem(
+                                      'Claim Type',
+                                      _getFieldValue(payment, [
+                                        'claimType',
+                                        'claim_type',
+                                        'type'
+                                      ])!),
+
+                                // Try multiple field names for description
+                                if (_getFieldValue(payment, [
+                                      'description',
+                                      'Description',
+                                      'desc'
+                                    ]) !=
+                                    null)
+                                  _detailItem(
+                                      'Description',
+                                      _getFieldValue(payment, [
+                                        'description',
+                                        'Description',
+                                        'desc'
+                                      ])!),
+
+                                // Custom Claim Type for "Other" category
+                                if (_getFieldValue(payment, [
+                                      'customClaimType',
+                                      'custom_claim_type',
+                                      'otherType'
+                                    ]) !=
+                                    null)
+                                  _detailItem(
+                                      'Custom Claim Type',
+                                      _getFieldValue(payment, [
+                                        'customClaimType',
+                                        'custom_claim_type',
+                                        'otherType'
+                                      ])!),
+                              ]
+                              // ADVANCE REQUEST SPECIFIC FIELDS
+                              else ...[
+                                // Try multiple field names for request date
+                                if (_getFieldValue(payment, [
+                                      'requestDate',
+                                      'request_date',
+                                      'date'
+                                    ]) !=
+                                    null)
+                                  _detailItem(
+                                      'Request Date',
+                                      _getFieldValue(payment, [
+                                        'requestDate',
+                                        'request_date',
+                                        'date'
+                                      ])!),
+
+                                // Try multiple field names for project date
+                                if (_getFieldValue(payment,
+                                        ['projectDate', 'project_date']) !=
+                                    null)
+                                  _detailItem(
+                                      'Project Date',
+                                      _getFieldValue(payment,
+                                          ['projectDate', 'project_date'])!),
+
+                                // Try multiple field names for particulars
+                                if (_getFieldValue(payment, [
+                                      'particulars',
+                                      'Particulars',
+                                      'description'
+                                    ]) !=
+                                    null)
+                                  _detailItem(
+                                      'Particulars',
+                                      _getFieldValue(payment, [
+                                        'particulars',
+                                        'Particulars',
+                                        'description'
+                                      ])!),
+                              ],
+
+                              // Attachments section
+                              _buildAttachmentsSection(attachmentPaths),
                             ],
                           ),
                         );
@@ -546,13 +740,18 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                     else
                       const Text(
                         'No payment details available',
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(color: Colors.grey),
                       ),
                   ]),
 
                   // Action Buttons
                   Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: const Color.fromARGB(255, 24, 24, 24),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.grey[800]!, width: 1),
+                    ),
+                    elevation: 4,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -573,8 +772,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                                   onPressed:
                                       _isProcessing ? null : _approveRequest,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color.fromARGB(
-                                        255, 113, 185, 115),
+                                    backgroundColor: const Color(0xFF1E8C3E),
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 15),
@@ -596,9 +794,8 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                                   onPressed:
                                       _isProcessing ? null : _rejectRequest,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.redAccent,
-                                    foregroundColor: const Color.fromARGB(
-                                        255, 231, 226, 226),
+                                    backgroundColor: const Color(0xFFC62828),
+                                    foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 15),
                                     shape: RoundedRectangleBorder(
@@ -618,11 +815,11 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                           if (_isProcessing) ...[
                             const SizedBox(height: 16),
                             const CircularProgressIndicator(
-                                color: Colors.tealAccent),
+                                color: Color(0xFF00E5FF)),
                             const SizedBox(height: 8),
                             const Text(
                               'Processing your request...',
-                              style: TextStyle(color: Colors.white70),
+                              style: TextStyle(color: Colors.grey),
                             ),
                           ],
                         ],
@@ -634,5 +831,15 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               ),
             ),
     );
+  }
+
+  // Helper method to get field value with multiple possible keys
+  String? _getFieldValue(Map<String, dynamic> data, List<String> possibleKeys) {
+    for (String key in possibleKeys) {
+      if (data[key] != null && data[key].toString().isNotEmpty) {
+        return data[key].toString();
+      }
+    }
+    return null;
   }
 }

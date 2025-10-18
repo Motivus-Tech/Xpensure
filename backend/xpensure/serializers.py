@@ -1,9 +1,9 @@
+# serializers.py - COMPLETE FIXED VERSION
 from rest_framework import serializers
 from .models import Employee, Reimbursement, AdvanceRequest
+import os
+from django.core.files.storage import default_storage
 
-# -----------------------------
-# Employee Signup Serializer
-# -----------------------------
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=True, min_length=6)
@@ -26,7 +26,6 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError({"password": "Passwords do not match"})
 
-        # Get employee record from DB (HR-created)
         try:
             self.hr_employee = Employee.objects.get(
                 employee_id=attrs['employee_id'],
@@ -35,7 +34,6 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         except Employee.DoesNotExist:
             raise serializers.ValidationError({"detail": "Employee details not found. Please contact HR."})
 
-        # Validate key fields
         mismatches = []
         if self.hr_employee.fullName.lower() != attrs.get('fullName', '').lower():
             mismatches.append("fullName")
@@ -64,46 +62,209 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         if avatar:
             employee.avatar = avatar
 
-        # Set password and save
         employee.set_password(password)
-        employee.save(update_fields=['password'])  # ensure password is written immediately
-        employee.refresh_from_db()  # refresh object from DB
+        employee.save(update_fields=['password'])
+        employee.refresh_from_db()
 
         return employee
 
 class ReimbursementSerializer(serializers.ModelSerializer):
     employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
+    project_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
+    # ✅ FIXED: Multiple files handling
+    attachments = serializers.ListField(
+        child=serializers.FileField(
+            max_length=100000, 
+            allow_empty_file=True, 
+            use_url=False,
+            write_only=True
+        ),
+        write_only=True,
+        required=False,
+        allow_empty=True
+    )
+    
+    # Read-only field to display attachment URLs
+    attachment_urls = serializers.SerializerMethodField(read_only=True)
+    projectId = serializers.CharField(source="project_id", read_only=True)
 
     class Meta:
         model = Reimbursement
         fields = [
             'id', 'employee_id', 'amount', 'description', 'attachment', 
-            'date', 'status', 'currentStep', 'current_approver_id', 
-            'rejection_reason', 'payments', 'created_at', 'updated_at',
-            'payment_date', 'final_approver', 'approved_by_ceo', 'approved_by_finance'  # ✅ ADDED NEW FIELDS
+            'attachments', 'attachment_urls', 'date', 'status', 'currentStep', 
+            'current_approver_id', 'rejection_reason', 'payments', 'created_at', 
+            'updated_at', 'payment_date', 'final_approver', 'approved_by_ceo', 
+            'approved_by_finance','project_id','projectId' 
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
+    def get_attachment_urls(self, obj):
+        """Return list of attachment URLs"""
+        request = self.context.get('request')
+        if obj.attachments and isinstance(obj.attachments, list):
+            urls = []
+            for attachment_path in obj.attachments:
+                if attachment_path and default_storage.exists(attachment_path):
+                    if request:
+                        url = request.build_absolute_uri(default_storage.url(attachment_path))
+                    else:
+                        url = default_storage.url(attachment_path)
+                    urls.append(url)
+            return urls
+        return []
+
+    def create(self, validated_data):
+        # Extract project_id from validated_data
+        project_id = validated_data.pop('project_id', None)
+        attachments = validated_data.pop('attachments', [])
+        
+        # ✅ CREATE WITH PROJECT ID
+        reimbursement = Reimbursement.objects.create(
+            project_id=project_id,
+            **validated_data
+        )
+        
+        # Handle attachments
+        if attachments:
+            attachment_paths = []
+            for attachment in attachments:
+                import uuid
+                ext = os.path.splitext(attachment.name)[1]
+                filename = f"reimbursement_attachments/{uuid.uuid4()}{ext}"
+                saved_path = default_storage.save(filename, attachment)
+                attachment_paths.append(saved_path)
+            
+            reimbursement.attachments = attachment_paths
+            reimbursement.save()
+        
+        return reimbursement
+
+    def update(self, instance, validated_data):
+        attachments = validated_data.pop('attachments', None)
+        
+        # Update basic fields
+        instance = super().update(instance, validated_data)
+        
+        # Handle new attachments
+        if attachments is not None:
+            if instance.attachments is None:
+                instance.attachments = []
+            
+            for attachment in attachments:
+                import uuid
+                ext = os.path.splitext(attachment.name)[1]
+                filename = f"reimbursement_attachments/{uuid.uuid4()}{ext}"
+                saved_path = default_storage.save(filename, attachment)
+                instance.attachments.append(saved_path)
+            
+            instance.save()
+        
+        return instance
 
 class AdvanceRequestSerializer(serializers.ModelSerializer):
     employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
+    
+    # ✅ ADDED: Project fields
+    project_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    project_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    
+    # Multiple files handling
+    attachments = serializers.ListField(
+        child=serializers.FileField(
+            max_length=100000, 
+            allow_empty_file=True, 
+            use_url=False,
+            write_only=True
+        ),
+        write_only=True,
+        required=False,
+        allow_empty=True
+    )
+    
+    # Read-only field to display attachment URLs
+    attachment_urls = serializers.SerializerMethodField(read_only=True)
+    # ✅ ADD READ-ONLY PROJECT FIELDS FOR RESPONSE
+    projectId = serializers.CharField(source="project_id", read_only=True)
+    projectName = serializers.CharField(source="project_name", read_only=True)
 
     class Meta:
         model = AdvanceRequest
         fields = [
-            'id', 'employee_id', 'amount', 'description', 'request_date', 
-            'project_date', 'attachment', 'status', 'currentStep', 
-            'current_approver_id', 'rejection_reason', 'payments', 
+            'id', 'employee_id', 'project_id', 'project_name', 'amount', 'description', 
+            'request_date', 'project_date', 'attachment', 'attachments', 'attachment_urls', 
+            'status', 'currentStep', 'current_approver_id', 'rejection_reason', 'payments', 
             'created_at', 'updated_at', 'payment_date', 'final_approver', 
-            'approved_by_ceo', 'approved_by_finance'  # ✅ ADDED NEW FIELDS
+            'approved_by_ceo', 'approved_by_finance', 'projectId', 'projectName', 
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
+    def get_attachment_urls(self, obj):
+        """Return list of attachment URLs"""
+        request = self.context.get('request')
+        if obj.attachments and isinstance(obj.attachments, list):
+            urls = []
+            for attachment_path in obj.attachments:
+                if attachment_path and default_storage.exists(attachment_path):
+                    if request:
+                        url = request.build_absolute_uri(default_storage.url(attachment_path))
+                    else:
+                        url = default_storage.url(attachment_path)
+                    urls.append(url)
+            return urls
+        return []
 
-# -----------------------------
-# Employee Profile Serializer
-# -----------------------------
+    # ✅ FIXED: Properly indented create method within the class
+    def create(self, validated_data):
+        # Extract project fields
+        project_id = validated_data.pop('project_id', None)
+        project_name = validated_data.pop('project_name', None)
+        attachments = validated_data.pop('attachments', [])
+
+        # ✅ CREATE WITH PROJECT FIELDS
+        advance = AdvanceRequest.objects.create(
+            project_id=project_id,
+            project_name=project_name,
+            **validated_data
+        )
+        
+        # Handle attachments
+        if attachments:
+            attachment_paths = []
+            for attachment in attachments:
+                import uuid
+                ext = os.path.splitext(attachment.name)[1]
+                filename = f"advance_attachments/{uuid.uuid4()}{ext}"
+                saved_path = default_storage.save(filename, attachment)
+                attachment_paths.append(saved_path)
+            
+            advance.attachments = attachment_paths
+            advance.save()
+        
+        return advance
+
+    # ✅ FIXED: Properly indented update method within the class
+    def update(self, instance, validated_data):
+        attachments = validated_data.pop('attachments', None)
+        
+        instance = super().update(instance, validated_data)
+        
+        if attachments is not None:
+            if instance.attachments is None:
+                instance.attachments = []
+            
+            for attachment in attachments:
+                import uuid
+                ext = os.path.splitext(attachment.name)[1]
+                filename = f"advance_attachments/{uuid.uuid4()}{ext}"
+                saved_path = default_storage.save(filename, attachment)
+                instance.attachments.append(saved_path)
+            
+            instance.save()
+        
+        return instance
+
 class EmployeeProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
 
@@ -137,10 +298,6 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             data["avatar"] = None
         return data
 
-
-# -----------------------------
-# HR/Admin Employee Serializer (no password)
-# -----------------------------
 class EmployeeHRCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
@@ -160,7 +317,7 @@ class EmployeeHRCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         employee = super().create(validated_data)
-        employee.set_unusable_password()  # mark password unusable
+        employee.set_unusable_password()
         employee.save()
         return employee
 

@@ -12,6 +12,8 @@ class RoleSelection extends StatelessWidget {
 
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF1A237E), Color(0xFF009688)],
@@ -21,7 +23,6 @@ class RoleSelection extends StatelessWidget {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
             child: Column(
               children: [
                 const SizedBox(height: 20),
@@ -152,12 +153,14 @@ class RoleSelection extends StatelessWidget {
 
                 const SizedBox(height: 20),
 
-                // Footer
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text(
+                // Footer - Moved outside of the main content area
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  child: const Text(
                     "Powered by Motivus • v1.0.0",
                     style: TextStyle(fontSize: 12, color: Colors.white70),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],

@@ -66,98 +66,59 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    try {
-      final pickedFile = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-      );
-      if (pickedFile != null) {
-        setState(() {
-          _imageFile = File(pickedFile.path);
-          _avatarImage = FileImage(_imageFile!);
-        });
-      }
-    } catch (e) {
-      debugPrint("Error picking image: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Failed to pick image")));
-      }
-    }
-  }
+  // REMOVED _pickImage method since profile picture cannot be changed
 
-  Future<void> _saveProfile() async {
-    setState(() => _isLoading = true);
-    try {
-      final updatedProfile = await apiService.updateProfile(
-        employeeId: widget.employeeId,
-        authToken: widget.authToken,
-        fullName: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        phone_number: _mobileController.text.trim(),
-        profileImage: _imageFile,
-      );
-
-      if (updatedProfile != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Profile updated successfully")),
-          );
-        }
-        Navigator.pop(context, updatedProfile['avatar']);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Failed to update profile")),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint("Error saving profile: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to update profile")),
-        );
-      }
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
+  // REMOVED _saveProfile method since no changes can be made
 
   Widget _buildAvatar() {
-    return GestureDetector(
-      onTap: _pickImage,
-      child: CircleAvatar(
-        radius: 55,
-        backgroundColor: const Color(0xFF2C2F38),
-        backgroundImage: _avatarImage,
-        child: _avatarImage == null
-            ? Text(
-                _nameController.text.isNotEmpty
-                    ? _nameController.text.trim()[0].toUpperCase()
-                    : '?',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
-              )
-            : null,
-      ),
+    return CircleAvatar(
+      radius: 55,
+      backgroundColor: const Color(0xFF2C2F38),
+      backgroundImage: _avatarImage,
+      child: _avatarImage == null
+          ? Text(
+              _nameController.text.isNotEmpty
+                  ? _nameController.text.trim()[0].toUpperCase()
+                  : '?',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : null,
     );
   }
 
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.grey),
-      filled: true,
-      fillColor: const Color(0xFF2C2F38),
-      border: OutlineInputBorder(
+  Widget _buildReadOnlyField(String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2F38),
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value.isNotEmpty ? value : 'Not provided',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -168,13 +129,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       backgroundColor: const Color(0xFF181A20),
       appBar: AppBar(
         title: const Text(
-          "Edit Profile",
+          "View Profile", // Changed from "Edit Profile"
           style: TextStyle(color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: const Color(0xFF1F222B),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // Removed edit/save actions since it's view-only
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -183,69 +147,100 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildAvatar(),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _nameController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Full Name",
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white70),
-                      ),
-                    ),
+                  // Profile Picture - Centered and non-interactive
+                  Center(
+                    child: _buildAvatar(),
                   ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: _emailController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Email",
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white70),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: _mobileController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Mobile Number",
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white70),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      "Profile Picture",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
                       ),
                     ),
                   ),
                   const SizedBox(height: 30),
+
+                  // Personal Information Section
+                  const Text(
+                    "Personal Information",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Your profile details are managed by HR",
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Full Name - Read Only
+                  _buildReadOnlyField("Full Name", _nameController.text),
+                  const SizedBox(height: 15),
+
+                  // Email - Read Only
+                  _buildReadOnlyField("Email Address", _emailController.text),
+                  const SizedBox(height: 15),
+
+                  // Mobile Number - Read Only
+                  _buildReadOnlyField("Mobile Number", _mobileController.text),
+                  const SizedBox(height: 15),
+
+                  // Employee ID - Read Only
+                  _buildReadOnlyField("Employee ID", widget.employeeId),
+                  const SizedBox(height: 30),
+
+                  // Information Message
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.blue,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            "To update your profile information, please contact your HR department",
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Close Button (instead of Save Changes)
                   ElevatedButton(
-                    onPressed: _saveProfile,
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF849CFC),
                       foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 50),
                     ),
-                    child: const Text("Save Changes"),
+                    child: const Text("Close"),
                   ),
                 ],
               ),

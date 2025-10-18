@@ -28,6 +28,8 @@ from .views import (
     CEORejectRequestView,
     CEORequestDetailsView,
     CEOGenerateReportView,
+    EmployeeCSVDownloadView,
+    ApprovalTimelineView,
     
     health_check
 )
@@ -54,6 +56,8 @@ api_patterns = [
 
     # Employee Profile
     path('employees/<str:employee_id>/profile/', EmployeeProfileView.as_view(), name='employee-profile'),
+    # Add this to your urlpatterns in urls.py
+    path('employee/csv-download/', EmployeeCSVDownloadView.as_view(), name='employee-csv-download'),
 
     # Password endpoints
     path('employees/<str:employee_id>/verify-password/', VerifyPasswordView.as_view(), name='employee-verify-password'),
@@ -81,6 +85,8 @@ api_patterns = [
     path('ceo/request-details/<int:request_id>/', CEORequestDetailsView.as_view(), name='ceo-request-details'),
     path('ceo/generate-report/', CEOGenerateReportView.as_view(), name='ceo-generate-report'),
 
+    path('approval-timeline/<int:request_id>/', ApprovalTimelineView.as_view(), name='approval-timeline'),
+  
     # Health check
     path('health/', health_check, name='health'),
 ]

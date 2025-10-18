@@ -160,35 +160,54 @@ class ApiService {
       return null;
     }
   }
+// In ApiService - FIX THE SUBMIT METHODS
 
-  // -----------------------------
-  // Submit Reimbursement - FIXED
-  // -----------------------------
+// -----------------------------
+// Submit Reimbursement - FIXED
+// -----------------------------
   Future<String> submitReimbursement({
     required String authToken,
     required String amount,
     String? description,
-    File? attachment,
+    required List<File> attachments,
     required String date,
-    required List<Map<String, dynamic>> payments, // ✅ ADDED
+    required List<Map<String, dynamic>> payments,
+    required String projectId, // ✅ ADD REQUIRED PROJECT ID
   }) async {
     try {
       var uri = Uri.parse('$baseUrl/api/reimbursements/');
       var request = http.MultipartRequest('POST', uri);
+
       request.headers['Authorization'] = 'Token $authToken';
+
+      // ✅ ADD PROJECT ID FIELD - THIS WAS MISSING!
+      request.fields['project_id'] = projectId;
       request.fields['amount'] = amount;
       request.fields['description'] = description ?? '';
       request.fields['date'] = date;
-      request.fields['payments'] = jsonEncode(payments); // ✅ ADDED
+      request.fields['payments'] = jsonEncode(payments);
 
-      if (attachment != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('attachment', attachment.path),
-        );
+      // Add attachments
+      for (var i = 0; i < attachments.length; i++) {
+        var attachment = attachments[i];
+        if (await attachment.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'attachments',
+              attachment.path,
+              filename:
+                  'attachment_${i + 1}_${attachment.path.split('/').last}',
+            ),
+          );
+        }
       }
 
       var streamedResponse = await request.send().timeout(requestTimeout);
       var response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint(
+          'Reimbursement Submit Response: ${response.statusCode} - ${response.body}');
+      debugPrint('Reimbursement Project ID Sent: $projectId'); // ✅ DEBUG
 
       if (response.statusCode == 201) {
         return "Reimbursement submitted successfully!";
@@ -200,39 +219,60 @@ class ApiService {
     }
   }
 
-  // -----------------------------
-  // Submit Advance - FIXED
-  // -----------------------------
+// -----------------------------
+// Submit Advance Request - FIXED
+// -----------------------------
   Future<String> submitAdvanceRequest({
     required String authToken,
     required String amount,
     required String description,
     required String requestDate,
     required String projectDate,
-    File? attachment,
-    required List<Map<String, dynamic>> payments, // ✅ ADDED
+    required List<File> attachments,
+    required List<Map<String, dynamic>> payments,
+    required String projectId, // ✅ ADD REQUIRED PARAMETER
+    required String projectName, // ✅ ADD REQUIRED PARAMETER
   }) async {
     try {
       var uri = Uri.parse('$baseUrl/api/advances/');
       var request = http.MultipartRequest('POST', uri);
+
       request.headers['Authorization'] = 'Token $authToken';
+
+      // ✅ ADD PROJECT FIELDS - THESE WERE MISSING!
+      request.fields['project_id'] = projectId;
+      request.fields['project_name'] = projectName;
       request.fields['amount'] = amount;
       request.fields['description'] = description;
       request.fields['request_date'] = requestDate;
       request.fields['project_date'] = projectDate;
-      request.fields['payments'] = jsonEncode(payments); // ✅ ADDED
+      request.fields['payments'] = jsonEncode(payments);
 
-      if (attachment != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('attachment', attachment.path),
-        );
+      // Add attachments
+      for (var i = 0; i < attachments.length; i++) {
+        var attachment = attachments[i];
+        if (await attachment.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'attachments',
+              attachment.path,
+              filename:
+                  'advance_attachment_${i + 1}_${attachment.path.split('/').last}',
+            ),
+          );
+        }
       }
 
       var streamedResponse = await request.send().timeout(requestTimeout);
       var response = await http.Response.fromStream(streamedResponse);
 
+      debugPrint(
+          'Advance Submit Response: ${response.statusCode} - ${response.body}');
+      debugPrint(
+          'Advance Project Data Sent - ID: $projectId, Name: $projectName'); // ✅ DEBUG
+
       if (response.statusCode == 201) {
-        return "Advance submitted successfully!";
+        return "Advance request submitted successfully!";
       } else {
         return "Error: ${response.statusCode} - ${response.body}";
       }
@@ -1105,6 +1145,50 @@ class ApiService {
         'pending_count': 0,
         'top_department': 'N/A'
       };
+    }
+  }
+
+  // Add to ApiService class
+  Future<Map<String, dynamic>> getApprovalTimeline({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            '$baseUrl/api/approval-timeline/$requestId/?request_type=$requestType'),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+            'Failed to load approval timeline: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching approval timeline: $e');
+    }
+  }
+
+  // Add this method to ApiService
+  Future<Map<String, dynamic>> _handleApiResponse(
+      http.Response response) async {
+    try {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body);
+      } else {
+        throw HttpException(
+          'Request failed with status: ${response.statusCode}',
+          uri: response.request?.url,
+        );
+      }
+    } catch (e) {
+      throw Exception('Failed to parse response: $e');
     }
   }
 }

@@ -86,6 +86,9 @@ class Reimbursement(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True, null=True)
     attachment = models.FileField(upload_to="reimbursements/", blank=True, null=True)
+    # ✅ ADD MULTIPLE ATTACHMENTS FIELD
+    attachments = models.JSONField(default=list, blank=True)  # Store multiple file paths
+    
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
     currentStep = models.IntegerField(default=0)
@@ -98,6 +101,7 @@ class Reimbursement(models.Model):
     final_approver = models.CharField(max_length=50, null=True, blank=True)  # ✅ ADDED FINAL APPROVER FIELD
     approved_by_ceo = models.BooleanField(default=False)  # ✅ ADDED CEO APPROVAL FLAG
     approved_by_finance = models.BooleanField(default=False)  # ✅ ADDED FINANCE APPROVAL FLAG
+    project_id = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return f"{self.employee_id_display} - {self.amount}"
@@ -133,10 +137,15 @@ class AdvanceRequest(models.Model):
     request_date = models.DateField()
     project_date = models.DateField()
     attachment = models.FileField(upload_to="advances/", blank=True, null=True)
+     # ✅ ADD MULTIPLE ATTACHMENTS FIELD
+    attachments = models.JSONField(default=list, blank=True)  # Store multiple file paths
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
     currentStep = models.IntegerField(default=0)
     current_approver_id = models.CharField(max_length=50, null=True, blank=True)
     rejection_reason = models.TextField(blank=True, null=True)
+    project_id = models.CharField(max_length=100, blank=True, null=True)
+    project_name = models.CharField(max_length=200, blank=True, null=True)
+    
     payments = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -151,3 +160,29 @@ class AdvanceRequest(models.Model):
     @property
     def employee_id_display(self):
         return self.employee.employee_id if self.employee else "Deleted Employee"
+    
+class ApprovalHistory(models.Model):
+    REQUEST_TYPES = [
+        ('reimbursement', 'Reimbursement'),
+        ('advance', 'Advance'),
+    ]
+    ACTIONS = [
+        ('submitted', 'Submitted'),
+        ('approved', 'Approved'), 
+        ('rejected', 'Rejected'),
+        ('forwarded', 'Forwarded'),
+    ]
+    
+    request_type = models.CharField(max_length=20, choices=REQUEST_TYPES)
+    request_id = models.IntegerField()  # ID of reimbursement or advance
+    approver_id = models.CharField(max_length=50)
+    approver_name = models.CharField(max_length=100, blank=True)
+    action = models.CharField(max_length=20, choices=ACTIONS)
+    comments = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'Xpensure_approvalhistory'
+
+    def __str__(self):
+        return f"{self.request_type} {self.request_id} - {self.action} by {self.approver_id}"

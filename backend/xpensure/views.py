@@ -1,7 +1,7 @@
 from rest_framework import status, permissions, generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Employee, Reimbursement, AdvanceRequest
+from .models import Employee, Reimbursement, AdvanceRequest, ApprovalHistory
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
 from .serializers import (
@@ -24,7 +24,6 @@ from django.db import models
 import json 
 
 User = get_user_model()
-
 
 # -----------------------------
 # Employee Signup (Self signup)
@@ -94,39 +93,125 @@ class EmployeeLoginView(APIView):
                 {'success': False, 'message': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
 # -----------------------------
-# Reimbursement & Advance ViewSets
+# Reimbursement ViewSet - FIXED
 # -----------------------------
 class ReimbursementViewSet(viewsets.ModelViewSet):
     serializer_class = ReimbursementSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         return Reimbursement.objects.filter(employee=self.request.user).order_by('-date')
     
+    def create(self, request, *args, **kwargs):
+        # ✅ ADD DEBUG LOGGING
+        print("=== REIMBURSEMENT SUBMISSION DATA ===")
+        print("Request data:", dict(request.data))
+        print("Project ID from request:", request.data.get('project_id'))
+        print("Files:", request.FILES)
+        
+        return super().create(request, *args, **kwargs)
+    
     def perform_create(self, serializer):
         employee = self.request.user
-        # agar employee ka report_to hai → Pending, warna Approved
         next_approver = employee.report_to if employee.report_to else None
         status = "Pending" if next_approver else "Approved"
-        serializer.save(employee=employee, current_approver_id=next_approver, status=status)
+        
+        # ✅ ADD DEBUG LOGGING FOR PROJECT ID
+        project_id = self.request.data.get('project_id')
+        print(f"Reimbursement Project ID: {project_id}")
+        
+        # ✅ FIXED: Only call save() once with all parameters
+        instance = serializer.save(
+            employee=employee, 
+            current_approver_id=next_approver, 
+            status=status,
+            project_id=project_id  # ✅ EXPLICITLY SAVE PROJECT ID
+        )
+        
+        # ✅ CREATE INITIAL SUBMISSION HISTORY
+        ApprovalHistory.objects.create(
+            request_type='reimbursement',
+            request_id=instance.id,
+            approver_id=employee.employee_id,
+            approver_name=employee.fullName,
+            action='submitted',
+            comments='Request submitted'
+        )
+        
+        # If no approver (auto-approved), create approval history
+        if not next_approver:
+            ApprovalHistory.objects.create(
+                request_type='reimbursement',
+                request_id=instance.id,
+                approver_id='system',
+                approver_name='System',
+                action='approved',
+                comments='Auto-approved (no approver chain)'
+            )
 
-
-
+# -----------------------------
+# Advance Request ViewSet - FIXED
+# -----------------------------
 class AdvanceRequestViewSet(viewsets.ModelViewSet):
     serializer_class = AdvanceRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         return AdvanceRequest.objects.filter(employee=self.request.user).order_by('-request_date')
+    
+    def create(self, request, *args, **kwargs):
+        # ✅ ADD DEBUG LOGGING
+        print("=== ADVANCE SUBMISSION DATA ===")
+        print("Request data:", dict(request.data))
+        print("Project ID from request:", request.data.get('project_id'))
+        print("Project Name from request:", request.data.get('project_name'))
+        print("Files:", request.FILES)
+        
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         employee = self.request.user
-    #  agar employee ka report_to hai → Pending, warna Approved
         next_approver = employee.report_to if employee.report_to else None
         status = "Pending" if next_approver else "Approved"
-        serializer.save(employee=employee, current_approver_id=next_approver, status=status)
-
+        
+        # ✅ ADD DEBUG LOGGING FOR PROJECT DATA
+        project_id = self.request.data.get('project_id')
+        project_name = self.request.data.get('project_name')
+        print(f"Advance Project ID: {project_id}, Project Name: {project_name}")
+        
+        # ✅ FIXED: Only call save() once with all parameters
+        instance = serializer.save(
+            employee=employee, 
+            current_approver_id=next_approver, 
+            status=status,
+            project_id=project_id,  # ✅ EXPLICITLY SAVE PROJECT ID
+            project_name=project_name  # ✅ EXPLICITLY SAVE PROJECT NAME
+        )
+        
+        # ✅ CREATE INITIAL SUBMISSION HISTORY
+        ApprovalHistory.objects.create(
+            request_type='advance',
+            request_id=instance.id,
+            approver_id=employee.employee_id,
+            approver_name=employee.fullName,
+            action='submitted',
+            comments='Request submitted'
+        )
+        
+        # If no approver (auto-approved), create approval history
+        if not next_approver:
+            ApprovalHistory.objects.create(
+                request_type='advance',
+                request_id=instance.id,
+                approver_id='system',
+                approver_name='System',
+                action='approved',
+                comments='Auto-approved (no approver chain)'
+            )
 class ReimbursementListCreateView(generics.ListCreateAPIView):
     serializer_class = ReimbursementSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -156,9 +241,7 @@ class AdvanceRequestListCreateView(generics.ListCreateAPIView):
         status = "Pending" if next_approver else "Approved"
         serializer.save(employee=employee, current_approver_id=next_approver, status=status)
 
-
 # -----------------------------
-
 # Employee Profile
 # -----------------------------
 class EmployeeProfileView(APIView):
@@ -243,7 +326,84 @@ class EmployeeDeleteView(generics.DestroyAPIView):
     serializer_class = EmployeeSignupSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "employee_id"
+# -----------------------------
+# CSV Download for Employee Dashboard
+# -----------------------------
+class EmployeeCSVDownloadView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request):
+        try:
+            period = request.GET.get('period', '1 Month')
+            employee_id = request.user.employee_id
+            
+            # Calculate date range based on period
+            end_date = timezone.now().date()
+            if period == "1 Month":
+                start_date = end_date - timedelta(days=30)
+            elif period == "3 Months":
+                start_date = end_date - timedelta(days=90)
+            elif period == "6 Months":
+                start_date = end_date - timedelta(days=180)
+            elif period == "1 Year":
+                start_date = end_date - timedelta(days=365)
+            else:
+                start_date = end_date - timedelta(days=30)
+
+            # Get employee's requests within date range
+            reimbursements = Reimbursement.objects.filter(
+                employee_id=employee_id,
+                created_at__date__range=[start_date, end_date]
+            ).order_by('-created_at')
+
+            advances = AdvanceRequest.objects.filter(
+                employee_id=employee_id,
+                created_at__date__range=[start_date, end_date]
+            ).order_by('-created_at')
+
+            # Create CSV response
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="xpensure_requests_{period.replace(" ", "_").lower()}_{end_date}.csv"'
+            
+            writer = csv.writer(response)
+            # Write header
+            writer.writerow([
+                'S.No', 'Request Type', 'Amount', 'Status', 
+                'Submission Date', 'Description', 'Payment Date'
+            ])
+            
+            # Write reimbursement data
+            for i, reimbursement in enumerate(reimbursements, 1):
+                writer.writerow([
+                    i,
+                    'Reimbursement',
+                    f'₹{reimbursement.amount}',
+                    reimbursement.status,
+                    reimbursement.created_at.strftime('%Y-%m-%d') if reimbursement.created_at else '-',
+                    reimbursement.description or 'No description',
+                    reimbursement.payment_date.strftime('%Y-%m-%d') if reimbursement.payment_date else '-'
+                ])
+            
+            # Write advance data
+            for i, advance in enumerate(advances, len(reimbursements) + 1):
+                writer.writerow([
+                    i,
+                    'Advance',
+                    f'₹{advance.amount}',
+                    advance.status,
+                    advance.created_at.strftime('%Y-%m-%d') if advance.created_at else '-',
+                    advance.description or 'No description',
+                    advance.payment_date.strftime('%Y-%m-%d') if advance.payment_date else '-'
+                ])
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate CSV: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 # -----------------------------
 # HR: List & Create Employees
 # -----------------------------
@@ -264,67 +424,93 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAdminUser]
 
-# -----------------------------
-# Multi-level Approval Utilities - UPDATED
-# -----------------------------
+
 def get_next_approver(employee):
     """
-    Returns the next approver based on report_to.
-    Special handling for Finance role.
+    Returns the next approver based on report_to hierarchy.
     """
     if not employee or not employee.report_to:
         return None
     
     try:
         next_approver = User.objects.get(employee_id=employee.report_to)
-        
-        # If next approver has Finance role, this is the finance approval step
-        if next_approver.role == "Finance":
-            return next_approver.employee_id
-            
-        # If next approver is CEO, this is the final approval
-        if next_approver.role == "CEO":
-            return next_approver.employee_id
-            
-        # Normal manager approval chain
         return next_approver.employee_id
-        
     except User.DoesNotExist:
         return None
+
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     """
-    Handles approval/rejection for Reimbursement/AdvanceRequest
+    Handles approval/rejection with proper tracking - COMPLETELY FIXED VERSION
     """
+    request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
+    
     if not approved:
+        # REJECTION
         request_obj.status = "Rejected"
         request_obj.rejection_reason = rejection_reason
         request_obj.current_approver_id = None
         request_obj.final_approver = approver_employee.employee_id
+        
+        ApprovalHistory.objects.create(
+            request_type=request_type,
+            request_id=request_obj.id,
+            approver_id=approver_employee.employee_id,
+            approver_name=approver_employee.fullName,
+            action='rejected',
+            comments=rejection_reason or 'Request rejected'
+        )
+        
         request_obj.save()
         return request_obj
 
-    # ✅ CEO APPROVAL - DIRECT FINAL APPROVAL
+    # ✅ CREATE APPROVAL HISTORY FOR CURRENT APPROVER
+    ApprovalHistory.objects.create(
+        request_type=request_type,
+        request_id=request_obj.id,
+        approver_id=approver_employee.employee_id,
+        approver_name=approver_employee.fullName,
+        action='approved',
+        comments=f'Approved by {approver_employee.role} ({approver_employee.fullName})'
+    )
+
+    # ✅ CEO APPROVAL - FINAL APPROVAL (GOES TO PAYMENT TAB)
     if approver_employee.role == "CEO":
-        request_obj.status = "Approved"
-        request_obj.current_approver_id = None
+        request_obj.status = "Approved"  # ✅ FINAL STATUS
+        request_obj.current_approver_id = None  # ✅ NO MORE APPROVERS
         request_obj.approved_by_ceo = True
         request_obj.final_approver = approver_employee.employee_id
         request_obj.rejection_reason = None
+        request_obj.currentStep = 5  # CEO approval step
+        
         request_obj.save()
         return request_obj
 
-    # ✅ FINANCE APPROVAL
+    # ✅ FINANCE APPROVAL - GOES TO CEO
     if approver_employee.role == "Finance":
         request_obj.approved_by_finance = True
+        request_obj.currentStep = 4  # Finance approval step
+        
+        # ✅ CREATE ADDITIONAL HISTORY FOR FINANCE APPROVAL
+        ApprovalHistory.objects.create(
+            request_type=request_type,
+            request_id=request_obj.id,
+            approver_id=approver_employee.employee_id,
+            approver_name=approver_employee.fullName,
+            action='forwarded',
+            comments=f'Forwarded to CEO by Finance ({approver_employee.fullName})'
+        )
+        
         # After finance approval, go to CEO
         next_approver_id = get_next_approver(approver_employee)
         if next_approver_id:
             request_obj.current_approver_id = next_approver_id
             request_obj.status = "Pending"
         else:
+            # No CEO, final approval
             request_obj.status = "Approved"
             request_obj.current_approver_id = None
             request_obj.final_approver = approver_employee.employee_id
+            request_obj.currentStep = 5
 
     # ✅ NORMAL MANAGER APPROVAL
     else:
@@ -334,11 +520,14 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             request_obj.current_approver_id = next_approver_id
             request_obj.status = "Pending"
             
-            # Check if next approver is Finance
+            # Update step based on next approver
             try:
                 next_approver = User.objects.get(employee_id=next_approver_id)
                 if next_approver.role == "Finance":
                     request_obj.status = "Pending Finance"
+                    request_obj.currentStep = 3  # Ready for finance
+                elif next_approver.role == "CEO":
+                    request_obj.currentStep = 4  # Ready for CEO
             except User.DoesNotExist:
                 pass
         else:
@@ -346,10 +535,12 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             request_obj.status = "Approved"
             request_obj.current_approver_id = None
             request_obj.final_approver = approver_employee.employee_id
-            request_obj.rejection_reason = None
+            request_obj.currentStep = 5
+    
     request_obj.save()
     return request_obj
 
+# ----------------------------
 # -----------------------------
 # Approve / Reject APIs
 # -----------------------------
@@ -431,9 +622,11 @@ class PendingApprovalsView(APIView):
                     "description": r.description,
                     "payments": r.payments,
                     "status": r.status,
-                    "rejection_reason": r.rejection_reason
+                    "rejection_reason": r.rejection_reason,  # ✅ ADDED COMMA
+                    "projectId": r.project_id,  # ✅ ADDED COMMA
+                    "project_id": r.project_id,
                 }
-                for r in reimbursements_to_approve
+                for r in reimbursements_to_approve 
             ],
             "advances_to_approve": [
                 {
@@ -447,7 +640,12 @@ class PendingApprovalsView(APIView):
                     "description": a.description,
                     "payments": a.payments,
                     "status": a.status,
-                    "rejection_reason": a.rejection_reason
+                    "rejection_reason": a.rejection_reason,  # ✅ ADDED COMMA
+                    # ✅ ADD PROJECT FIELDS
+                    "projectId": a.project_id,
+                    "project_id": a.project_id,
+                    "projectName": a.project_name,
+                    "project_name": a.project_name,
                 }
                 for a in advances_to_approve
             ],
@@ -464,7 +662,10 @@ class PendingApprovalsView(APIView):
                     "rejection_reason": r.rejection_reason,
                     "created_at": r.created_at,
                     "updated_at": r.updated_at,
-                    "payment_date": r.payment_date  # ✅ ADDED PAYMENT DATE
+                    "payment_date": r.payment_date,  # ✅ ADDED COMMA
+                    # ✅ ADD PROJECT FIELDS - THIS IS WHAT'S MISSING!
+                    "projectId": r.project_id,
+                    "project_id": r.project_id,
                 }
                 for r in reimbursements_created
             ],
@@ -481,7 +682,12 @@ class PendingApprovalsView(APIView):
                     "rejection_reason": a.rejection_reason,
                     "created_at": a.created_at,
                     "updated_at": a.updated_at,
-                    "payment_date": a.payment_date  # ✅ ADDED PAYMENT DATE
+                    "payment_date": a.payment_date,  # ✅ ADDED COMMA
+                     # ✅ ADD PROJECT FIELDS - THIS IS WHAT'S MISSING!
+                    "projectId": a.project_id,
+                    "project_id": a.project_id,
+                    "projectName": a.project_name,
+                    "project_name": a.project_name,
                 }
                 for a in advances_created
             ],
@@ -764,8 +970,7 @@ class MarkAsPaidView(APIView):
                 advance.payment_date = timezone.now()
                 advance.save()
                 
-                return Response({
-                    'message': 'Advance marked as paid',
+                return Response({ 'message': 'Advance marked as paid',
                     'status': advance.status
                 })
                 
@@ -1148,8 +1353,6 @@ class CEOApproveRequestView(APIView):
                 {'error': 'Request not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-
 class CEORejectRequestView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1350,7 +1553,7 @@ class CEOGenerateReportView(APIView):
         writer.writerow([
             'Request ID', 'Employee ID', 'Employee Name', 'Department',
             'Request Type', 'Amount', 'Submission Date', 'Status',
-            'CEO Action', 'Rejection Reason', 'Description', 'Payment Count'
+            'CEO Action', 'Rejection Reason', 'Description', 'Payment Count',
         ])
         
         # Write reimbursement data
@@ -1390,3 +1593,189 @@ class CEOGenerateReportView(APIView):
             ])
         
         return response
+    
+class ApprovalTimelineView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, request_id):
+        request_type = request.GET.get('request_type')
+        
+        if not request_type:
+            return Response(
+                {'error': 'request_type parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get approval history
+        approval_history = ApprovalHistory.objects.filter(
+            request_type=request_type,
+            request_id=request_id
+        ).order_by('timestamp')
+
+        # Get request details
+        if request_type == 'reimbursement':
+            request_obj = Reimbursement.objects.filter(id=request_id).first()
+        else:
+            request_obj = AdvanceRequest.objects.filter(id=request_id).first()
+
+        if not request_obj:
+            return Response(
+                {'error': 'Request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ✅ FIXED: Build proper stepper flow
+        timeline = self._build_proper_stepper_flow(request_obj, approval_history)
+        
+        return Response({
+            'timeline': timeline,
+            'current_status': request_obj.status,
+            'current_step': self._get_current_step(timeline, request_obj.status),
+            'is_rejected': request_obj.status == 'Rejected'
+        })
+
+    def _build_proper_stepper_flow(self, request_obj, approval_history):
+        """Build proper stepper flow with clear steps - FIXED VERSION"""
+        timeline = []
+        
+        # Step 1: Request Submitted
+        timeline.append({
+            'step': 'Request Submitted',
+            'approver_name': request_obj.employee.fullName,
+            'approver_id': request_obj.employee.employee_id,
+            'timestamp': request_obj.created_at,
+            'status': 'completed',
+            'action': 'submitted',
+            'step_type': 'submission',
+            'comments': 'Request submitted by employee'
+        })
+
+        # ✅ FIXED: Add ALL approval steps from history (not just 'approved')
+        for history in approval_history:
+            if history.action == 'approved':
+                timeline.append({
+                    'step': f'Approved by {history.approver_name}',
+                    'approver_name': history.approver_name,
+                    'approver_id': history.approver_id,
+                    'timestamp': history.timestamp,
+                    'status': 'completed',
+                    'action': 'approved',
+                    'step_type': self._get_step_type(history.approver_id),
+                    'comments': history.comments
+                })
+            elif history.action == 'forwarded':  # ✅ ADD FORWARDED ACTIONS
+                timeline.append({
+                    'step': f'Forwarded by {history.approver_name}',
+                    'approver_name': history.approver_name,
+                    'approver_id': history.approver_id,
+                    'timestamp': history.timestamp,
+                    'status': 'completed',
+                    'action': 'forwarded',
+                    'step_type': self._get_step_type(history.approver_id),
+                    'comments': history.comments
+                })
+            elif history.action == 'rejected':  # ✅ ADD REJECTED ACTIONS
+                timeline.append({
+                    'step': f'Rejected by {history.approver_name}',
+                    'approver_name': history.approver_name,
+                    'approver_id': history.approver_id,
+                    'timestamp': history.timestamp,
+                    'status': 'rejected',
+                    'action': 'rejected',
+                    'step_type': self._get_step_type(history.approver_id),
+                    'comments': history.comments
+                })
+
+        # ✅ FIXED: Add current pending step based on status
+        if request_obj.status == 'Pending Finance':
+            timeline.append({
+                'step': 'Pending Finance Approval',
+                'approver_name': 'Finance Department',
+                'approver_id': 'finance',
+                'timestamp': None,
+                'status': 'pending',
+                'action': 'pending',
+                'step_type': 'finance',
+                'comments': 'Waiting for finance approval'
+            })
+        elif request_obj.status == 'Pending' and request_obj.current_approver_id:
+            try:
+                current_approver = User.objects.get(employee_id=request_obj.current_approver_id)
+                timeline.append({
+                    'step': f'Pending {current_approver.role} Approval',
+                    'approver_name': current_approver.fullName,
+                    'approver_id': current_approver.employee_id,
+                    'timestamp': None,
+                    'status': 'pending',
+                    'action': 'pending',
+                    'step_type': current_approver.role.lower(),
+                    'comments': f'Waiting for {current_approver.role} approval'
+                })
+            except User.DoesNotExist:
+                pass
+
+        # ✅ FIXED: Add CEO Approval Step for Approved requests
+        if request_obj.status == 'Approved' and request_obj.current_approver_id is None:
+            # Check if CEO approval is already in history
+            ceo_in_history = any(
+                history.action == 'approved' and 
+                self._get_step_type(history.approver_id) == 'ceo' 
+                for history in approval_history
+            )
+            
+            if not ceo_in_history:
+                timeline.append({
+                    'step': 'Approved by CEO',
+                    'approver_name': 'CEO',
+                    'approver_id': 'ceo',
+                    'timestamp': request_obj.updated_at,
+                    'status': 'completed',
+                    'action': 'approved',
+                    'step_type': 'ceo',
+                    'comments': 'Final approval by CEO'
+                })
+
+        # ✅ FIXED: Add Payment Step for Approved requests
+        if request_obj.status == 'Approved' and request_obj.current_approver_id is None:
+            timeline.append({
+                'step': 'Ready for Payment',
+                'approver_name': 'Finance Department',
+                'approver_id': 'finance',
+                'timestamp': None,
+                'status': 'pending',
+                'action': 'pending',
+                'step_type': 'payment',
+                'comments': 'Waiting for payment processing'
+            })
+
+        # ✅ FIXED: Add Payment Processed Step
+        if request_obj.status == 'Paid':
+            timeline.append({
+                'step': 'Payment Processed',
+                'approver_name': 'Finance Department',
+                'approver_id': 'finance',
+                'timestamp': request_obj.payment_date,
+                'status': 'paid',
+                'action': 'paid',
+                'step_type': 'payment',
+                'comments': 'Payment has been processed successfully'
+            })
+
+        return timeline
+
+    def _get_step_type(self, approver_id):
+        """Determine step type based on approver role"""
+        try:
+            approver = User.objects.get(employee_id=approver_id)
+            return approver.role.lower()
+        except User.DoesNotExist:
+            return 'system'
+
+    def _get_current_step(self, timeline, status):
+        """Get current active step number"""
+        if status == 'Rejected':
+            return len(timeline)
+        
+        completed_steps = len([t for t in timeline if t['status'] in ['completed', 'paid']])
+        return completed_steps

@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import 'employee_signin.dart';
 
@@ -28,49 +26,6 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
-  File? _profileImage;
-
-  final ImagePicker _picker = ImagePicker();
-
-  Future<void> _pickImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(
-      source: source,
-      imageQuality: 70,
-    );
-    if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
-    }
-  }
-
-  void _showImagePickerOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text("Take a Photo"),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text("Choose from Gallery"),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
@@ -93,7 +48,7 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
       aadharNumber: _aadharController.text.trim(),
       password: _passwordController.text.trim(),
       confirmPassword: _confirmPasswordController.text.trim(),
-      avatar: _profileImage,
+      avatar: null, // No avatar - HR will set it later
     );
 
     setState(() {
@@ -144,24 +99,39 @@ class _EmployeeSignUpPageState extends State<EmployeeSignUpPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    GestureDetector(
-                      onTap: _showImagePickerOptions,
-                      child: CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.grey[200],
-                        backgroundImage: _profileImage != null
-                            ? FileImage(_profileImage!)
-                            : null,
-                        child: _profileImage == null
-                            ? const Icon(
-                                Icons.camera_alt,
-                                size: 50,
-                                color: Colors.grey,
-                              )
-                            : null,
+                    // Simple icon instead of profile picture
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.person_add,
+                        size: 40,
+                        color: Colors.grey[600],
                       ),
                     ),
                     const SizedBox(height: 16),
+                    Text(
+                      "Create Employee Account",
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Fill in your details to get started",
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
                     _buildTextField(_nameController, "Full Name", Icons.person),
                     const SizedBox(height: 12),
                     _buildTextField(
