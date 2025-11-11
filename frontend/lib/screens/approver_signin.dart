@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'ceo_dashboard.dart';
-import 'finance_dashboard.dart' as finance;
+import 'finance_verification_dashboard.dart'; // ✅ ADD THIS
+import 'finance_payment_dashboard.dart'; // ✅ ADD THIS
 import 'common_dashboard.dart' as common;
 
 class ApproverSignInPage extends StatefulWidget {
@@ -60,8 +61,7 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
             data['token'] != null;
 
         if (success) {
-          final role = data['role'] ??
-              'Common'; // Default to Common if role not specified
+          final role = data['role'] ?? 'Common';
           final userId = data['user_id'] ?? data['employee_id'] ?? employeeId;
           final userName = data['fullName'] ??
               data['user_name'] ??
@@ -83,7 +83,7 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
             'role': role,
           };
 
-          // Navigate to appropriate dashboard
+          // Navigate to appropriate dashboard - UPDATED
           if (role == 'CEO' || role == 'ceo') {
             Navigator.pushReplacement(
               context,
@@ -94,11 +94,21 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                 ),
               ),
             );
-          } else if (role == 'Finance' || role == 'finance') {
+          } else if (role == "Finance Verification") {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => finance.FinanceDashboard(
+                builder: (context) => FinanceVerificationDashboard(
+                  userData: userData,
+                  authToken: token,
+                ),
+              ),
+            );
+          } else if (role == "Finance Payment") {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FinancePaymentDashboard(
                   userData: userData,
                   authToken: token,
                 ),

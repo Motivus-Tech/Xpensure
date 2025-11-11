@@ -410,167 +410,6 @@ class ApiService {
     }
   }
 
-// -----------------------------
-// Finance Dashboard APIs
-// -----------------------------
-  Future<Map<String, dynamic>> getFinanceRequests({
-    required String authToken,
-  }) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/finance/dashboard/'),
-        headers: {
-          'Authorization': 'Token $authToken',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ).timeout(requestTimeout);
-
-      debugPrint(
-          'Finance Dashboard Response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-            'Failed to load finance requests: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error in getFinanceRequests: $e');
-      throw Exception('Failed to load finance requests: $e');
-    }
-  }
-
-// -----------------------------
-// Finance Approve Request
-// -----------------------------
-  Future<bool> financeApproveRequest({
-    required String authToken,
-    required int requestId,
-    required String requestType,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/finance/approve-request/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'request_id': requestId,
-              'request_type': requestType,
-            }),
-          )
-          .timeout(requestTimeout);
-
-      debugPrint(
-          'Finance Approve Response: ${response.statusCode} - ${response.body}');
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('Error in financeApproveRequest: $e');
-      return false;
-    }
-  }
-
-// -----------------------------
-// Finance Reject Request
-// -----------------------------
-  Future<bool> financeRejectRequest({
-    required String authToken,
-    required int requestId,
-    required String requestType,
-    required String reason,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/finance/reject-request/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'request_id': requestId,
-              'request_type': requestType,
-              'reason': reason, // ensure this matches DRF serializer
-            }),
-          )
-          .timeout(requestTimeout);
-
-      debugPrint(
-          'Finance Reject Response: ${response.statusCode} - ${response.body}');
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('Error in financeRejectRequest: $e');
-      return false;
-    }
-  }
-
-// -----------------------------
-// Mark Request as Paid
-// -----------------------------
-  Future<bool> markAsPaid({
-    required String authToken,
-    required int requestId,
-    required String requestType,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/finance/mark-paid/'),
-            headers: {
-              'Authorization': 'Token $authToken',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'request_id': requestId,
-              'request_type': requestType,
-            }),
-          )
-          .timeout(requestTimeout);
-
-      debugPrint(
-          'Mark As Paid Response: ${response.statusCode} - ${response.body}');
-
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('Error in markAsPaid: $e');
-      return false;
-    }
-  }
-
-// -----------------------------
-// Generate Finance Report
-// -----------------------------
-  Future<http.Response> generateFinanceReport({
-    required String authToken,
-    required int months,
-  }) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/finance/generate-report/?months=$months'),
-        headers: {
-          'Authorization': 'Token $authToken',
-          'Accept': 'application/json',
-        },
-      ).timeout(requestTimeout);
-
-      debugPrint(
-          'Generate Finance Report Response: ${response.statusCode} - ${response.body}');
-
-      return response;
-    } catch (e) {
-      debugPrint('Error in generateFinanceReport: $e');
-      rethrow;
-    }
-  }
-
   // -----------------------------
   // Optional: Server Health Check
   // -----------------------------
@@ -1190,5 +1029,76 @@ class ApiService {
     } catch (e) {
       throw Exception('Failed to parse response: $e');
     }
+  }
+
+  // Add these methods to ApiService
+  Future<Map<String, dynamic>> getFinanceVerificationDashboard({
+    required String authToken,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/finance-verification/dashboard/'),
+      headers: {'Authorization': 'Token $authToken'},
+    );
+    return json.decode(response.body);
+  }
+
+  Future<bool> financeVerificationApprove({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/finance-verification/approve/'),
+      headers: {'Authorization': 'Token $authToken'},
+      body: json.encode({
+        'request_id': requestId,
+        'request_type': requestType,
+      }),
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<bool> financeVerificationReject({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+    required String reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/finance-verification/reject/'),
+      headers: {'Authorization': 'Token $authToken'},
+      body: json.encode({
+        'request_id': requestId,
+        'request_type': requestType,
+        'reason': reason,
+      }),
+    );
+    return response.statusCode == 200;
+  }
+
+  Future<Map<String, dynamic>> getFinancePaymentDashboard({
+    required String authToken,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/finance-payment/dashboard/'),
+      headers: {'Authorization': 'Token $authToken'},
+    );
+    return json.decode(response.body);
+  }
+
+  Future<bool> financePaymentMarkAsPaid({
+    required String authToken,
+    required int requestId,
+    required String requestType,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/finance-payment/mark-paid/'),
+      headers: {'Authorization': 'Token $authToken'},
+      body: json.encode({
+        'request_id': requestId,
+        'request_type': requestType,
+      }),
+    );
+    return response.statusCode == 200;
   }
 }

@@ -16,11 +16,7 @@ from .views import (
     ApproveRequestAPIView,
     RejectRequestAPIView,
     PendingApprovalsView,
-    FinanceDashboardView,
-    FinanceApproveRequestView, 
-    FinanceRejectRequestView,
-    MarkAsPaidView,
-    GenerateFinanceReportView,
+   
     CEODashboardView,
     CEOAnalyticsView,
     CEOHistoryView,
@@ -30,6 +26,12 @@ from .views import (
     CEOGenerateReportView,
     EmployeeCSVDownloadView,
     ApprovalTimelineView,
+    FinanceVerificationDashboardView,
+    FinanceVerificationApproveView,
+    FinanceVerificationRejectView,
+    FinancePaymentDashboardView,
+    FinanceMarkAsPaidView,
+    FinancePaymentInsightsView,
     
     health_check
 )
@@ -68,14 +70,7 @@ api_patterns = [
     path('approvals/<int:request_id>/approve/', ApproveRequestAPIView.as_view(), name='approve-request'),
     path('approvals/<int:request_id>/reject/', RejectRequestAPIView.as_view(), name='reject-request'),
 
-     # Remove the duplicate 'api/' from finance URLs
-
-    path('finance/dashboard/', FinanceDashboardView.as_view(), name='finance-dashboard'),
-    path('finance/approve-request/', FinanceApproveRequestView.as_view(), name='finance-approve-request'),
-    path('finance/reject-request/', FinanceRejectRequestView.as_view(), name='finance-reject-request'),
-    path('finance/mark-paid/', MarkAsPaidView.as_view(), name='mark-as-paid'),
-    path('finance/generate-report/', GenerateFinanceReportView.as_view(), name='generate-finance-report'),
-
+    
     
     path('ceo/dashboard/', CEODashboardView.as_view(), name='ceo-dashboard'),
     path('ceo/analytics/', CEOAnalyticsView.as_view(), name='ceo-analytics'),
@@ -86,6 +81,17 @@ api_patterns = [
     path('ceo/generate-report/', CEOGenerateReportView.as_view(), name='ceo-generate-report'),
 
     path('approval-timeline/<int:request_id>/', ApprovalTimelineView.as_view(), name='approval-timeline'),
+
+    # Finance Verification URLs
+    path('finance-verification/dashboard/', FinanceVerificationDashboardView.as_view(), name='finance-verification-dashboard'),
+    path('finance-verification/approve/', FinanceVerificationApproveView.as_view(), name='finance-verification-approve'),
+    path('finance-verification/reject/', FinanceVerificationRejectView.as_view(), name='finance-verification-reject'),
+    
+    # Finance Payment URLs  
+    path('finance-payment/dashboard/', FinancePaymentDashboardView.as_view(), name='finance-payment-dashboard'),
+    path('finance-payment/mark-paid/', FinanceMarkAsPaidView.as_view(), name='finance-payment-mark-paid'),
+    path('finance-payment/insights/',FinancePaymentInsightsView.as_view(), name='finance-payment-insights'),
+
   
     # Health check
     path('health/', health_check, name='health'),

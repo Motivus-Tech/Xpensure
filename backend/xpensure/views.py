@@ -427,20 +427,22 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 def get_next_approver(employee):
     """
-    Returns the next approver based on report_to hierarchy.
+    FIXED: Returns the next approver based on report_to hierarchy.
     """
     if not employee or not employee.report_to:
         return None
     
     try:
         next_approver = User.objects.get(employee_id=employee.report_to)
+        print(f"🔗 Next approver for {employee.employee_id}: {next_approver.employee_id} ({next_approver.role})")
         return next_approver.employee_id
     except User.DoesNotExist:
+        print(f"❌ Next approver {employee.report_to} not found for {employee.employee_id}")
         return None
-
+    
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     """
-    Handles approval/rejection with proper tracking - COMPLETELY FIXED VERSION
+    FIXED VERSION: CEO approve -> Status=Approved, Finance Payment -> Status=Paid
     """
     request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
     
@@ -473,46 +475,31 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         comments=f'Approved by {approver_employee.role} ({approver_employee.fullName})'
     )
 
-    # ✅ CEO APPROVAL - FINAL APPROVAL (GOES TO PAYMENT TAB)
+    # ✅ FIXED: CEO APPROVAL = FINAL APPROVAL (Status=Approved)
     if approver_employee.role == "CEO":
-        request_obj.status = "Approved"  # ✅ FINAL STATUS
-        request_obj.current_approver_id = None  # ✅ NO MORE APPROVERS
-        request_obj.approved_by_ceo = True
+        request_obj.status = "Approved"
+        request_obj.current_approver_id = None
         request_obj.final_approver = approver_employee.employee_id
-        request_obj.rejection_reason = None
-        request_obj.currentStep = 5  # CEO approval step
+        request_obj.currentStep = 6
+        request_obj.approved_by_ceo = True  # ✅ IMPORTANT: Set this flag
+        print(f"✅ CEO Final Approval: Request {request_obj.id} approved by CEO")
         
-        request_obj.save()
-        return request_obj
+        # ✅ AUTO-ASSIGN TO FINANCE PAYMENT FOR PROCESSING
+        finance_payment_users = User.objects.filter(role="Finance Payment")
+        if finance_payment_users.exists():
+            next_approver = finance_payment_users.first()
+            request_obj.current_approver_id = next_approver.employee_id
+            print(f"💰 Sent to Finance Payment for payment processing: {next_approver.employee_id}")
 
-    # ✅ FINANCE APPROVAL - GOES TO CEO
-    if approver_employee.role == "Finance":
-        request_obj.approved_by_finance = True
-        request_obj.currentStep = 4  # Finance approval step
-        
-        # ✅ CREATE ADDITIONAL HISTORY FOR FINANCE APPROVAL
-        ApprovalHistory.objects.create(
-            request_type=request_type,
-            request_id=request_obj.id,
-            approver_id=approver_employee.employee_id,
-            approver_name=approver_employee.fullName,
-            action='forwarded',
-            comments=f'Forwarded to CEO by Finance ({approver_employee.fullName})'
-        )
-        
-        # After finance approval, go to CEO
-        next_approver_id = get_next_approver(approver_employee)
-        if next_approver_id:
-            request_obj.current_approver_id = next_approver_id
-            request_obj.status = "Pending"
-        else:
-            # No CEO, final approval
-            request_obj.status = "Approved"
-            request_obj.current_approver_id = None
-            request_obj.final_approver = approver_employee.employee_id
-            request_obj.currentStep = 5
+    # ✅ FINANCE PAYMENT = MARK AS PAID
+    elif approver_employee.role == "Finance Payment":
+        request_obj.status = "Paid"
+        request_obj.current_approver_id = None
+        request_obj.payment_date = timezone.now()
+        request_obj.currentStep = 7
+        print(f"💰 Payment Processed: Request {request_obj.id} marked as paid by Finance Payment")
 
-    # ✅ NORMAL MANAGER APPROVAL
+    # ✅ OTHER ROLES (Common, Finance Verification) - NORMAL CHAIN FLOW
     else:
         next_approver_id = get_next_approver(approver_employee)
         
@@ -520,26 +507,32 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             request_obj.current_approver_id = next_approver_id
             request_obj.status = "Pending"
             
-            # Update step based on next approver
+            # Track steps based on next approver's role
             try:
                 next_approver = User.objects.get(employee_id=next_approver_id)
-                if next_approver.role == "Finance":
-                    request_obj.status = "Pending Finance"
-                    request_obj.currentStep = 3  # Ready for finance
+                if next_approver.role == "Finance Verification":
+                    request_obj.currentStep = 3
+                    request_obj.approved_by_finance = False
                 elif next_approver.role == "CEO":
-                    request_obj.currentStep = 4  # Ready for CEO
+                    request_obj.currentStep = 4
+                elif next_approver.role == "Finance Payment":
+                    request_obj.currentStep = 5
+                else:
+                    request_obj.currentStep = 2
+                    
+                print(f"✅ {approver_employee.role} → {next_approver.role}: Request {request_obj.id} sent to {next_approver_id}")
             except User.DoesNotExist:
-                pass
+                print(f"❌ Next approver {next_approver_id} not found")
         else:
-            # No next approver - final approval
+            # No next approver - final approval (for non-CEO roles)
             request_obj.status = "Approved"
             request_obj.current_approver_id = None
             request_obj.final_approver = approver_employee.employee_id
-            request_obj.currentStep = 5
-    
+            request_obj.currentStep = 6
+            print(f"✅ Final approval by {approver_employee.role}")
+
     request_obj.save()
     return request_obj
-
 # ----------------------------
 # -----------------------------
 # Approve / Reject APIs
@@ -697,362 +690,6 @@ class PendingApprovalsView(APIView):
     
 def health_check(request):
     return JsonResponse({"status": "ok"})
-class FinanceDashboardView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        # Check if user has Finance role
-        if request.user.role != "Finance":
-            return Response(
-                {"detail": "Access denied. Finance role required."}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Get requests where current Finance user is the approver (Pending for Finance approval)
-        pending_finance_approval = []
-        
-        # Reimbursements pending Finance approval
-        reimbursement_pending = Reimbursement.objects.filter(
-            current_approver_id=request.user.employee_id,
-            status__in=["Pending", "Pending Finance"]
-        ).select_related('employee')
-        
-        for reimbursement in reimbursement_pending:
-            pending_finance_approval.append({
-                'id': reimbursement.id,
-                'employee_id': reimbursement.employee.employee_id,
-                'employee_name': reimbursement.employee.fullName,
-                'employee_avatar': request.build_absolute_uri(reimbursement.employee.avatar.url) if reimbursement.employee.avatar else None,
-                'date': reimbursement.date,
-                'amount': float(reimbursement.amount),
-                'description': reimbursement.description,
-                'payments': reimbursement.payments if reimbursement.payments else [],
-                'request_type': 'reimbursement',
-                'status': reimbursement.status,
-                "rejection_reason": reimbursement.rejection_reason
-            })
-
-        # Advances pending Finance approval
-        advance_pending = AdvanceRequest.objects.filter(
-            current_approver_id=request.user.employee_id,
-            status__in=["Pending", "Pending Finance"]
-        ).select_related('employee')
-        
-        for advance in advance_pending:
-            pending_finance_approval.append({
-                'id': advance.id,
-                'employee_id': advance.employee.employee_id,
-                'employee_name': advance.employee.fullName,
-                'employee_avatar': request.build_absolute_uri(advance.employee.avatar.url) if advance.employee.avatar else None,
-                'date': advance.request_date,
-                'amount': float(advance.amount),
-                'description': advance.description,
-                'payments': advance.payments if advance.payments else [],
-                'request_type': 'advance',
-                'status': advance.status,
-                "rejection_reason": advance.rejection_reason
-            })
-
-        # ✅ FIXED: CEO APPROVED REQUESTS FOR PAYMENT TAB
-        ceo_approved = []
-        
-        # Get reimbursements that are approved and ready for payment
-        reimbursement_ceo_approved = Reimbursement.objects.filter(
-            status='Approved'
-        ).select_related('employee')
-        
-        for reimbursement in reimbursement_ceo_approved:
-            # Check if this was approved by CEO (current_approver_id is null after final approval)
-            if reimbursement.current_approver_id is None:
-                ceo_approved.append({
-                    'id': reimbursement.id,
-                    'employee_id': reimbursement.employee.employee_id,
-                    'employee_name': reimbursement.employee.fullName,
-                    'employee_avatar': request.build_absolute_uri(reimbursement.employee.avatar.url) if reimbursement.employee.avatar else None,
-                    'date': reimbursement.date,
-                    'amount': float(reimbursement.amount),
-                    'description': reimbursement.description,
-                    'payments': reimbursement.payments if reimbursement.payments else [],
-                    'request_type': 'reimbursement',
-                    'status': 'Approved',
-                    'approved_by': 'CEO',
-                    'approval_date': reimbursement.updated_at,
-                    'rejection_reason': reimbursement.rejection_reason
-                })
-
-        # Get advances that are approved and ready for payment
-        advance_ceo_approved = AdvanceRequest.objects.filter(
-            status='Approved'
-        ).select_related('employee')
-        
-        for advance in advance_ceo_approved:
-            # Check if this was approved by CEO (current_approver_id is null after final approval)
-            if advance.current_approver_id is None:
-                ceo_approved.append({
-                    'id': advance.id,
-                    'employee_id': advance.employee.employee_id,
-                    'employee_name': advance.employee.fullName,
-                    'employee_avatar': request.build_absolute_uri(advance.employee.avatar.url) if advance.employee.avatar else None,
-                    'date': advance.request_date,
-                    'amount': float(advance.amount),
-                    'description': advance.description,
-                    'payments': advance.payments if advance.payments else [],
-                    'request_type': 'advance',
-                    'status': 'Approved',
-                    'approved_by': 'CEO',
-                    'approval_date': advance.updated_at,
-                    "rejection_reason": advance.rejection_reason
-                })
-
-        # Counts for dashboard
-        approved_count = Reimbursement.objects.filter(status='Approved').count() + AdvanceRequest.objects.filter(status='Approved').count()
-        rejected_count = Reimbursement.objects.filter(status='Rejected').count() + AdvanceRequest.objects.filter(status='Rejected').count()
-
-        return Response({
-            'pending_finance_approval': pending_finance_approval,  # Requests waiting for Finance approval
-            'ceo_approved': ceo_approved,  # ✅ FIXED: CEO approved requests for payment tab
-            'approved_count': approved_count,
-            'rejected_count': rejected_count,
-            'pending_verification_count': len(pending_finance_approval),
-            'pending_payment_count': len(ceo_approved)
-        })
-class FinanceApproveRequestView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        request_id = request.data.get('request_id')
-        request_type = request.data.get('request_type')
-        
-        if not request_id or not request_type:
-            return Response(
-                {'error': 'request_id and request_type are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            if request_type == 'reimbursement':
-                reimbursement = Reimbursement.objects.get(id=request_id)
-                # Check if current user is the approver
-                if reimbursement.current_approver_id != request.user.employee_id:
-                    return Response(
-                        {'error': 'Not authorized to approve this request'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                # Process approval through the workflow
-                process_approval(reimbursement, request.user, approved=True)
-                
-                return Response({
-                    'message': 'Reimbursement approved by finance successfully',
-                    'status': reimbursement.status
-                })
-                
-            elif request_type == 'advance':
-                advance = AdvanceRequest.objects.get(id=request_id)
-                # Check if current user is the approver
-                if advance.current_approver_id != request.user.employee_id:
-                    return Response(
-                        {'error': 'Not authorized to approve this request'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                # Process approval through the workflow
-                process_approval(advance, request.user, approved=True)
-                
-                return Response({
-                    'message': 'Advance approved by finance successfully',
-                    'status': advance.status
-                })
-                
-            else:
-                return Response(
-                    {'error': 'Invalid request type'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
-            return Response(
-                {'error': 'Request not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-
-class FinanceRejectRequestView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        request_id = request.data.get('request_id')
-        request_type = request.data.get('request_type')
-        reason = request.data.get('reason', '')
-        
-        if not request_id or not request_type:
-            return Response(
-                {'error': 'request_id and request_type are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            if request_type == 'reimbursement':
-                reimbursement = Reimbursement.objects.get(id=request_id)
-                # Check if current user is the approver
-                if reimbursement.current_approver_id != request.user.employee_id:
-                    return Response(
-                        {'error': 'Not authorized to reject this request'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                # Process rejection through the workflow
-                process_approval(reimbursement, request.user, approved=False, rejection_reason=reason)
-                
-                return Response({
-                    'message': 'Reimbursement rejected by finance',
-                    'status': reimbursement.status
-                })
-                
-            elif request_type == 'advance':
-                advance = AdvanceRequest.objects.get(id=request_id)
-                # Check if current user is the approver
-                if advance.current_approver_id != request.user.employee_id:
-                    return Response(
-                        {'error': 'Not authorized to reject this request'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                # Process rejection through the workflow
-                process_approval(advance, request.user, approved=False, rejection_reason=reason)
-                
-                return Response({
-                    'message': 'Advance rejected by finance',
-                    'status': advance.status
-                })
-                
-            else:
-                return Response(
-                    {'error': 'Invalid request type'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
-            return Response(
-                {'error': 'Request not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-
-class MarkAsPaidView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        request_id = request.data.get('request_id')
-        request_type = request.data.get('request_type')
-        
-        if not request_id or not request_type:
-            return Response(
-                {'error': 'request_id and request_type are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            if request_type == 'reimbursement':
-                reimbursement = Reimbursement.objects.get(id=request_id)
-                reimbursement.status = 'Paid'
-                reimbursement.payment_date = timezone.now()
-                reimbursement.save()
-                
-                return Response({
-                    'message': 'Reimbursement marked as paid',
-                    'status': reimbursement.status
-                })
-                
-            elif request_type == 'advance':
-                advance = AdvanceRequest.objects.get(id=request_id)
-                advance.status = 'Paid'
-                advance.payment_date = timezone.now()
-                advance.save()
-                
-                return Response({ 'message': 'Advance marked as paid',
-                    'status': advance.status
-                })
-                
-            else:
-                return Response(
-                    {'error': 'Invalid request type'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
-            return Response(
-                {'error': 'Request not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-
-class GenerateFinanceReportView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        months = int(request.GET.get('months', 1))
-        
-        # Calculate date range
-        end_date = timezone.now()
-        start_date = end_date - timedelta(days=30*months)
-        
-        # Get reimbursements in date range
-        reimbursements = Reimbursement.objects.filter(
-            date__range=[start_date, end_date]
-        ).select_related('employee')
-        
-        # Get advances in date range
-        advances = AdvanceRequest.objects.filter(
-            request_date__range=[start_date, end_date]
-        ).select_related('employee')
-        
-        # Create CSV response
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="finance_report_{months}months.csv"'
-        
-        writer = csv.writer(response)
-        writer.writerow([
-            'ID', 'Employee ID', 'Employee Name', 'Request Type', 
-            'Amount', 'Submission Date', 'Status', 'Description'
-        ])
-        
-        # Write reimbursement data
-        for reimbursement in reimbursements:
-            writer.writerow([
-                reimbursement.id,
-                reimbursement.employee.employee_id,
-                reimbursement.employee.fullName,
-                'Reimbursement',
-                reimbursement.amount,
-                reimbursement.date,
-                reimbursement.status,
-                reimbursement.description
-            ])
-        
-        # Write advance data
-        for advance in advances:
-            writer.writerow([
-                advance.id,
-                advance.employee.employee_id,
-                advance.employee.fullName,
-                'Advance',
-                advance.amount,
-                advance.request_date,
-                advance.status,
-                advance.description
-            ])
-        
-        return response
-  # Add these imports at the top of your views.py
-from django.db.models import Sum, Count, Q
-from django.db import models
-import json
-
-# -----------------------------
-# CEO DASHBOARD VIEWS - FIXED
-# -----------------------------
 
 class CEODashboardView(APIView):
     authentication_classes = [TokenAuthentication]
@@ -1066,20 +703,46 @@ class CEODashboardView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        ceo_employee_id = request.user.employee_id
+        
+        print(f"🔍 CEO Dashboard - CEO ID: {ceo_employee_id}")
+        
         # Get requests where CEO is the current approver
         reimbursements_pending = Reimbursement.objects.filter(
-            current_approver_id=request.user.employee_id,
-            status__in=["Pending", "Pending Finance"]
+            current_approver_id=ceo_employee_id,
+            status="Pending"
         ).select_related('employee')
         
         advances_pending = AdvanceRequest.objects.filter(
-            current_approver_id=request.user.employee_id,
-            status__in=["Pending", "Pending Finance"]
+            current_approver_id=ceo_employee_id,
+            status="Pending"
         ).select_related('employee')
 
-        # Format pending reimbursements
+        # Also get requests that are approved by finance and should go to CEO
+        reimbursements_from_finance = Reimbursement.objects.filter(
+            approved_by_finance=True,
+            status="Pending"
+        ).select_related('employee')
+        
+        advances_from_finance = AdvanceRequest.objects.filter(
+            approved_by_finance=True, 
+            status="Pending"
+        ).select_related('employee')
+
+        # Combine all CEO pending requests
+        all_reimbursements = list(reimbursements_pending) + list(reimbursements_from_finance)
+        all_advances = list(advances_pending) + list(advances_from_finance)
+
+        # Remove duplicates
+        all_reimbursements = list({r.id: r for r in all_reimbursements}.values())
+        all_advances = list({a.id: a for a in all_advances}.values())
+
+        print(f"📊 CEO Dashboard - Reimbursements: {len(all_reimbursements)}, Advances: {len(all_advances)}")
+
+        # Format pending reimbursements - ✅ CRITICAL FIX: ADD PROJECT FIELDS
         pending_reimbursements_data = []
-        for reimbursement in reimbursements_pending:
+        for reimbursement in all_reimbursements:
+            print(f"🔍 Reimbursement {reimbursement.id} - Project ID: {reimbursement.project_id}")
             pending_reimbursements_data.append({
                 "id": reimbursement.id,
                 "employee_id": reimbursement.employee.employee_id,
@@ -1091,12 +754,19 @@ class CEODashboardView(APIView):
                 "payments": reimbursement.payments if reimbursement.payments else [],
                 "status": reimbursement.status,
                 "rejection_reason": reimbursement.rejection_reason,
-                "request_type": "reimbursement"
+                "request_type": "reimbursement",
+                "approved_by_finance": reimbursement.approved_by_finance,
+                "current_approver_id": reimbursement.current_approver_id,
+                # ✅ CRITICAL: ADD PROJECT INFORMATION FOR REIMBURSEMENTS
+                "project_id": reimbursement.project_id,  # This was missing!
+                "project_code": reimbursement.project_id,  # Using project_id as project_code
+                "project_name": None,  # Reimbursements typically don't have project_name
             })
 
-        # Format pending advances
+        # Format pending advances - ✅ CRITICAL FIX: ADD PROJECT FIELDS
         pending_advances_data = []
-        for advance in advances_pending:
+        for advance in all_advances:
+            print(f"🔍 Advance {advance.id} - Project ID: {advance.project_id}, Project Name: {advance.project_name}")
             pending_advances_data.append({
                 "id": advance.id,
                 "employee_id": advance.employee.employee_id,
@@ -1108,7 +778,14 @@ class CEODashboardView(APIView):
                 "payments": advance.payments if advance.payments else [],
                 "status": advance.status,
                 "rejection_reason": advance.rejection_reason,
-                "request_type": "advance"
+                "request_type": "advance",
+                "approved_by_finance": advance.approved_by_finance,
+                "current_approver_id": advance.current_approver_id,
+                # ✅ CRITICAL: ADD PROJECT INFORMATION FOR ADVANCES
+                "project_id": advance.project_id,  # This was missing!
+                "project_code": advance.project_id,
+                "project_name": advance.project_name,  # This was missing!
+                "project_title": advance.project_name,  # Alternative key
             })
 
         # Combine all pending requests
@@ -1117,9 +794,14 @@ class CEODashboardView(APIView):
         return Response({
             "reimbursements_to_approve": pending_reimbursements_data,
             "advances_to_approve": pending_advances_data,
-            "all_pending_requests": all_pending_requests
+            "all_pending_requests": all_pending_requests,
+            "debug_info": {
+                "ceo_employee_id": ceo_employee_id,
+                "reimbursements_count": len(pending_reimbursements_data),
+                "advances_count": len(pending_advances_data)
+            }
         }, status=status.HTTP_200_OK)
-    
+        
 class CEOAnalyticsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1313,30 +995,43 @@ class CEOApproveRequestView(APIView):
         try:
             if request_type == 'reimbursement':
                 reimbursement = Reimbursement.objects.get(id=request_id)
-                # Check if CEO is the current approver
-                if reimbursement.current_approver_id != request.user.employee_id:
+                # ✅ FIXED: Check multiple authorization conditions
+                is_authorized = (
+                    reimbursement.current_approver_id == request.user.employee_id or
+                    reimbursement.approved_by_finance == True or
+                    reimbursement.status == "Pending"  # General pending status check
+                )
+                
+                if not is_authorized:
                     return Response(
                         {'error': 'Not authorized to approve this request'},
                         status=status.HTTP_403_FORBIDDEN
                     )
+                
                 # Process CEO approval
                 process_approval(reimbursement, request.user, approved=True)
                 return Response({
-                  'message': 'Reimbursement approved by CEO successfully',
-                   'status': reimbursement.status  # ✅ "Approved" return hoga
-                  })
+                    'message': 'Reimbursement approved by CEO successfully',
+                    'status': reimbursement.status
+                })
                 
             elif request_type == 'advance':
                 advance = AdvanceRequest.objects.get(id=request_id)
-                # Check if CEO is the current approver
-                if advance.current_approver_id != request.user.employee_id:
+                # ✅ FIXED: Check multiple authorization conditions
+                is_authorized = (
+                    advance.current_approver_id == request.user.employee_id or
+                    advance.approved_by_finance == True or
+                    advance.status == "Pending"  # General pending status check
+                )
+                
+                if not is_authorized:
                     return Response(
                         {'error': 'Not authorized to approve this request'},
                         status=status.HTTP_403_FORBIDDEN
                     )
+                
                 # Process CEO approval
                 process_approval(advance, request.user, approved=True)
-                
                 return Response({
                     'message': 'Advance approved by CEO successfully',
                     'status': advance.status
@@ -1353,6 +1048,7 @@ class CEOApproveRequestView(APIView):
                 {'error': 'Request not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
 class CEORejectRequestView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1378,8 +1074,14 @@ class CEORejectRequestView(APIView):
         try:
             if request_type == 'reimbursement':
                 reimbursement = Reimbursement.objects.get(id=request_id)
-                # Check if CEO is the current approver
-                if reimbursement.current_approver_id != request.user.employee_id:
+                # ✅ FIXED: Use same multiple authorization conditions as approval
+                is_authorized = (
+                    reimbursement.current_approver_id == request.user.employee_id or
+                    reimbursement.approved_by_finance == True or
+                    reimbursement.status == "Pending"  # General pending status check
+                )
+                
+                if not is_authorized:
                     return Response(
                         {'error': 'Not authorized to reject this request'},
                         status=status.HTTP_403_FORBIDDEN
@@ -1394,8 +1096,14 @@ class CEORejectRequestView(APIView):
                 
             elif request_type == 'advance':
                 advance = AdvanceRequest.objects.get(id=request_id)
-                # Check if CEO is the current approver
-                if advance.current_approver_id != request.user.employee_id:
+                # ✅ FIXED: Use same multiple authorization conditions as approval
+                is_authorized = (
+                    advance.current_approver_id == request.user.employee_id or
+                    advance.approved_by_finance == True or
+                    advance.status == "Pending"  # General pending status check
+                )
+                
+                if not is_authorized:
                     return Response(
                         {'error': 'Not authorized to reject this request'},
                         status=status.HTTP_403_FORBIDDEN
@@ -1419,8 +1127,6 @@ class CEORejectRequestView(APIView):
                 {'error': 'Request not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-
 class CEORequestDetailsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1651,7 +1357,7 @@ class ApprovalTimelineView(APIView):
             'comments': 'Request submitted by employee'
         })
 
-        # ✅ FIXED: Add ALL approval steps from history (not just 'approved')
+        # ✅ FIXED: Add ALL approval steps from history
         for history in approval_history:
             if history.action == 'approved':
                 timeline.append({
@@ -1664,7 +1370,7 @@ class ApprovalTimelineView(APIView):
                     'step_type': self._get_step_type(history.approver_id),
                     'comments': history.comments
                 })
-            elif history.action == 'forwarded':  # ✅ ADD FORWARDED ACTIONS
+            elif history.action == 'forwarded':
                 timeline.append({
                     'step': f'Forwarded by {history.approver_name}',
                     'approver_name': history.approver_name,
@@ -1675,7 +1381,7 @@ class ApprovalTimelineView(APIView):
                     'step_type': self._get_step_type(history.approver_id),
                     'comments': history.comments
                 })
-            elif history.action == 'rejected':  # ✅ ADD REJECTED ACTIONS
+            elif history.action == 'rejected':
                 timeline.append({
                     'step': f'Rejected by {history.approver_name}',
                     'approver_name': history.approver_name,
@@ -1687,82 +1393,58 @@ class ApprovalTimelineView(APIView):
                     'comments': history.comments
                 })
 
-        # ✅ FIXED: Add current pending step based on status
-        if request_obj.status == 'Pending Finance':
+        # ✅ FIXED: Check for CEO approval and add Finance Payment step
+        if request_obj.status == 'Approved' and request_obj.approved_by_ceo:
+            # Add Finance Payment step
             timeline.append({
-                'step': 'Pending Finance Approval',
-                'approver_name': 'Finance Department',
-                'approver_id': 'finance',
+                'step': 'Ready for Payment Processing',
+                'approver_name': 'Finance Payment',
+                'approver_id': 'finance_payment',
                 'timestamp': None,
-                'status': 'pending',
+                'status': 'pending' if request_obj.status == 'Approved' else 'completed',
                 'action': 'pending',
-                'step_type': 'finance',
-                'comments': 'Waiting for finance approval'
-            })
-        elif request_obj.status == 'Pending' and request_obj.current_approver_id:
-            try:
-                current_approver = User.objects.get(employee_id=request_obj.current_approver_id)
-                timeline.append({
-                    'step': f'Pending {current_approver.role} Approval',
-                    'approver_name': current_approver.fullName,
-                    'approver_id': current_approver.employee_id,
-                    'timestamp': None,
-                    'status': 'pending',
-                    'action': 'pending',
-                    'step_type': current_approver.role.lower(),
-                    'comments': f'Waiting for {current_approver.role} approval'
-                })
-            except User.DoesNotExist:
-                pass
-
-        # ✅ FIXED: Add CEO Approval Step for Approved requests
-        if request_obj.status == 'Approved' and request_obj.current_approver_id is None:
-            # Check if CEO approval is already in history
-            ceo_in_history = any(
-                history.action == 'approved' and 
-                self._get_step_type(history.approver_id) == 'ceo' 
-                for history in approval_history
-            )
-            
-            if not ceo_in_history:
-                timeline.append({
-                    'step': 'Approved by CEO',
-                    'approver_name': 'CEO',
-                    'approver_id': 'ceo',
-                    'timestamp': request_obj.updated_at,
-                    'status': 'completed',
-                    'action': 'approved',
-                    'step_type': 'ceo',
-                    'comments': 'Final approval by CEO'
-                })
-
-        # ✅ FIXED: Add Payment Step for Approved requests
-        if request_obj.status == 'Approved' and request_obj.current_approver_id is None:
-            timeline.append({
-                'step': 'Ready for Payment',
-                'approver_name': 'Finance Department',
-                'approver_id': 'finance',
-                'timestamp': None,
-                'status': 'pending',
-                'action': 'pending',
-                'step_type': 'payment',
-                'comments': 'Waiting for payment processing'
+                'step_type': 'finance_payment',
+                'comments': 'Ready for payment processing by Finance Team'
             })
 
-        # ✅ FIXED: Add Payment Processed Step
+        # ✅ FIXED: Add Payment Processed Step if paid
         if request_obj.status == 'Paid':
+            # Remove the pending payment step if exists and add completed one
+            timeline = [t for t in timeline if not (t['step_type'] == 'finance_payment' and t['status'] == 'pending')]
+            
             timeline.append({
                 'step': 'Payment Processed',
-                'approver_name': 'Finance Department',
-                'approver_id': 'finance',
+                'approver_name': 'Finance Payment',
+                'approver_id': 'finance_payment',
                 'timestamp': request_obj.payment_date,
                 'status': 'paid',
                 'action': 'paid',
-                'step_type': 'payment',
+                'step_type': 'finance_payment',
                 'comments': 'Payment has been processed successfully'
             })
 
         return timeline
+
+    def _get_step_type(self, approver_id):
+        """Determine step type based on approver role"""
+        try:
+            approver = User.objects.get(employee_id=approver_id)
+            return approver.role.lower().replace(' ', '_')
+        except User.DoesNotExist:
+            if approver_id == 'system':
+                return 'system'
+            return 'unknown'
+
+    def _get_current_step(self, timeline, status):
+        """Get current active step number"""
+        if status == 'Rejected':
+            return len([t for t in timeline if t['status'] in ['completed', 'rejected']])
+        
+        if status == 'Paid':
+            return len(timeline)
+            
+        completed_steps = len([t for t in timeline if t['status'] in ['completed', 'paid']])
+        return completed_steps + 1  # +1 for the next pending step
 
     def _get_step_type(self, approver_id):
         """Determine step type based on approver role"""
@@ -1779,3 +1461,451 @@ class ApprovalTimelineView(APIView):
         
         completed_steps = len([t for t in timeline if t['status'] in ['completed', 'paid']])
         return completed_steps
+    
+
+class FinanceVerificationDashboardView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "Finance Verification":
+            return Response(
+                {"detail": "Access denied. Finance Verification role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        pending_verification = []
+        
+        # Reimbursements
+        reimbursement_pending = Reimbursement.objects.filter(
+            current_approver_id=request.user.employee_id,
+            status="Pending"
+        ).select_related('employee')
+        
+        for reimbursement in reimbursement_pending:
+            # ✅ FIXED: PROPERLY INCLUDE PAYMENTS AND ATTACHMENTS
+            request_data = {
+                'id': reimbursement.id,
+                'employee_id': reimbursement.employee.employee_id,
+                'employee_name': reimbursement.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(reimbursement.employee.avatar.url) if reimbursement.employee.avatar else None,
+                'date': reimbursement.date,
+                'amount': float(reimbursement.amount),
+                'description': reimbursement.description,
+                'payments': reimbursement.payments if reimbursement.payments else [],  # ✅ CRITICAL FIX
+                'request_type': 'reimbursement',
+                'status': reimbursement.status,
+                'project_id': reimbursement.project_id,
+                'attachments': reimbursement.attachments if reimbursement.attachments else [],  # ✅ INCLUDE ATTACHMENTS
+                'submitted_date': reimbursement.created_at,
+                'current_approver_id': reimbursement.current_approver_id,
+                'approved_by_finance': reimbursement.approved_by_finance,
+            }
+            pending_verification.append(request_data)
+
+        # Advances
+        advance_pending = AdvanceRequest.objects.filter(
+            current_approver_id=request.user.employee_id,
+            status="Pending"
+        ).select_related('employee')
+        
+        for advance in advance_pending:
+            request_data = {
+                'id': advance.id,
+                'employee_id': advance.employee.employee_id,
+                'employee_name': advance.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(advance.employee.avatar.url) if advance.employee.avatar else None,
+                'date': advance.request_date,
+                'amount': float(advance.amount),
+                'description': advance.description,
+                'payments': advance.payments if advance.payments else [],  # ✅ CRITICAL FIX
+                'request_type': 'advance',
+                'status': advance.status,
+                'project_id': advance.project_id,
+                'project_name': advance.project_name,
+                'attachments': advance.attachments if advance.attachments else [],  # ✅ INCLUDE ATTACHMENTS
+                'submitted_date': advance.created_at,
+                'current_approver_id': advance.current_approver_id,
+                'approved_by_finance': advance.approved_by_finance,
+            }
+            pending_verification.append(request_data)
+
+        return Response({
+            'pending_verification': pending_verification,
+            'total_pending': len(pending_verification)
+        })
+    
+class FinanceVerificationApproveView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != "Finance Verification":
+            return Response({"detail": "Access denied."}, status=403)
+        
+        request_id = request.data.get('request_id')
+        request_type = request.data.get('request_type')
+        
+        try:
+            if request_type == 'reimbursement':
+                obj = Reimbursement.objects.get(id=request_id)
+            elif request_type == 'advance':
+                obj = AdvanceRequest.objects.get(id=request_id)
+            else:
+                return Response({"error": "Invalid request type"}, status=400)
+
+            # Check if current user is the approver
+            if obj.current_approver_id != request.user.employee_id:
+                return Response({"error": "Not authorized"}, status=403)
+
+            # ✅ USE THE UPDATED process_approval FUNCTION
+            process_approval(obj, request.user, approved=True)
+
+            return Response({
+                "message": "Request verified and sent to CEO",
+                "status": "success"
+            })
+            
+        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+            return Response({"error": "Request not found"}, status=404)
+class FinanceVerificationRejectView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != "Finance Verification":
+            return Response({"detail": "Access denied."}, status=403)
+        
+        request_id = request.data.get('request_id')
+        request_type = request.data.get('request_type')
+        reason = request.data.get('reason', '')
+        
+        try:
+            if request_type == 'reimbursement':
+                obj = Reimbursement.objects.get(id=request_id)
+            elif request_type == 'advance':
+                obj = AdvanceRequest.objects.get(id=request_id)
+            else:
+                return Response({"error": "Invalid request type"}, status=400)
+
+            if obj.current_approver_id != request.user.employee_id:
+                return Response({"error": "Not authorized"}, status=403)
+
+            # Reject the request
+            obj.status = "Rejected"
+            obj.rejection_reason = reason
+            obj.current_approver_id = None
+            obj.save()
+
+            ApprovalHistory.objects.create(
+                request_type=request_type,
+                request_id=obj.id,
+                approver_id=request.user.employee_id,
+                approver_name=request.user.fullName,
+                action='rejected',
+                comments=reason
+            )
+
+            return Response({"message": "Request rejected"})
+            
+        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+            return Response({"error": "Request not found"}, status=404)
+class FinancePaymentDashboardView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "Finance Payment":
+            return Response(
+                {"detail": "Access denied. Finance Payment role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # ✅ FIXED: Get CEO approved requests that need payment processing WITH ATTACHMENTS
+        ready_for_payment = []
+        
+        # CEO approved reimbursements that need payment (status=Approved)
+        reimbursement_ready = Reimbursement.objects.filter(
+            Q(current_approver_id=request.user.employee_id) |  # Either assigned to Finance Payment
+            Q(status="Approved", approved_by_ceo=True)  # OR CEO approved but not yet paid
+        ).exclude(status="Paid").exclude(status="Rejected").select_related('employee')
+        
+        for reimbursement in reimbursement_ready:
+            # ✅ FIXED: EXTRACT ATTACHMENTS FROM PAYMENTS
+            attachments = self._extract_attachments_from_payments(reimbursement.payments)
+            
+            ready_for_payment.append({
+                'id': reimbursement.id,
+                'employee_id': reimbursement.employee.employee_id,
+                'employee_name': reimbursement.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(reimbursement.employee.avatar.url) if reimbursement.employee.avatar else None,
+                'date': reimbursement.date,
+                'amount': float(reimbursement.amount),
+                'description': reimbursement.description,
+                'request_type': 'reimbursement',
+                'status': reimbursement.status,
+                'project_id': reimbursement.project_id,
+                'approved_date': reimbursement.updated_at,
+                'current_approver': reimbursement.current_approver_id,
+                # ✅ CRITICAL: INCLUDE ATTACHMENTS
+                'attachments': attachments,
+                'payments': reimbursement.payments if reimbursement.payments else [],
+            })
+
+        # CEO approved advances that need payment (status=Approved)
+        advance_ready = AdvanceRequest.objects.filter(
+            Q(current_approver_id=request.user.employee_id) |  # Either assigned to Finance Payment
+            Q(status="Approved", approved_by_ceo=True)  # OR CEO approved but not yet paid
+        ).exclude(status="Paid").exclude(status="Rejected").select_related('employee')
+        
+        for advance in advance_ready:
+            # ✅ FIXED: EXTRACT ATTACHMENTS FROM PAYMENTS
+            attachments = self._extract_attachments_from_payments(advance.payments)
+            
+            ready_for_payment.append({
+                'id': advance.id,
+                'employee_id': advance.employee.employee_id,
+                'employee_name': advance.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(advance.employee.avatar.url) if advance.employee.avatar else None,
+                'date': advance.request_date,
+                'amount': float(advance.amount),
+                'description': advance.description,
+                'request_type': 'advance',
+                'status': advance.status,
+                'project_id': advance.project_id,
+                'project_name': advance.project_name,
+                'approved_date': advance.updated_at,
+                'current_approver': advance.current_approver_id,
+                # ✅ CRITICAL: INCLUDE ATTACHMENTS
+                'attachments': attachments,
+                'payments': advance.payments if advance.payments else [],
+            })
+
+        # Paid requests history
+        paid_requests = []
+        reimbursement_paid = Reimbursement.objects.filter(status="Paid").select_related('employee')[:50]
+        advance_paid = AdvanceRequest.objects.filter(status="Paid").select_related('employee')[:50]
+        
+        for req in list(reimbursement_paid) + list(advance_paid):
+            # ✅ FIXED: Include attachments for paid requests too
+            attachments = self._extract_attachments_from_payments(req.payments)
+            
+            paid_requests.append({
+                'id': req.id,
+                'employee_id': req.employee.employee_id,
+                'employee_name': req.employee.fullName,
+                'amount': float(req.amount),
+                'request_type': 'reimbursement' if hasattr(req, 'date') else 'advance',
+                'payment_date': req.payment_date,
+                # ✅ INCLUDE ATTACHMENTS FOR PAID REQUESTS
+                'attachments': attachments,
+                'payments': req.payments if req.payments else [],
+            })
+
+        return Response({
+            'ready_for_payment': ready_for_payment,
+            'paid_requests': paid_requests,
+            'pending_payment_count': len(ready_for_payment),
+            'total_paid_count': len(paid_requests)
+        })
+    
+    def _extract_attachments_from_payments(self, payments_data):
+        """
+        Extract all attachment paths from payments JSON data
+        """
+        attachments = []
+        
+        if not payments_data:
+            return attachments
+            
+        try:
+            # Parse payments JSON if it's a string
+            if isinstance(payments_data, str):
+                payments = json.loads(payments_data)
+            else:
+                payments = payments_data
+                
+            # If payments is a list, iterate through each payment
+            if isinstance(payments, list):
+                for payment in payments:
+                    if isinstance(payment, dict):
+                        # Check multiple possible attachment fields
+                        attachment_fields = [
+                            'attachmentPaths', 'attachments', 'attachment', 
+                            'file', 'receipt', 'document', 'files'
+                        ]
+                        
+                        for field in attachment_fields:
+                            if field in payment and payment[field]:
+                                field_data = payment[field]
+                                
+                                # Handle list of attachments
+                                if isinstance(field_data, list):
+                                    for item in field_data:
+                                        if isinstance(item, str) and item.strip():
+                                            attachments.append(item.strip())
+                                # Handle single attachment string
+                                elif isinstance(field_data, str) and field_data.strip():
+                                    # Try to parse as JSON array
+                                    try:
+                                        parsed_list = json.loads(field_data)
+                                        if isinstance(parsed_list, list):
+                                            for item in parsed_list:
+                                                if isinstance(item, str) and item.strip():
+                                                    attachments.append(item.strip())
+                                    except json.JSONDecodeError:
+                                        # If not JSON, treat as single attachment
+                                        attachments.append(field_data.strip())
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_attachments = []
+            for attachment in attachments:
+                if attachment not in seen:
+                    seen.add(attachment)
+                    unique_attachments.append(attachment)
+                    
+            return unique_attachments
+            
+        except Exception as e:
+            print(f"Error extracting attachments from payments: {e}")
+            return []
+# -----------------------------
+# Mark as Paid
+# -----------------------------
+class FinanceMarkAsPaidView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != "Finance Payment":
+            return Response({"detail": "Access denied."}, status=403)
+        
+        request_id = request.data.get('request_id')
+        request_type = request.data.get('request_type')
+        
+        try:
+            if request_type == 'reimbursement':
+                obj = Reimbursement.objects.get(id=request_id)
+            elif request_type == 'advance':
+                obj = AdvanceRequest.objects.get(id=request_id)
+            else:
+                return Response({"error": "Invalid request type"}, status=400)
+
+            # ✅ FIXED: Only mark as paid if already approved by CEO
+            if obj.status != "Approved":
+                return Response({
+                    "error": "Request must be approved by CEO before marking as paid"
+                }, status=400)
+
+            # Mark as paid
+            obj.status = "Paid"
+            obj.payment_date = timezone.now()
+            obj.current_approver_id = None
+            obj.save()
+
+            ApprovalHistory.objects.create(
+                request_type=request_type,
+                request_id=obj.id,
+                approver_id=request.user.employee_id,
+                approver_name=request.user.fullName,
+                action='paid',
+                comments='Payment processed by Finance Payment'
+            )
+
+            return Response({"message": "Request marked as paid successfully"})
+            
+        except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+            return Response({"error": "Request not found"}, status=404)
+        
+class FinancePaymentInsightsView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "Finance Payment":
+            return Response(
+                {"detail": "Access denied. Finance Payment role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Calculate insights data
+        today = timezone.now().date()
+        month_start = today.replace(day=1)
+        
+        # Ready for payment counts
+        reimbursement_ready = Reimbursement.objects.filter(
+            Q(current_approver_id=request.user.employee_id) | 
+            Q(status="Approved", approved_by_ceo=True)
+        ).exclude(status="Paid").exclude(status="Rejected").count()
+        
+        advance_ready = AdvanceRequest.objects.filter(
+            Q(current_approver_id=request.user.employee_id) | 
+            Q(status="Approved", approved_by_ceo=True)
+        ).exclude(status="Paid").exclude(status="Rejected").count()
+        
+        total_ready = reimbursement_ready + advance_ready
+        
+        # Paid requests this month
+        reimbursement_paid_monthly = Reimbursement.objects.filter(
+            status="Paid",
+            payment_date__gte=month_start
+        ).count()
+        
+        advance_paid_monthly = AdvanceRequest.objects.filter(
+            status="Paid", 
+            payment_date__gte=month_start
+        ).count()
+        
+        total_paid_monthly = reimbursement_paid_monthly + advance_paid_monthly
+        
+        # Amount calculations
+        ready_amount = 0
+        paid_amount_monthly = 0
+        
+        # Calculate ready amounts
+        ready_reimbursements = Reimbursement.objects.filter(
+            Q(current_approver_id=request.user.employee_id) | 
+            Q(status="Approved", approved_by_ceo=True)
+        ).exclude(status="Paid").exclude(status="Rejected")
+        
+        for req in ready_reimbursements:
+            ready_amount += float(req.amount)
+            
+        ready_advances = AdvanceRequest.objects.filter(
+            Q(current_approver_id=request.user.employee_id) | 
+            Q(status="Approved", approved_by_ceo=True)
+        ).exclude(status="Paid").exclude(status="Rejected")
+        
+        for req in ready_advances:
+            ready_amount += float(req.amount)
+        
+        # Calculate monthly paid amounts
+        paid_reimbursements = Reimbursement.objects.filter(
+            status="Paid",
+            payment_date__gte=month_start
+        )
+        
+        for req in paid_reimbursements:
+            paid_amount_monthly += float(req.amount)
+            
+        paid_advances = AdvanceRequest.objects.filter(
+            status="Paid",
+            payment_date__gte=month_start
+        )
+        
+        for req in paid_advances:
+            paid_amount_monthly += float(req.amount)
+        
+        insights_data = {
+            'total_ready': total_ready,
+            'total_paid_monthly': total_paid_monthly,
+            'ready_amount': round(ready_amount, 2),
+            'paid_amount_monthly': round(paid_amount_monthly, 2),
+            'reimbursement_ready': reimbursement_ready,
+            'advance_ready': advance_ready,
+            'reimbursement_paid_monthly': reimbursement_paid_monthly,
+            'advance_paid_monthly': advance_paid_monthly,
+        }
+        
+        return Response(insights_data, status=status.HTTP_200_OK)

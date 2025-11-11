@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+//import 'package:share_plus/share_plus';
 import 'package:share_plus/share_plus.dart';
 
 // Activity Service for Permanent Storage
@@ -951,12 +952,11 @@ class _HRDashboardState extends State<HRDashboard>
 
       // Share the file
       await Share.shareXFiles(
-        [XFile(csvFile.path)],
+        [XFile(csvFile.path, mimeType: 'text/csv')],
         text:
             'Xpensure HR Employee Report - $period\n\nTotal Employees: ${filteredEmployees.length}\nGenerated on: ${DateTime.now().toString()}',
         subject: 'Xpensure Employee Report - $period',
       );
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$period report generated and shared successfully!'),
@@ -1498,7 +1498,6 @@ class _HRDashboardState extends State<HRDashboard>
     ValueNotifier<File?> editSelectedImage = ValueNotifier<File?>(null);
     ValueNotifier<String?> editSelectedImagePath = ValueNotifier<String?>(null);
     String? currentAvatarUrl = employee['avatar_url'] ?? employee['avatar'];
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1693,12 +1692,17 @@ class _HRDashboardState extends State<HRDashboard>
                     Icons.supervisor_account,
                   ),
                   const SizedBox(height: 12),
-                  // Role dropdown
+                  // Role dropdown - UPDATED WITH FINANCE ROLES
                   DropdownButtonFormField<String>(
                     dropdownColor: const Color(0xFF1E1E1E),
                     value: selectedRole,
-                    items:
-                        ["Common", "HR", "CEO", "Finance"].map((String value) {
+                    items: [
+                      "Common",
+                      "HR",
+                      "CEO",
+                      "Finance Verification", // ✅ ADDED
+                      "Finance Payment" // ✅ ADDED
+                    ].map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
                         child: Text(
@@ -2570,7 +2574,6 @@ class _HRDashboardState extends State<HRDashboard>
     ValueNotifier<File?> dialogSelectedImage = ValueNotifier<File?>(null);
     ValueNotifier<String?> dialogSelectedImagePath =
         ValueNotifier<String?>(null);
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -2748,12 +2751,17 @@ class _HRDashboardState extends State<HRDashboard>
                         Icons.supervisor_account,
                       ),
                       const SizedBox(height: 12),
-                      // Role dropdown
+                      // Role dropdown - UPDATED WITH FINANCE ROLES
                       DropdownButtonFormField<String>(
                         dropdownColor: const Color(0xFF1E1E1E),
                         value: selectedRole,
-                        items: ["Common", "HR", "CEO", "Finance"]
-                            .map((String value) {
+                        items: [
+                          "Common",
+                          "HR",
+                          "CEO",
+                          "Finance Verification", // ✅ ADDED
+                          "Finance Payment" // ✅ ADDED
+                        ].map((String value) {
                           return DropdownMenuItem<String>(
                             value: value,
                             child: Text(

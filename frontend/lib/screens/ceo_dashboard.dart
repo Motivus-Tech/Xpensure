@@ -123,6 +123,11 @@ class _CEODashboardState extends State<CEODashboard> {
       'requestType': 'reimbursement',
       'employeeAvatar': data['employee_avatar'],
       'rejection_reason': data['rejection_reason'],
+      // ✅ ADD PROJECT INFORMATION
+      'project_id': data['project_id'],
+      'project_code': data['project_code'],
+      'projectId': data['project_id'], // Alternative key
+
       'rawData': data,
     };
   }
@@ -141,6 +146,13 @@ class _CEODashboardState extends State<CEODashboard> {
       'requestType': 'advance',
       'employeeAvatar': data['employee_avatar'],
       'rejection_reason': data['rejection_reason'],
+      'project_id': data['project_id'],
+      'project_code': data['project_code'],
+      'project_name': data['project_name'],
+      'project_title': data['project_title'],
+      'projectId': data['project_id'], // Alternative key
+      'projectName': data['project_name'], // Alternative key
+
       'rawData': data,
     };
   }

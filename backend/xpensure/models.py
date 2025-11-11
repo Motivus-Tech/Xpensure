@@ -46,9 +46,10 @@ class Employee(AbstractBaseUser, PermissionsMixin):
         ("Common", "Common"),
         ("HR", "HR"),
         ("CEO", "CEO"),
-        ("Finance", "Finance"),
+        ("Finance Verification", "Finance Verification"),  # ✅ NEW ROLE
+        ("Finance Payment", "Finance Payment"),  # ✅ NEW ROLE
     ]
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Common")
+    role = models.CharField(max_length=25, choices=ROLE_CHOICES, default="Common")
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
