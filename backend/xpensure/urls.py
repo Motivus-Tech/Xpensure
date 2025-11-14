@@ -32,7 +32,7 @@ from .views import (
     FinancePaymentDashboardView,
     FinanceMarkAsPaidView,
     FinancePaymentInsightsView,
-    
+    EmployeeProjectSpendingView,
     health_check
 )
 
@@ -91,7 +91,8 @@ api_patterns = [
     path('finance-payment/dashboard/', FinancePaymentDashboardView.as_view(), name='finance-payment-dashboard'),
     path('finance-payment/mark-paid/', FinanceMarkAsPaidView.as_view(), name='finance-payment-mark-paid'),
     path('finance-payment/insights/',FinancePaymentInsightsView.as_view(), name='finance-payment-insights'),
-
+  
+    path('employee-project-spending/', EmployeeProjectSpendingView.as_view(), name='employee-project-spending'),
   
     # Health check
     path('health/', health_check, name='health'),

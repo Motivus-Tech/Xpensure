@@ -1621,7 +1621,7 @@ class FinancePaymentDashboardView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # ✅ FIXED: Get CEO approved requests that need payment processing WITH ATTACHMENTS
+        # ✅ FIXED: Get CEO approved requests that need payment processing WITH COMPLETE PROJECT DATA
         ready_for_payment = []
         
         # CEO approved reimbursements that need payment (status=Approved)
@@ -1631,9 +1631,7 @@ class FinancePaymentDashboardView(APIView):
         ).exclude(status="Paid").exclude(status="Rejected").select_related('employee')
         
         for reimbursement in reimbursement_ready:
-            # ✅ FIXED: EXTRACT ATTACHMENTS FROM PAYMENTS
-            attachments = self._extract_attachments_from_payments(reimbursement.payments)
-            
+            # ✅ CRITICAL FIX: INCLUDE COMPLETE PROJECT DATA FROM REIMBURSEMENT TABLE
             ready_for_payment.append({
                 'id': reimbursement.id,
                 'employee_id': reimbursement.employee.employee_id,
@@ -1644,12 +1642,18 @@ class FinancePaymentDashboardView(APIView):
                 'description': reimbursement.description,
                 'request_type': 'reimbursement',
                 'status': reimbursement.status,
+                # ✅ COMPLETE PROJECT DATA FROM REIMBURSEMENT TABLE
                 'project_id': reimbursement.project_id,
+                'project_name': getattr(reimbursement, 'project_name', None),  # Use getattr for safety
+                'project_code': getattr(reimbursement, 'project_code', reimbursement.project_id),  # Fallback to project_id
                 'approved_date': reimbursement.updated_at,
+                'submitted_date': reimbursement.created_at,
                 'current_approver': reimbursement.current_approver_id,
-                # ✅ CRITICAL: INCLUDE ATTACHMENTS
-                'attachments': attachments,
+                'attachments': reimbursement.attachments if reimbursement.attachments else [],
                 'payments': reimbursement.payments if reimbursement.payments else [],
+                # ✅ ADDITIONAL FIELDS FOR BETTER DATA
+                'approved_by_ceo': reimbursement.approved_by_ceo,
+                'final_approver': reimbursement.final_approver,
             })
 
         # CEO approved advances that need payment (status=Approved)
@@ -1659,9 +1663,7 @@ class FinancePaymentDashboardView(APIView):
         ).exclude(status="Paid").exclude(status="Rejected").select_related('employee')
         
         for advance in advance_ready:
-            # ✅ FIXED: EXTRACT ATTACHMENTS FROM PAYMENTS
-            attachments = self._extract_attachments_from_payments(advance.payments)
-            
+            # ✅ CRITICAL FIX: INCLUDE COMPLETE PROJECT DATA FROM ADVANCE TABLE
             ready_for_payment.append({
                 'id': advance.id,
                 'employee_id': advance.employee.employee_id,
@@ -1672,107 +1674,72 @@ class FinancePaymentDashboardView(APIView):
                 'description': advance.description,
                 'request_type': 'advance',
                 'status': advance.status,
+                # ✅ COMPLETE PROJECT DATA FROM ADVANCE TABLE
                 'project_id': advance.project_id,
                 'project_name': advance.project_name,
+                'project_code': getattr(advance, 'project_code', advance.project_id),  # Fallback to project_id
                 'approved_date': advance.updated_at,
+                'submitted_date': advance.created_at,
                 'current_approver': advance.current_approver_id,
-                # ✅ CRITICAL: INCLUDE ATTACHMENTS
-                'attachments': attachments,
+                'attachments': advance.attachments if advance.attachments else [],
                 'payments': advance.payments if advance.payments else [],
+                # ✅ ADDITIONAL FIELDS FOR BETTER DATA
+                'approved_by_ceo': advance.approved_by_ceo,
+                'final_approver': advance.final_approver,
             })
 
-        # Paid requests history
+        # ✅ FIXED: Paid requests history - INCLUDE COMPLETE PROJECT DATA
         paid_requests = []
         reimbursement_paid = Reimbursement.objects.filter(status="Paid").select_related('employee')[:50]
         advance_paid = AdvanceRequest.objects.filter(status="Paid").select_related('employee')[:50]
         
         for req in list(reimbursement_paid) + list(advance_paid):
-            # ✅ FIXED: Include attachments for paid requests too
-            attachments = self._extract_attachments_from_payments(req.payments)
+            # Determine if it's reimbursement or advance
+            is_reimbursement = hasattr(req, 'date')
             
             paid_requests.append({
                 'id': req.id,
                 'employee_id': req.employee.employee_id,
                 'employee_name': req.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(req.employee.avatar.url) if req.employee.avatar else None,
                 'amount': float(req.amount),
-                'request_type': 'reimbursement' if hasattr(req, 'date') else 'advance',
+                'description': req.description,
+                'request_type': 'reimbursement' if is_reimbursement else 'advance',
                 'payment_date': req.payment_date,
-                # ✅ INCLUDE ATTACHMENTS FOR PAID REQUESTS
-                'attachments': attachments,
+                'submitted_date': req.created_at,
+                # ✅ COMPLETE PROJECT DATA FOR PAID REQUESTS
+                'project_id': req.project_id,
+                'project_name': getattr(req, 'project_name', None),  # Advances have project_name
+                'project_code': getattr(req, 'project_code', req.project_id),  # Use project_id as fallback
+                'attachments': req.attachments if req.attachments else [],
                 'payments': req.payments if req.payments else [],
             })
+
+        # ✅ ADD DEBUG LOGGING TO VERIFY DATA
+        print(f"🔍 Finance Payment Dashboard - Ready for payment: {len(ready_for_payment)}")
+        print(f"🔍 Finance Payment Dashboard - Paid requests: {len(paid_requests)}")
+        
+        # Log first few records to verify project data
+        for i, req in enumerate(ready_for_payment[:3]):
+            print(f"🔍 Ready Request {i}: ID={req['id']}, Type={req['request_type']}, "
+                  f"Project ID={req.get('project_id')}, Project Name={req.get('project_name')}")
+        
+        for i, req in enumerate(paid_requests[:3]):
+            print(f"🔍 Paid Request {i}: ID={req['id']}, Type={req['request_type']}, "
+                  f"Project ID={req.get('project_id')}, Project Name={req.get('project_name')}")
 
         return Response({
             'ready_for_payment': ready_for_payment,
             'paid_requests': paid_requests,
             'pending_payment_count': len(ready_for_payment),
-            'total_paid_count': len(paid_requests)
+            'total_paid_count': len(paid_requests),
+            'debug_info': {
+                'total_ready': len(ready_for_payment),
+                'total_paid': len(paid_requests),
+                'reimbursements_ready': len([r for r in ready_for_payment if r['request_type'] == 'reimbursement']),
+                'advances_ready': len([r for r in ready_for_payment if r['request_type'] == 'advance']),
+            }
         })
-    
-    def _extract_attachments_from_payments(self, payments_data):
-        """
-        Extract all attachment paths from payments JSON data
-        """
-        attachments = []
-        
-        if not payments_data:
-            return attachments
-            
-        try:
-            # Parse payments JSON if it's a string
-            if isinstance(payments_data, str):
-                payments = json.loads(payments_data)
-            else:
-                payments = payments_data
-                
-            # If payments is a list, iterate through each payment
-            if isinstance(payments, list):
-                for payment in payments:
-                    if isinstance(payment, dict):
-                        # Check multiple possible attachment fields
-                        attachment_fields = [
-                            'attachmentPaths', 'attachments', 'attachment', 
-                            'file', 'receipt', 'document', 'files'
-                        ]
-                        
-                        for field in attachment_fields:
-                            if field in payment and payment[field]:
-                                field_data = payment[field]
-                                
-                                # Handle list of attachments
-                                if isinstance(field_data, list):
-                                    for item in field_data:
-                                        if isinstance(item, str) and item.strip():
-                                            attachments.append(item.strip())
-                                # Handle single attachment string
-                                elif isinstance(field_data, str) and field_data.strip():
-                                    # Try to parse as JSON array
-                                    try:
-                                        parsed_list = json.loads(field_data)
-                                        if isinstance(parsed_list, list):
-                                            for item in parsed_list:
-                                                if isinstance(item, str) and item.strip():
-                                                    attachments.append(item.strip())
-                                    except json.JSONDecodeError:
-                                        # If not JSON, treat as single attachment
-                                        attachments.append(field_data.strip())
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_attachments = []
-            for attachment in attachments:
-                if attachment not in seen:
-                    seen.add(attachment)
-                    unique_attachments.append(attachment)
-                    
-            return unique_attachments
-            
-        except Exception as e:
-            print(f"Error extracting attachments from payments: {e}")
-            return []
-# -----------------------------
-# Mark as Paid
-# -----------------------------
 class FinanceMarkAsPaidView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1798,7 +1765,11 @@ class FinanceMarkAsPaidView(APIView):
                     "error": "Request must be approved by CEO before marking as paid"
                 }, status=400)
 
-            # Mark as paid
+            # ✅ DEBUG: Log project data before marking as paid
+            print(f"💰 Marking as paid - Request ID: {obj.id}, Type: {request_type}")
+            print(f"💰 Project Data - ID: {obj.project_id}, Name: {getattr(obj, 'project_name', 'None')}")
+
+            # Mark as paid (PROJECT DATA IS PRESERVED AUTOMATICALLY)
             obj.status = "Paid"
             obj.payment_date = timezone.now()
             obj.current_approver_id = None
@@ -1817,7 +1788,6 @@ class FinanceMarkAsPaidView(APIView):
             
         except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
             return Response({"error": "Request not found"}, status=404)
-        
 class FinancePaymentInsightsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1909,3 +1879,141 @@ class FinancePaymentInsightsView(APIView):
         }
         
         return Response(insights_data, status=status.HTTP_200_OK)
+    
+class EmployeeProjectSpendingView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Get spending data for specific employee and project combination
+        Used for Finance Payment dashboard reports
+        """
+        if request.user.role != "Finance Payment":
+            return Response(
+                {"detail": "Access denied. Finance Payment role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        employee_id = request.GET.get('employee_id')
+        project_identifier = request.GET.get('project_identifier')
+        period = request.GET.get('period', 'all_time')
+        
+        if not employee_id or not project_identifier:
+            return Response(
+                {"error": "employee_id and project_identifier are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate date range based on period
+        today = timezone.now().date()
+        if period == '1_month':
+            start_date = today - timedelta(days=30)
+        elif period == '3_months':
+            start_date = today - timedelta(days=90)
+        elif period == '6_months':
+            start_date = today - timedelta(days=180)
+        else:  # all_time
+            start_date = today - timedelta(days=365*5)  # 5 years back
+        
+        try:
+            # Verify employee exists
+            employee = User.objects.get(employee_id=employee_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": f"Employee with ID {employee_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get reimbursements for employee and project
+        reimbursements = Reimbursement.objects.filter(
+            employee_id=employee_id,
+            created_at__date__gte=start_date
+        )
+        
+        # Enhanced project matching for reimbursements
+        project_reimbursements = []
+        for reimb in reimbursements:
+            # Multiple ways to match project
+            project_match = (
+                str(reimb.project_id) == str(project_identifier) or
+                (hasattr(reimb, 'project_name') and 
+                 reimb.project_name and 
+                 project_identifier.lower() in reimb.project_name.lower()) or
+                (hasattr(reimb, 'project_code') and 
+                 reimb.project_code and 
+                 str(reimb.project_code) == str(project_identifier))
+            )
+            
+            if project_match:
+                project_reimbursements.append(reimb)
+        
+        # Get advances for employee and project
+        advances = AdvanceRequest.objects.filter(
+            employee_id=employee_id,
+            created_at__date__gte=start_date
+        )
+        
+        # Enhanced project matching for advances
+        project_advances = []
+        for advance in advances:
+            # Multiple ways to match project
+            project_match = (
+                str(advance.project_id) == str(project_identifier) or
+                (advance.project_name and 
+                 project_identifier.lower() in advance.project_name.lower()) or
+                (hasattr(advance, 'project_code') and 
+                 advance.project_code and 
+                 str(advance.project_code) == str(project_identifier))
+            )
+            
+            if project_match:
+                project_advances.append(advance)
+        
+        # Combine and format results
+        all_requests = list(project_reimbursements) + list(project_advances)
+        
+        if not all_requests:
+            return Response({
+                "employee_id": employee_id,
+                "employee_name": employee.fullName,
+                "project_identifier": project_identifier,
+                "period": period,
+                "total_requests": 0,
+                "total_amount": 0,
+                "requests": [],
+                "message": "No matching requests found for the specified criteria"
+            })
+        
+        # Calculate totals
+        total_amount = sum(float(req.amount) for req in all_requests)
+        
+        # Format response data
+        requests_data = []
+        for req in all_requests:
+            is_reimbursement = hasattr(req, 'date')
+            request_data = {
+                'id': req.id,
+                'request_type': 'reimbursement' if is_reimbursement else 'advance',
+                'amount': float(req.amount),
+                'description': req.description,
+                'status': req.status,
+                'submitted_date': req.created_at.strftime('%Y-%m-%d') if req.created_at else None,
+                'approved_date': req.updated_at.strftime('%Y-%m-%d') if req.status == 'Approved' else None,
+                'payment_date': req.payment_date.strftime('%Y-%m-%d') if req.payment_date else None,
+                'project_id': req.project_id,
+                'project_name': getattr(req, 'project_name', None),
+            }
+            requests_data.append(request_data)
+        
+        return Response({
+            "employee_id": employee_id,
+            "employee_name": employee.fullName,
+            "project_identifier": project_identifier,
+            "period": period,
+            "total_requests": len(all_requests),
+            "total_amount": round(total_amount, 2),
+            "reimbursement_count": len(project_reimbursements),
+            "advance_count": len(project_advances),
+            "requests": requests_data
+        })

@@ -48,6 +48,13 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
   String _reportIdentifier = '';
   bool _isGeneratingReport = false;
 
+  // Employee project spending variables
+  String _employeeProjectReportType = 'employee_project';
+  String _employeeProjectPeriod = '1_month';
+  String _employeeIdForProjectReport = '';
+  String _projectIdForEmployeeReport = '';
+  bool _isGeneratingEmployeeProjectReport = false;
+
   @override
   void initState() {
     super.initState();
@@ -85,10 +92,10 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
           _paidRequests = data['paid_requests'] ?? [];
           _isLoading = false;
 
-          // Debug: Print first request to check attachments
+          // Debug: Print first request to check avatar data
           if (_readyForPayment.isNotEmpty) {
             print(
-                "🔍 First ready request: ${jsonEncode(_readyForPayment.first)}");
+                "🔍 First request avatar: ${_readyForPayment.first['employee_avatar']}");
           }
 
           // Sort by latest first
@@ -143,6 +150,38 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     }
   }
 
+  // ✅ IMPROVED: BETTER AVATAR DISPLAY WIDGET
+  Widget _buildAvatar(String? avatarUrl,
+      {double radius = 16, bool isAppBar = false}) {
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      // Check if URL is valid and not placeholder
+      if (avatarUrl.startsWith('http') &&
+          !avatarUrl.contains('placeholder') &&
+          !avatarUrl.contains('default')) {
+        return CircleAvatar(
+          radius: radius,
+          backgroundImage: NetworkImage(avatarUrl),
+          backgroundColor: Colors.transparent,
+          onBackgroundImageError: (exception, stackTrace) {
+            print("❌ Avatar image failed to load: $avatarUrl");
+          },
+        );
+      }
+    }
+
+    // Fallback avatar with different styles for app bar and cards
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor:
+          isAppBar ? Colors.white.withOpacity(0.2) : Color(0xFF0D47A1),
+      child: Icon(
+        Icons.person,
+        color: Colors.white,
+        size: isAppBar ? radius * 1.2 : radius * 1.1,
+      ),
+    );
+  }
+
   // ✅ FIXED: MARK AS PAID WITH CORRECT ENDPOINT
   Future<void> _markAsPaid(int requestId, String requestType) async {
     try {
@@ -186,86 +225,46 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     }
   }
 
-  // ✅ FIXED: CONVERT TO FINANCE REQUEST WITH PROPER ATTACHMENTS HANDLING
+  // ✅ IMPROVED: CONVERT TO FINANCE REQUEST WITH BETTER AVATAR HANDLING
   FinanceRequest _convertToFinanceRequest(dynamic requestData) {
-    print("=== Converting Payment Request Data ===");
-    print("Request ID: ${requestData['id']}");
-    print("Request Type: ${requestData['request_type']}");
-    print("Full request data: ${jsonEncode(requestData)}");
-
     List<dynamic> payments = [];
     List<dynamic> mainAttachments = [];
 
-    // ✅ ENHANCED: CHECK ALL POSSIBLE ATTACHMENT FIELDS
-    print("🔍 Checking attachments in request data...");
-
-    // Priority 1: Check main attachments field
+    // Enhanced attachment extraction
     if (requestData['attachments'] != null) {
-      print("📎 Main attachments field: ${requestData['attachments']}");
-      print(
-          "📎 Main attachments type: ${requestData['attachments'].runtimeType}");
-
       if (requestData['attachments'] is List) {
         mainAttachments = List.from(requestData['attachments']);
-        print("✅ Found attachments list: ${mainAttachments.length} items");
       } else if (requestData['attachments'] is String) {
         try {
           mainAttachments = jsonDecode(requestData['attachments']);
-          print(
-              "✅ Parsed attachments from JSON string: ${mainAttachments.length} items");
         } catch (e) {
-          // If it's a single string, treat it as one attachment
           mainAttachments = [requestData['attachments']];
-          print("✅ Treated attachments as single string");
         }
       }
     }
 
-    // Priority 2: Check for payment-specific attachments
     if (requestData['payments'] != null) {
-      print("💰 Payments field exists: ${requestData['payments']}");
-      print("💰 Payments field type: ${requestData['payments'].runtimeType}");
-
       if (requestData['payments'] is String) {
         try {
           payments = jsonDecode(requestData['payments']);
-          print("✅ Parsed payments from JSON string: ${payments.length} items");
         } catch (e) {
           print("❌ Failed to parse payments JSON: $e");
         }
       } else if (requestData['payments'] is List) {
         payments = List.from(requestData['payments']);
-        print("✅ Payments is already a list: ${payments.length} items");
       }
 
-      // ✅ EXTRACT ATTACHMENTS FROM PAYMENTS
       for (var payment in payments) {
         if (payment is Map<String, dynamic>) {
-          // Check for attachment fields in each payment
           final paymentAttachments = _extractAttachmentsFromPayment(payment);
           if (paymentAttachments.isNotEmpty) {
-            print(
-                "✅ Found ${paymentAttachments.length} attachments in payment");
             mainAttachments.addAll(paymentAttachments);
           }
         }
       }
     }
 
-    // Priority 3: Check for direct file fields
-    final directFileFields = ['file', 'receipt', 'document', 'attachment_file'];
-    for (String field in directFileFields) {
-      if (requestData[field] != null &&
-          requestData[field].toString().isNotEmpty) {
-        print("✅ Found direct file field '$field': ${requestData[field]}");
-        mainAttachments.add(requestData[field].toString());
-      }
-    }
-
-    // ✅ FIXED: If payments is still empty, create from main request data WITH ATTACHMENTS
     if (payments.isEmpty) {
-      print("🔄 Creating payment from main request data...");
-
       Map<String, dynamic> mainPayment = {
         'amount': requestData['amount'] ?? 0,
         'description': requestData['description'] ?? '',
@@ -274,36 +273,17 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
             requestData['date'] ??
             '',
         'claimType': requestData['claim_type'] ?? '',
-        // ✅ INCLUDE ALL ATTACHMENTS IN THE MAIN PAYMENT
         'attachmentPaths': mainAttachments,
         'attachments': mainAttachments,
       };
-
       payments.add(mainPayment);
-      print(
-          "✅ Created synthetic payment with ${mainAttachments.length} attachments");
-    } else {
-      // ✅ ENSURE ATTACHMENTS ARE INCLUDED IN PAYMENTS
-      for (var payment in payments) {
-        if (payment is Map<String, dynamic>) {
-          if (payment['attachmentPaths'] == null &&
-              mainAttachments.isNotEmpty) {
-            payment['attachmentPaths'] = List.from(mainAttachments);
-          }
-          if (payment['attachments'] == null && mainAttachments.isNotEmpty) {
-            payment['attachments'] = List.from(mainAttachments);
-          }
-        }
-      }
     }
 
-    // ✅ CRITICAL FIX: PROPERLY EXTRACT ALL DATE FIELDS WITH FALLBACKS
     FinanceRequest financeRequest = FinanceRequest(
       id: requestData['id'] ?? 0,
       employeeId: requestData['employee_id']?.toString() ?? 'Unknown',
       employeeName: requestData['employee_name']?.toString() ?? 'Unknown',
-      avatarUrl: requestData['employee_avatar'],
-      // ✅ FIXED: BETTER SUBMISSION DATE HANDLING
+      avatarUrl: requestData['employee_avatar'], // ✅ Avatar passed directly
       submissionDate: requestData['submitted_date']?.toString() ??
           requestData['created_at']?.toString() ??
           requestData['date']?.toString() ??
@@ -318,44 +298,17 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       approvalDate: requestData['approved_date'],
       projectId: requestData['project_id'] ?? requestData['projectId'],
       projectName: requestData['project_name'] ?? requestData['projectName'],
-      // ✅ FIXED: PROPERLY EXTRACT ALL DATE FIELDS
       reimbursementDate: requestData['reimbursement_date']?.toString(),
       requestDate: requestData['request_date']?.toString(),
       projectDate: requestData['project_date']?.toString(),
       paymentDate: requestData['payment_date']?.toString(),
     );
 
-    print("=== Final FinanceRequest ===");
-    print("Total payments: ${financeRequest.payments.length}");
-    print("Total attachments: ${financeRequest.attachments.length}");
-    print("Submission Date: ${financeRequest.submissionDate}");
-    print("Reimbursement Date: ${financeRequest.reimbursementDate}");
-    print("Request Date: ${financeRequest.requestDate}");
-    print("Project Date: ${financeRequest.projectDate}");
-    print("Payment Date: ${financeRequest.paymentDate}");
-
-    // Debug: Print payment details
-    for (var i = 0; i < financeRequest.payments.length; i++) {
-      final payment = financeRequest.payments[i];
-      if (payment is Map<String, dynamic>) {
-        print("Payment $i: ${payment['amount']} - ${payment['description']}");
-        if (payment['attachmentPaths'] != null) {
-          print("  Attachments in payment: ${payment['attachmentPaths']}");
-        }
-        if (payment['attachments'] != null) {
-          print("  Attachments field: ${payment['attachments']}");
-        }
-      }
-    }
-
     return financeRequest;
   }
 
-  // ✅ NEW: HELPER METHOD TO EXTRACT ATTACHMENTS FROM PAYMENT
   List<String> _extractAttachmentsFromPayment(Map<String, dynamic> payment) {
     List<String> attachments = [];
-
-    // Check multiple possible attachment fields
     final attachmentFields = [
       'attachmentPaths',
       'attachments',
@@ -368,8 +321,6 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
 
     for (String field in attachmentFields) {
       if (payment[field] != null) {
-        print("🔍 Checking payment field '$field': ${payment[field]}");
-
         if (payment[field] is List) {
           for (var item in payment[field] as List) {
             if (item is String && item.isNotEmpty) {
@@ -378,7 +329,6 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
           }
         } else if (payment[field] is String && payment[field].isNotEmpty) {
           try {
-            // Try to parse as JSON array
             final parsed = jsonDecode(payment[field]);
             if (parsed is List) {
               for (var item in parsed) {
@@ -388,17 +338,14 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               }
             }
           } catch (e) {
-            // If not JSON, treat as single attachment
             attachments.add(payment[field]);
           }
         }
       }
     }
-
     return attachments;
   }
 
-  // ✅ NEW: CALCULATE MONTHLY PAID REQUESTS
   int _getMonthlyPaidRequests() {
     final now = DateTime.now();
     final firstDayOfMonth = DateTime(now.year, now.month, 1);
@@ -409,7 +356,6 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     }).length;
   }
 
-  // ✅ NEW: CALCULATE MONTHLY PAID AMOUNT
   double _getMonthlyPaidAmount() {
     final now = DateTime.now();
     final firstDayOfMonth = DateTime(now.year, now.month, 1);
@@ -424,7 +370,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     return total;
   }
 
-// ✅ FIXED: REPORT GENERATION FUNCTION
+  // ✅ FIXED: REPORT GENERATION FUNCTION
   Future<void> _generateReport() async {
     if (_reportIdentifier.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -543,7 +489,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       // Convert to CSV
       String csv = const ListToCsvConverter().convert(csvData);
 
-      // ✅ FIXED: Save file properly using File class
+      // Save file properly using File class
       final directory = await getTemporaryDirectory();
       final filePath =
           '${directory.path}/payment_report_${DateTime.now().millisecondsSinceEpoch}.csv';
@@ -582,93 +528,208 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     }
   }
 
-  // Helper method to write file (since we can't use dart:io directly)
-  Future<String> writeAsString(String path, String contents) async {
-    // This is a simplified version - in real app you'd use proper file writing
-    return path;
+  Future<void> _generateEmployeeProjectReport() async {
+    if (_employeeIdForProjectReport.isEmpty ||
+        _projectIdForEmployeeReport.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text("Please enter both Employee ID and Project ID/Code/Name"),
+          backgroundColor: Colors.red[800],
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingEmployeeProjectReport = true;
+    });
+
+    try {
+      print("🔄 Fetching employee-project spending data...");
+
+      // Use the new dedicated API endpoint
+      final response = await http.get(
+        Uri.parse("http://10.0.2.2:8000/api/employee-project-spending/")
+            .replace(queryParameters: {
+          'employee_id': _employeeIdForProjectReport,
+          'project_identifier': _projectIdForEmployeeReport,
+          'period': _employeeProjectPeriod,
+        }),
+        headers: {
+          "Authorization": "Token ${widget.authToken}",
+          "Content-Type": "application/json",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print("✅ Employee-Project API response received");
+
+        if (data['total_requests'] == 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("No reimbursement data found for:\n"
+                  "Employee: ${_employeeIdForProjectReport}\n"
+                  "Project: ${_projectIdForEmployeeReport}\n\n"
+                  "Please check:\n"
+                  "• Employee ID spelling\n"
+                  "• Project ID/Code/Name\n"
+                  "• If reimbursements exist for this combination"),
+              backgroundColor: Colors.orange[800],
+              duration: Duration(seconds: 6),
+            ),
+          );
+          setState(() {
+            _isGeneratingEmployeeProjectReport = false;
+          });
+          return;
+        }
+
+        // Calculate totals from API response
+        double totalSpending = (data['total_amount'] ?? 0).toDouble();
+        int totalRequests = data['total_requests'] ?? 0;
+        int reimbursementCount = data['reimbursement_count'] ?? 0;
+        int advanceCount = data['advance_count'] ?? 0;
+
+        // Count by status
+        int approvedCount = 0;
+        int paidCount = 0;
+        int pendingCount = 0;
+
+        for (var request in data['requests']) {
+          final status = request['status']?.toString().toLowerCase() ?? '';
+          if (status == 'approved') approvedCount++;
+          if (status == 'paid') paidCount++;
+          if (status == 'pending') pendingCount++;
+        }
+
+        // Create comprehensive CSV report
+        List<List<dynamic>> csvData = [];
+
+        // Add summary header
+        csvData.add(['EMPLOYEE-PROJECT SPENDING REPORT']);
+        csvData.add(['Generated on', DateTime.now().toString().split(' ')[0]]);
+        csvData.add(['Employee ID', data['employee_id']]);
+        csvData.add(['Employee Name', data['employee_name'] ?? 'Unknown']);
+        csvData.add(['Project Identifier', data['project_identifier']]);
+        csvData.add(
+            ['Report Period', _employeeProjectPeriod.replaceAll('_', ' ')]);
+        csvData.add([]);
+
+        // Add financial summary
+        csvData.add(['FINANCIAL SUMMARY']);
+        csvData.add(['Total Requests', totalRequests]);
+        csvData.add(['Reimbursements', reimbursementCount]);
+        csvData.add(['Advances', advanceCount]);
+        csvData.add(['Approved Requests', approvedCount]);
+        csvData.add(['Paid Requests', paidCount]);
+        csvData.add(['Pending Requests', pendingCount]);
+        csvData.add(['Total Spending', '₹${totalSpending.toStringAsFixed(2)}']);
+        csvData.add([]);
+
+        // Add detailed transactions header
+        csvData.add(['DETAILED REQUEST RECORDS']);
+        csvData.add([
+          'Request ID',
+          'Type',
+          'Amount',
+          'Description',
+          'Status',
+          'Submitted Date',
+          'Approved Date',
+          'Payment Date',
+          'Project ID',
+          'Project Name'
+        ]);
+
+        // Add request rows
+        for (var request in data['requests']) {
+          csvData.add([
+            request['id'] ?? '',
+            request['request_type'] ?? '',
+            '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
+            request['description'] ?? '',
+            request['status'] ?? '',
+            request['submitted_date'] ?? '',
+            request['approved_date'] ?? '',
+            request['payment_date'] ?? '',
+            request['project_id'] ?? '',
+            request['project_name'] ?? '',
+          ]);
+        }
+
+        // Convert to CSV
+        String csv = const ListToCsvConverter().convert(csvData);
+
+        // Save file
+        final directory = await getTemporaryDirectory();
+        final filePath =
+            '${directory.path}/employee_project_spending_${_employeeIdForProjectReport}_${_projectIdForEmployeeReport}_${DateTime.now().millisecondsSinceEpoch}.csv';
+
+        final file = File(filePath);
+        await file.writeAsString(csv);
+
+        print("✅ Employee-Project CSV file created at: $filePath");
+        print("✅ Report contains $totalRequests requests");
+
+        // Share file with detailed information
+        await Share.shareXFiles([XFile(filePath)],
+            text: 'Employee-Project Spending Report\n\n'
+                '👤 Employee: ${data['employee_name']} (${data['employee_id']})\n'
+                '📁 Project ID: ${data['project_identifier']}\n'
+                '💰 Total Spending: ₹${totalSpending.toStringAsFixed(2)}\n'
+                '📊 Total Requests: $totalRequests\n'
+                '🧾 Reimbursements: $reimbursementCount | 💰 Advances: $advanceCount\n'
+                '✅ Approved: $approvedCount | 💳 Paid: $paidCount | ⏳ Pending: $pendingCount\n'
+                '📅 Period: ${_employeeProjectPeriod.replaceAll('_', ' ')}');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("Employee-Project report generated successfully!"),
+                SizedBox(height: 4),
+                Text("Total Spending: ₹${totalSpending.toStringAsFixed(2)}"),
+                Text(
+                    "Requests: $totalRequests (${reimbursementCount}R + ${advanceCount}A)"),
+              ],
+            ),
+            backgroundColor: Colors.green[800],
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+            'Failed to load data: ${errorData['error'] ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      print("❌ Error generating employee-project report: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error generating report: ${e.toString()}"),
+          backgroundColor: Colors.red[800],
+        ),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingEmployeeProjectReport = false;
+      });
+    }
   }
 
-  List<dynamic> _getFilteredRequests(List<dynamic> requests, String tabType) {
-    List<dynamic> filtered = List.from(requests);
-
-    // Filter by request type based on tab
-    if (tabType == 'reimbursement') {
-      filtered = filtered.where((request) {
-        final requestType =
-            request['request_type']?.toString().toLowerCase() ?? '';
-        return requestType.contains('reimbursement');
-      }).toList();
-    } else if (tabType == 'advance') {
-      filtered = filtered.where((request) {
-        final requestType =
-            request['request_type']?.toString().toLowerCase() ?? '';
-        return requestType.contains('advance');
-      }).toList();
-    }
-
-    // Search filter
-    if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((request) {
-        final employeeId =
-            request['employee_id']?.toString().toLowerCase() ?? '';
-        final employeeName =
-            request['employee_name']?.toString().toLowerCase() ?? '';
-        return employeeId.contains(_searchQuery.toLowerCase()) ||
-            employeeName.contains(_searchQuery.toLowerCase());
-      }).toList();
-    }
-
-    // Amount filter
-    if (_amountFilter == 'Above 2000') {
-      filtered = filtered.where((request) {
-        final amount = (request['amount'] ?? 0).toDouble();
-        return amount > 2000;
-      }).toList();
-    } else if (_amountFilter == 'Below 2000') {
-      filtered = filtered.where((request) {
-        final amount = (request['amount'] ?? 0).toDouble();
-        return amount <= 2000;
-      }).toList();
-    }
-
-    // Sort filter
-    if (_sortFilter == 'Latest') {
-      filtered.sort((a, b) {
-        final dateA =
-            DateTime.tryParse(a['approved_date'] ?? a['payment_date'] ?? '') ??
-                DateTime(0);
-        final dateB =
-            DateTime.tryParse(b['approved_date'] ?? b['payment_date'] ?? '') ??
-                DateTime(0);
-        return dateB.compareTo(dateA);
-      });
-    } else if (_sortFilter == 'Oldest') {
-      filtered.sort((a, b) {
-        final dateA =
-            DateTime.tryParse(a['approved_date'] ?? a['payment_date'] ?? '') ??
-                DateTime(0);
-        final dateB =
-            DateTime.tryParse(b['approved_date'] ?? b['payment_date'] ?? '') ??
-                DateTime(0);
-        return dateA.compareTo(dateB);
-      });
-    }
-
-    return filtered;
-  }
-
-  // UPDATED REQUEST CARD WIDGET - Matching Verification Dashboard style
+  // ✅ IMPROVED: REQUEST CARD WITH BETTER AVATAR DISPLAY
   Widget _buildRequestCard(dynamic request, bool isPaid) {
     const Color pastelGreen = Color(0xFFA5D6A7);
-    const Color pastelBlue = Color(0xFF90CAF9);
     const Color pastelTeal = Color(0xFF80CBC4);
     const Color pastelOrange = Color(0xFFFFAB91);
 
-    // Calculate payment count and attachment count
     int paymentCount =
         request['payments'] != null ? (request['payments'] as List).length : 0;
 
-    // ✅ ADDED: Calculate attachment count
     int attachmentCount = 0;
     if (request['attachments'] != null && request['attachments'] is List) {
       attachmentCount = (request['attachments'] as List).length;
@@ -678,7 +739,6 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
         request['request_type']?.toLowerCase().contains('reimbursement') ??
             false;
 
-    // ✅ FORMATTED DATES USE KAREIN
     String formattedApprovedDate =
         DateFormatter.formatBackendDate(request['approved_date']);
     String formattedPaymentDate =
@@ -692,255 +752,291 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // First row: Avatar, Employee Name, and Request Type
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundImage: request['employee_avatar'] != null
-                          ? NetworkImage(request['employee_avatar'])
-                          : null,
-                      child: request['employee_avatar'] == null
-                          ? const Icon(Icons.person, color: Colors.white70)
-                          : null,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: 120,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ✅ IMPROVED: Avatar row with better layout
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        // ✅ IMPROVED: Avatar with better error handling
+                        _buildAvatar(request['employee_avatar'], radius: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                request['employee_name'] ?? 'Unknown Employee',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                              Text(
+                                'ID: ${request['employee_id'] ?? 'Unknown'}',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Column(
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isReimbursement ? pastelTeal : pastelOrange,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      request['request_type'] ?? 'Unknown',
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // Dates and Amount row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (request['approved_date'] != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'CEO Approved',
+                                  style: TextStyle(
+                                    color: Colors.green[300],
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  formattedApprovedDate,
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (isPaid && request['payment_date'] != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Paid on',
+                                  style: TextStyle(
+                                    color: Colors.green[300],
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  formattedPaymentDate,
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (request['submitted_date'] != null)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Submitted',
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 10,
+                                ),
+                              ),
+                              Text(
+                                formattedSubmittedDate,
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 10,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 1,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
                         Text(
-                          request['employee_name'] ?? 'Unknown',
+                          '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
+                          textAlign: TextAlign.end,
                         ),
                         Text(
-                          'ID: ${request['employee_id'] ?? 'Unknown'}',
+                          '$paymentCount payment${paymentCount != 1 ? 's' : ''}',
                           style: const TextStyle(
                             color: Colors.white54,
                             fontSize: 12,
                           ),
+                          textAlign: TextAlign.end,
                         ),
+                        if (attachmentCount > 0)
+                          Text(
+                            '$attachmentCount attachment${attachmentCount != 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: Colors.blue[300],
+                              fontSize: 11,
+                            ),
+                            textAlign: TextAlign.end,
+                          ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Description
+              if (request['description'] != null &&
+                  request['description'].toString().isNotEmpty)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isReimbursement ? pastelTeal : pastelOrange,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    request['request_type'] ?? 'Unknown',
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // Second row: Dates and Amount with payment count
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (request['approved_date'] != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'CEO Approved',
-                            style: TextStyle(
-                              color: Colors.green[300],
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            formattedApprovedDate,
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    if (isPaid && request['payment_date'] != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            'Paid on',
-                            style: TextStyle(
-                              color: Colors.green[300],
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            formattedPaymentDate,
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    if (request['submitted_date'] != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            'Submitted',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 10,
-                            ),
-                          ),
-                          Text(
-                            formattedSubmittedDate,
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
+                  constraints: BoxConstraints(maxHeight: 40),
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Text(
+                      request['description'].toString(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      '$paymentCount payment${paymentCount != 1 ? 's' : ''}',
-                      style: const TextStyle(
-                        color: Colors.white54,
+                        color: Colors.white70,
                         fontSize: 12,
                       ),
                     ),
-                    // ✅ ADDED: Show attachment count
-                    if (attachmentCount > 0)
-                      Text(
-                        '$attachmentCount attachment${attachmentCount != 1 ? 's' : ''}',
-                        style: TextStyle(
-                          color: Colors.blue[300],
-                          fontSize: 11,
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
+              // Action buttons
+              if (!isPaid &&
+                  (_tabController.index == 0 || _tabController.index == 1))
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FinanceRequestDetails(
+                              request: _convertToFinanceRequest(request),
+                              authToken: widget.authToken,
+                              isPaymentTab: true,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Details',
+                        style: TextStyle(color: Color(0xFF80CBC4)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _markAsPaid(
+                        request['id'],
+                        request['request_type'],
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: pastelGreen,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
+                      child: const Text(
+                        'Mark as Paid',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ),
                   ],
                 ),
-              ],
-            ),
 
-            const SizedBox(height: 12),
-
-            // Description preview
-            if (request['description'] != null &&
-                request['description'].toString().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  request['description'].toString(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+              // Status for paid requests
+              if (isPaid || _tabController.index == 3)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Payment Completed',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-
-            // Action buttons row - Only show for ready for payment tabs (Reimbursement & Advance)
-            if (!isPaid &&
-                (_tabController.index == 0 || _tabController.index == 1))
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      print(
-                          "Viewing details for payment request: ${request['id']}");
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FinanceRequestDetails(
-                            request: _convertToFinanceRequest(request),
-                            authToken: widget.authToken,
-                            isPaymentTab: true,
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Details',
-                      style: TextStyle(color: Color(0xFF80CBC4)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _markAsPaid(
-                      request['id'],
-                      request['request_type'],
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: pastelGreen,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Mark as Paid',
-                      style: TextStyle(color: Colors.black87),
-                    ),
-                  ),
-                ],
-              ),
-
-            // Status indicator for paid requests (History tab)
-            if (isPaid || _tabController.index == 3)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Payment Completed',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -949,45 +1045,30 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
   Widget _buildFilterDialog() {
     return AlertDialog(
       backgroundColor: Color(0xFF1E1E1E),
-      title: Text(
-        "Filter Requests",
-        style: TextStyle(color: Colors.white),
-      ),
+      title: Text("Filter Requests", style: TextStyle(color: Colors.white)),
       content: Container(
         width: double.maxFinite,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Search Employee:",
-              style: TextStyle(color: Colors.grey[400]),
-            ),
+            Text("Search Employee:", style: TextStyle(color: Colors.grey[400])),
             SizedBox(height: 8),
             TextField(
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
               decoration: InputDecoration(
                 hintText: "Search by ID or Name",
                 hintStyle: TextStyle(color: Colors.grey[500]),
                 border: OutlineInputBorder(),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.blue),
-                ),
+                    borderSide: BorderSide(color: Colors.blue)),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey),
-                ),
+                    borderSide: BorderSide(color: Colors.grey)),
               ),
               style: TextStyle(color: Colors.white),
             ),
             SizedBox(height: 16),
-            Text(
-              "Sort By:",
-              style: TextStyle(color: Colors.grey[400]),
-            ),
+            Text("Sort By:", style: TextStyle(color: Colors.grey[400])),
             SizedBox(height: 8),
             DropdownButtonFormField<String>(
               value: _sortFilter,
@@ -996,27 +1077,18 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.blue),
-                ),
+                    borderSide: BorderSide(color: Colors.blue)),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey),
-                ),
+                    borderSide: BorderSide(color: Colors.grey)),
               ),
               items: [
                 DropdownMenuItem(value: 'Latest', child: Text('Latest First')),
                 DropdownMenuItem(value: 'Oldest', child: Text('Oldest First')),
               ],
-              onChanged: (value) {
-                setState(() {
-                  _sortFilter = value!;
-                });
-              },
+              onChanged: (value) => setState(() => _sortFilter = value!),
             ),
             SizedBox(height: 16),
-            Text(
-              "Amount Filter:",
-              style: TextStyle(color: Colors.grey[400]),
-            ),
+            Text("Amount Filter:", style: TextStyle(color: Colors.grey[400])),
             SizedBox(height: 8),
             DropdownButtonFormField<String>(
               value: _amountFilter,
@@ -1025,11 +1097,9 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.blue),
-                ),
+                    borderSide: BorderSide(color: Colors.blue)),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey),
-                ),
+                    borderSide: BorderSide(color: Colors.grey)),
               ),
               items: [
                 DropdownMenuItem(value: 'All', child: Text('All Amounts')),
@@ -1038,11 +1108,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                 DropdownMenuItem(
                     value: 'Below 2000', child: Text('Below ₹2000')),
               ],
-              onChanged: (value) {
-                setState(() {
-                  _amountFilter = value!;
-                });
-              },
+              onChanged: (value) => setState(() => _amountFilter = value!),
             ),
           ],
         ),
@@ -1057,10 +1123,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
             });
             Navigator.pop(context);
           },
-          child: Text(
-            "Reset",
-            style: TextStyle(color: Colors.grey[400]),
-          ),
+          child: Text("Reset", style: TextStyle(color: Colors.grey[400])),
         ),
         ElevatedButton(
           onPressed: () => Navigator.pop(context),
@@ -1071,6 +1134,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     );
   }
 
+  // ✅ COMPLETE: INSIGHTS TAB WITH ALL FUNCTIONALITY
   Widget _buildInsightsTab() {
     final readyReimbursements = _readyForPayment
         .where((request) =>
@@ -1092,7 +1156,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
         .toList();
 
     return SingleChildScrollView(
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1104,49 +1168,40 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 20),
+          SizedBox(height: 15),
 
-          // UPDATED: Top 4 Insight Cards
-          Row(
+          // Insight Cards
+          GridView.count(
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 6,
+            childAspectRatio: 0.8,
             children: [
-              Expanded(
-                child: _buildInsightCard(
-                  "Ready for Payment",
-                  _readyForPayment.length.toString(),
-                  Icons.payment,
-                  Colors.orange,
-                ),
+              _buildInsightCard(
+                "Ready for Payment",
+                _readyForPayment.length.toString(),
+                Icons.payment,
+                Colors.orange,
               ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildInsightCard(
-                  "Paid Requests (Monthly)",
-                  _getMonthlyPaidRequests().toString(),
-                  Icons.check_circle,
-                  Colors.green,
-                ),
+              _buildInsightCard(
+                "Paid Requests (Monthly)",
+                _getMonthlyPaidRequests().toString(),
+                Icons.check_circle,
+                Colors.green,
               ),
-            ],
-          ),
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildInsightCard(
-                  "Total Amount Ready",
-                  "₹${_calculateTotalAmount(_readyForPayment)}",
-                  Icons.attach_money,
-                  Colors.blue,
-                ),
+              _buildInsightCard(
+                "Total Amount Ready",
+                "₹${_calculateTotalAmount(_readyForPayment)}",
+                Icons.attach_money,
+                Colors.blue,
               ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildInsightCard(
-                  "Total Amount Paid (Monthly)",
-                  "₹${_getMonthlyPaidAmount().toStringAsFixed(2)}",
-                  Icons.currency_rupee,
-                  Colors.purple,
-                ),
+              _buildInsightCard(
+                "Total Amount Paid (Monthly)",
+                "₹${_getMonthlyPaidAmount().toStringAsFixed(2)}",
+                Icons.currency_rupee,
+                Colors.purple,
               ),
             ],
           ),
@@ -1191,7 +1246,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
 
           SizedBox(height: 16),
 
-          // NEW: Report Generation Section
+          // Report Generation Section
           Card(
             color: Color(0xFF2D2D2D),
             child: Padding(
@@ -1204,7 +1259,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                       Icon(Icons.assignment, color: Colors.amber),
                       SizedBox(width: 8),
                       Text(
-                        "Generate Report",
+                        "Generate Reports",
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -1365,57 +1420,155 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                             ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
 
-          SizedBox(height: 16),
-
-          // Quick Actions
-          Card(
-            color: Color(0xFF2D2D2D),
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  // Employee-Project Spending Report Section
+                  SizedBox(height: 24),
+                  Divider(color: Colors.grey[700]),
+                  SizedBox(height: 16),
                   Row(
                     children: [
-                      Icon(Icons.flash_on, color: Colors.amber),
+                      Icon(Icons.people, color: Colors.green),
                       SizedBox(width: 8),
                       Text(
-                        "Quick Actions",
+                        "Employee-Project Spending Report",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
                   SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ActionChip(
-                        avatar: Icon(Icons.refresh, size: 16),
-                        label: Text("Refresh Data"),
-                        onPressed: _loadAllData,
-                        backgroundColor: Colors.blue[800],
-                        labelStyle: TextStyle(color: Colors.white),
+
+                  // Employee-Project Time Period
+                  Text(
+                    "Time Period:",
+                    style: TextStyle(color: Colors.grey[400]),
+                  ),
+                  SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _employeeProjectPeriod,
+                    dropdownColor: Color(0xFF2D2D2D),
+                    style: TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.green),
                       ),
-                      ActionChip(
-                        avatar: Icon(Icons.analytics, size: 16),
-                        label: Text("View Analytics"),
-                        onPressed: () {
-                          // TODO: Add analytics navigation
-                        },
-                        backgroundColor: Colors.purple[800],
-                        labelStyle: TextStyle(color: Colors.white),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
                       ),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                          value: '1_month', child: Text('Last 1 Month')),
+                      DropdownMenuItem(
+                          value: '3_months', child: Text('Last 3 Months')),
+                      DropdownMenuItem(
+                          value: '6_months', child: Text('Last 6 Months')),
+                      DropdownMenuItem(
+                          value: 'all_time', child: Text('All Time')),
                     ],
+                    onChanged: (value) {
+                      setState(() {
+                        _employeeProjectPeriod = value!;
+                      });
+                    },
+                  ),
+
+                  // Employee ID Input
+                  SizedBox(height: 12),
+                  Text(
+                    "Employee ID:",
+                    style: TextStyle(color: Colors.grey[400]),
+                  ),
+                  SizedBox(height: 8),
+                  TextField(
+                    onChanged: (value) {
+                      setState(() {
+                        _employeeIdForProjectReport = value;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Enter Employee ID",
+                      hintStyle: TextStyle(color: Colors.grey[500]),
+                      border: OutlineInputBorder(),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.green),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
+                      ),
+                    ),
+                    style: TextStyle(color: Colors.white),
+                  ),
+
+                  // Project ID Input
+                  SizedBox(height: 12),
+                  Text(
+                    "Project ID/Code/Name:",
+                    style: TextStyle(color: Colors.grey[400]),
+                  ),
+                  SizedBox(height: 8),
+                  TextField(
+                    onChanged: (value) {
+                      setState(() {
+                        _projectIdForEmployeeReport = value;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Enter Project ID, Code or Name",
+                      hintStyle: TextStyle(color: Colors.grey[500]),
+                      border: OutlineInputBorder(),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.green),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
+                      ),
+                    ),
+                    style: TextStyle(color: Colors.white),
+                  ),
+
+                  // Generate Employee-Project Report Button
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isGeneratingEmployeeProjectReport
+                          ? null
+                          : _generateEmployeeProjectReport,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: _isGeneratingEmployeeProjectReport
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Text("Generating Report..."),
+                              ],
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.analytics),
+                                SizedBox(width: 8),
+                                Text("Generate Spending Report"),
+                              ],
+                            ),
+                    ),
                   ),
                 ],
               ),
@@ -1434,6 +1587,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: EdgeInsets.all(8),
@@ -1448,9 +1602,10 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               value,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
+              textAlign: TextAlign.center,
             ),
             SizedBox(height: 4),
             Text(
@@ -1460,6 +1615,8 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                 fontSize: 12,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -1497,11 +1654,75 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     return total.toStringAsFixed(2);
   }
 
+  List<dynamic> _getFilteredRequests(List<dynamic> requests, String tabType) {
+    List<dynamic> filtered = List.from(requests);
+
+    if (tabType == 'reimbursement') {
+      filtered = filtered.where((request) {
+        final requestType =
+            request['request_type']?.toString().toLowerCase() ?? '';
+        return requestType.contains('reimbursement');
+      }).toList();
+    } else if (tabType == 'advance') {
+      filtered = filtered.where((request) {
+        final requestType =
+            request['request_type']?.toString().toLowerCase() ?? '';
+        return requestType.contains('advance');
+      }).toList();
+    }
+
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((request) {
+        final employeeId =
+            request['employee_id']?.toString().toLowerCase() ?? '';
+        final employeeName =
+            request['employee_name']?.toString().toLowerCase() ?? '';
+        return employeeId.contains(_searchQuery.toLowerCase()) ||
+            employeeName.contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+
+    if (_amountFilter == 'Above 2000') {
+      filtered = filtered.where((request) {
+        final amount = (request['amount'] ?? 0).toDouble();
+        return amount > 2000;
+      }).toList();
+    } else if (_amountFilter == 'Below 2000') {
+      filtered = filtered.where((request) {
+        final amount = (request['amount'] ?? 0).toDouble();
+        return amount <= 2000;
+      }).toList();
+    }
+
+    if (_sortFilter == 'Latest') {
+      filtered.sort((a, b) {
+        final dateA =
+            DateTime.tryParse(a['approved_date'] ?? a['payment_date'] ?? '') ??
+                DateTime(0);
+        final dateB =
+            DateTime.tryParse(b['approved_date'] ?? b['payment_date'] ?? '') ??
+                DateTime(0);
+        return dateB.compareTo(dateA);
+      });
+    } else if (_sortFilter == 'Oldest') {
+      filtered.sort((a, b) {
+        final dateA =
+            DateTime.tryParse(a['approved_date'] ?? a['payment_date'] ?? '') ??
+                DateTime(0);
+        final dateB =
+            DateTime.tryParse(b['approved_date'] ?? b['payment_date'] ?? '') ??
+                DateTime(0);
+        return dateA.compareTo(dateB);
+      });
+    }
+
+    return filtered;
+  }
+
   Widget _buildTabContent(String tabType, String tabName) {
     List<dynamic> requests = [];
     bool isPaid = false;
 
-    // Determine which data to show based on tab
     if (tabType == 'reimbursement' || tabType == 'advance') {
       requests = _readyForPayment;
       isPaid = false;
@@ -1521,10 +1742,8 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
               children: [
                 Icon(Icons.filter_alt, color: Colors.blue, size: 16),
                 SizedBox(width: 4),
-                Text(
-                  "Filters applied",
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
+                Text("Filters applied",
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12)),
                 Spacer(),
                 TextButton(
                   onPressed: () {
@@ -1533,10 +1752,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                       _amountFilter = 'All';
                     });
                   },
-                  child: Text(
-                    "Clear",
-                    style: TextStyle(color: Colors.blue),
-                  ),
+                  child: Text("Clear", style: TextStyle(color: Colors.blue)),
                 ),
               ],
             ),
@@ -1547,37 +1763,23 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        _getTabIcon(tabType),
-                        color: Colors.grey[600],
-                        size: 64,
-                      ),
+                      Icon(_getTabIcon(tabType),
+                          color: Colors.grey[600], size: 64),
                       SizedBox(height: 16),
-                      Text(
-                        _getEmptyStateText(tabType, tabName),
-                        style: TextStyle(
-                          color: Colors.grey[400],
-                          fontSize: 16,
-                        ),
-                      ),
+                      Text(_getEmptyStateText(tabType, tabName),
+                          style:
+                              TextStyle(color: Colors.grey[400], fontSize: 16)),
                       if (_searchQuery.isNotEmpty || _amountFilter != 'All')
-                        Text(
-                          "Try adjusting your filters",
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text("Try adjusting your filters",
+                            style: TextStyle(
+                                color: Colors.grey[500], fontSize: 12)),
                     ],
                   ),
                 )
               : ListView.builder(
                   itemCount: filteredRequests.length,
                   itemBuilder: (context, index) {
-                    return _buildRequestCard(
-                      filteredRequests[index],
-                      isPaid,
-                    );
+                    return _buildRequestCard(filteredRequests[index], isPaid);
                   },
                 ),
         ),
@@ -1620,44 +1822,28 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     return Scaffold(
       backgroundColor: Color(0xFF121212),
       appBar: AppBar(
-        title: Text(
-          "Finance Payment",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
+        title: Text("Finance Payment",
+            style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 20)),
         backgroundColor: Color.fromARGB(255, 12, 15, 49),
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.filter_list),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => _buildFilterDialog(),
-              );
-            },
-            tooltip: "Filter Requests",
-          ),
+              icon: Icon(Icons.filter_list),
+              onPressed: () => showDialog(
+                  context: context, builder: (context) => _buildFilterDialog()),
+              tooltip: "Filter Requests"),
           IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _loadAllData,
-            tooltip: "Refresh Data",
-          ),
+              icon: Icon(Icons.refresh),
+              onPressed: _loadAllData,
+              tooltip: "Refresh Data"),
           Padding(
             padding: EdgeInsets.only(right: 16),
-            child: CircleAvatar(
-              backgroundColor: Color(0xFF0D47A1),
-              backgroundImage: widget.userData['avatar'] != null
-                  ? NetworkImage(widget.userData['avatar'])
-                  : null,
-              child: widget.userData['avatar'] == null
-                  ? Icon(Icons.person, color: Colors.white)
-                  : null,
-            ),
+            child: _buildAvatar(widget.userData['avatar'],
+                radius: 18, isAppBar: true), // ✅ IMPROVED: App bar avatar
           ),
         ],
         bottom: PreferredSize(
@@ -1671,14 +1857,10 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                   indicatorColor: Colors.white,
                   labelColor: Colors.white,
                   unselectedLabelColor: Colors.grey[400],
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  unselectedLabelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  labelStyle:
+                      TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  unselectedLabelStyle:
+                      TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicatorWeight: 3.0,
                   indicatorPadding: EdgeInsets.symmetric(horizontal: 8),
@@ -1686,21 +1868,13 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                   isScrollable: false,
                   tabs: [
                     Tab(
-                      icon: Icon(Icons.receipt, size: 20),
-                      text: "Reimbursement",
-                    ),
+                        icon: Icon(Icons.receipt, size: 20),
+                        text: "Reimbursement"),
+                    Tab(icon: Icon(Icons.forward, size: 20), text: "Advance"),
                     Tab(
-                      icon: Icon(Icons.forward, size: 20),
-                      text: "Advance",
-                    ),
-                    Tab(
-                      icon: Icon(Icons.analytics, size: 20),
-                      text: "Insights",
-                    ),
-                    Tab(
-                      icon: Icon(Icons.history, size: 20),
-                      text: "History",
-                    ),
+                        icon: Icon(Icons.analytics, size: 20),
+                        text: "Insights"),
+                    Tab(icon: Icon(Icons.history, size: 20), text: "History"),
                   ],
                 ),
               ],
@@ -1711,29 +1885,17 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       body: _isLoading
           ? Center(
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
           : _errorMessage.isNotEmpty
               ? Center(
-                  child: Text(
-                    _errorMessage,
-                    style: TextStyle(color: Colors.white),
-                  ),
-                )
+                  child: Text(_errorMessage,
+                      style: TextStyle(color: Colors.white)))
               : TabBarView(
                   controller: _tabController,
                   children: [
-                    // Reimbursement Tab
                     _buildTabContent('reimbursement', 'Reimbursement'),
-
-                    // Advance Tab
                     _buildTabContent('advance', 'Advance'),
-
-                    // Insights Tab
                     _buildInsightsTab(),
-
-                    // History Tab
                     _buildTabContent('history', 'History'),
                   ],
                 ),
