@@ -16,7 +16,7 @@ from .views import (
     ApproveRequestAPIView,
     RejectRequestAPIView,
     PendingApprovalsView,
-   
+    FinanceVerificationInsightsView,
     CEODashboardView,
     CEOAnalyticsView,
     CEOHistoryView,
@@ -33,6 +33,9 @@ from .views import (
     FinanceMarkAsPaidView,
     FinancePaymentInsightsView,
     EmployeeProjectSpendingView,
+    FinanceVerificationHistoryView,
+    FinanceVerificationEmployeeProjectReportView,
+    FinanceVerificationCSVReportView,
     health_check
 )
 
@@ -93,8 +96,13 @@ api_patterns = [
     path('finance-payment/insights/',FinancePaymentInsightsView.as_view(), name='finance-payment-insights'),
   
     path('employee-project-spending/', EmployeeProjectSpendingView.as_view(), name='employee-project-spending'),
-  
+    # Add this URL pattern in your urlpatterns
+    path('finance-verification/insights/', FinanceVerificationInsightsView.as_view(), name='finance-verification-insights'),
+    path('finance-verification/history/', FinanceVerificationHistoryView.as_view(), name='finance-verification-history'),
+    path('employee-project-report/', FinanceVerificationEmployeeProjectReportView.as_view(), name='finance-verification-employee-project-report'),
     # Health check
+    # Add these to your urlpatterns
+path('finance-verification/csv-report/', FinanceVerificationCSVReportView.as_view(), name='finance-verification-csv-report'),
     path('health/', health_check, name='health'),
 ]
 

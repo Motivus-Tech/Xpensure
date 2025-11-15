@@ -2017,3 +2017,685 @@ class EmployeeProjectSpendingView(APIView):
             "advance_count": len(project_advances),
             "requests": requests_data
         })
+ # ✅ ADD THESE NEW FINANCE VERIFICATION ENDPOINTS TO YOUR EXISTING views.py
+class FinanceVerificationHistoryView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Get verified/rejected requests history for Finance Verification Dashboard - FIXED VERSION
+        """
+        if request.user.role != "Finance Verification":
+            return Response(
+                {"detail": "Access denied. Finance Verification role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            finance_user_id = request.user.employee_id
+            
+            print(f"🔍 Loading history for Finance User: {finance_user_id}")
+            
+            # ✅ FIXED: Get approval history for this finance user
+            finance_approvals = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id
+            ).order_by('-timestamp')
+            
+            verified_requests = []
+            
+            for approval in finance_approvals:
+                try:
+                    if approval.request_type == 'reimbursement':
+                        request_obj = Reimbursement.objects.get(id=approval.request_id)
+                        employee = request_obj.employee
+                        project_name = getattr(request_obj, 'project_name', None)
+                    else:
+                        request_obj = AdvanceRequest.objects.get(id=approval.request_id)
+                        employee = request_obj.employee
+                        project_name = request_obj.project_name
+                    
+                    # Build request data
+                    request_data = {
+                        'id': request_obj.id,
+                        'employee_id': employee.employee_id,
+                        'employee_name': employee.fullName,
+                        'employee_avatar': request.build_absolute_uri(employee.avatar.url) if employee.avatar else None,
+                        'amount': float(request_obj.amount),
+                        'description': request_obj.description,
+                        'request_type': approval.request_type,
+                        'status': request_obj.status,
+                        'verification_status': 'approved' if approval.action == 'approved' else 'rejected',
+                        'submitted_date': request_obj.created_at.isoformat() if request_obj.created_at else None,
+                        'verification_date': approval.timestamp.isoformat() if approval.timestamp else None,
+                        'rejection_reason': request_obj.rejection_reason if approval.action == 'rejected' else None,
+                        'project_id': request_obj.project_id,
+                        'project_name': project_name,
+                        'current_approver_id': request_obj.current_approver_id,
+                        'finance_action': approval.action,
+                        'finance_comments': approval.comments,
+                    }
+                    
+                    verified_requests.append(request_data)
+                    
+                except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+                    # Skip if request no longer exists
+                    continue
+            
+            print(f"📚 Finance History Loaded: {len(verified_requests)} requests")
+            
+            return Response({
+                'verified_requests': verified_requests,
+                'count': len(verified_requests),
+                'message': 'Successfully loaded verification history'
+            })
+            
+        except Exception as e:
+            print(f"❌ Error in FinanceVerificationHistoryView: {str(e)}")
+            return Response({'error': f'Failed to load history: {str(e)}'}, status=500)
+        
+class FinanceVerificationInsightsView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Get real-time verification insights for Finance Verification Dashboard - FIXED VERSION
+        """
+        if request.user.role != "Finance Verification":
+            return Response(
+                {"detail": "Access denied. Finance Verification role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            today = timezone.now().date()
+            month_start = today.replace(day=1)
+            finance_user_id = request.user.employee_id
+            
+            print(f"🔍 Loading insights for Finance User: {finance_user_id}")
+            
+            # ✅ FIXED: Get requests assigned to current finance user
+            reimbursement_pending = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending"
+            ).count()
+            
+            advance_pending = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending"
+            ).count()
+            
+            total_pending = reimbursement_pending + advance_pending
+            
+            # ✅ FIXED: Monthly pending (submitted this month AND assigned to finance)
+            reimbursement_monthly = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=month_start
+            ).count()
+            
+            advance_monthly = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending", 
+                created_at__gte=month_start
+            ).count()
+            
+            total_monthly_pending = reimbursement_monthly + advance_monthly
+            
+            # ✅ FIXED: Amount calculations for pending requests
+            total_amount = 0
+            monthly_amount = 0
+            
+            # Total pending amount
+            pending_reimbursements = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending"
+            )
+            for req in pending_reimbursements:
+                total_amount += float(req.amount)
+                
+            pending_advances = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending"
+            )
+            for req in pending_advances:
+                total_amount += float(req.amount)
+            
+            # Monthly pending amount
+            monthly_reimbursements = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=month_start
+            )
+            for req in monthly_reimbursements:
+                monthly_amount += float(req.amount)
+                
+            monthly_advances = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=month_start
+            )
+            for req in monthly_advances:
+                monthly_amount += float(req.amount)
+            
+            # ✅ FIXED: Verified requests (processed by this finance user)
+            # Get requests where finance user approved them
+            finance_approved_reimbursements = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='reimbursement',
+                action='approved'
+            ).values_list('request_id', flat=True)
+            
+            finance_approved_advances = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='advance', 
+                action='approved'
+            ).values_list('request_id', flat=True)
+            
+            reimbursement_verified = len(finance_approved_reimbursements)
+            advance_verified = len(finance_approved_advances)
+            total_verified = reimbursement_verified + advance_verified
+            
+            # ✅ FIXED: Monthly verified
+            reimbursement_monthly_verified = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='reimbursement',
+                action='approved',
+                timestamp__gte=month_start
+            ).count()
+            
+            advance_monthly_verified = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='advance',
+                action='approved',
+                timestamp__gte=month_start
+            ).count()
+            
+            total_monthly_verified = reimbursement_monthly_verified + advance_monthly_verified
+            
+            # ✅ FIXED: Verified amount calculations
+            verified_amount = 0
+            monthly_verified_amount = 0
+            
+            # Total verified amount
+            for req_id in finance_approved_reimbursements:
+                try:
+                    req = Reimbursement.objects.get(id=req_id)
+                    verified_amount += float(req.amount)
+                except Reimbursement.DoesNotExist:
+                    continue
+                    
+            for req_id in finance_approved_advances:
+                try:
+                    req = AdvanceRequest.objects.get(id=req_id)
+                    verified_amount += float(req.amount)
+                except AdvanceRequest.DoesNotExist:
+                    continue
+            
+            # Monthly verified amount
+            monthly_reimb_ids = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='reimbursement',
+                action='approved',
+                timestamp__gte=month_start
+            ).values_list('request_id', flat=True)
+            
+            for req_id in monthly_reimb_ids:
+                try:
+                    req = Reimbursement.objects.get(id=req_id)
+                    monthly_verified_amount += float(req.amount)
+                except Reimbursement.DoesNotExist:
+                    continue
+                    
+            monthly_advance_ids = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                request_type='advance',
+                action='approved', 
+                timestamp__gte=month_start
+            ).values_list('request_id', flat=True)
+            
+            for req_id in monthly_advance_ids:
+                try:
+                    req = AdvanceRequest.objects.get(id=req_id)
+                    monthly_verified_amount += float(req.amount)
+                except AdvanceRequest.DoesNotExist:
+                    continue
+            
+            # ✅ FIXED: Performance metrics
+            avg_processing_hours = self._calculate_average_processing_time(finance_user_id)
+            success_rate = self._calculate_success_rate(finance_user_id)
+            
+            insights_data = {
+                # Pending requests
+                'total_pending': total_pending,
+                'monthly_pending': total_monthly_pending,
+                'total_amount': round(total_amount, 2),
+                'monthly_amount': round(monthly_amount, 2),
+                'reimbursement_count': reimbursement_pending,
+                'advance_count': advance_pending,
+                'reimbursement_monthly': reimbursement_monthly,
+                'advance_monthly': advance_monthly,
+                
+                # Verified requests
+                'total_verified': total_verified,
+                'monthly_verified': total_monthly_verified,
+                'verified_amount': round(verified_amount, 2),
+                'monthly_verified_amount': round(monthly_verified_amount, 2),
+                'reimbursement_verified': reimbursement_verified,
+                'advance_verified': advance_verified,
+                'reimbursement_monthly_verified': reimbursement_monthly_verified,
+                'advance_monthly_verified': advance_monthly_verified,
+                
+                # Performance metrics
+                'avg_processing_time': round(avg_processing_hours, 1),
+                'success_rate': round(success_rate, 1),
+                'total_pending_amount': round(total_amount, 2),
+                'total_verified_amount': round(verified_amount, 2),
+                
+                # Debug info
+                'debug': {
+                    'finance_user_id': finance_user_id,
+                    'month_start': month_start.isoformat(),
+                    'today': today.isoformat()
+                }
+            }
+            
+            print(f"📊 Finance Insights Generated: {insights_data}")
+            
+            return Response(insights_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Error in FinanceVerificationInsightsView: {str(e)}")
+            return Response({'error': f'Failed to load insights: {str(e)}'}, status=500)
+
+    def _calculate_average_processing_time(self, finance_user_id):
+        """Calculate average processing time for finance verification - FIXED"""
+        try:
+            # Get approval history for this finance user
+            finance_approvals = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                action='approved'
+            )
+            
+            total_hours = 0
+            count = 0
+            
+            for approval in finance_approvals:
+                # Get the request creation time
+                if approval.request_type == 'reimbursement':
+                    try:
+                        request_obj = Reimbursement.objects.get(id=approval.request_id)
+                        created_time = request_obj.created_at
+                    except Reimbursement.DoesNotExist:
+                        continue
+                else:
+                    try:
+                        request_obj = AdvanceRequest.objects.get(id=approval.request_id)
+                        created_time = request_obj.created_at
+                    except AdvanceRequest.DoesNotExist:
+                        continue
+                
+                # Calculate processing time (from submission to finance approval)
+                if created_time and approval.timestamp:
+                    processing_time = approval.timestamp - created_time
+                    total_hours += processing_time.total_seconds() / 3600  # Convert to hours
+                    count += 1
+            
+            return total_hours / count if count > 0 else 0.0
+            
+        except Exception as e:
+            print(f"❌ Error calculating processing time: {e}")
+            return 0.0
+
+    def _calculate_success_rate(self, finance_user_id):
+        """Calculate success rate for finance verification - FIXED"""
+        try:
+            # Get finance approvals
+            approvals = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                action='approved'
+            ).count()
+            
+            # Get finance rejections
+            rejections = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                action='rejected'
+            ).count()
+            
+            total_actions = approvals + rejections
+            
+            if total_actions == 0:
+                return 100.0  # No actions yet, assume 100% success
+                
+            success_rate = (approvals / total_actions) * 100
+            return success_rate
+            
+        except Exception as e:
+            print(f"❌ Error calculating success rate: {e}")
+            return 100.0
+        
+class FinanceVerificationEmployeeProjectReportView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Generate employee-project verification report for Finance Verification Dashboard
+        """
+        if request.user.role != "Finance Verification":
+            return Response(
+                {"detail": "Access denied. Finance Verification role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        employee_id = request.GET.get('employee_id')
+        project_identifier = request.GET.get('project_identifier')
+        period = request.GET.get('period', 'all_time')
+        
+        if not employee_id or not project_identifier:
+            return Response(
+                {"error": "employee_id and project_identifier are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate date range based on period
+        today = timezone.now().date()
+        if period == '1_month':
+            start_date = today - timedelta(days=30)
+        elif period == '3_months':
+            start_date = today - timedelta(days=90)
+        elif period == '6_months':
+            start_date = today - timedelta(days=180)
+        else:  # all_time
+            start_date = today - timedelta(days=365*5)  # 5 years back
+        
+        try:
+            # Verify employee exists
+            employee = User.objects.get(employee_id=employee_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": f"Employee with ID {employee_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get ALL requests for employee (pending and verified)
+        all_reimbursements = Reimbursement.objects.filter(
+            employee_id=employee_id,
+            created_at__date__gte=start_date
+        )
+        
+        all_advances = AdvanceRequest.objects.filter(
+            employee_id=employee_id,
+            created_at__date__gte=start_date
+        )
+        
+        # Enhanced project matching
+        project_reimbursements = []
+        for reimb in all_reimbursements:
+            project_match = (
+                str(reimb.project_id) == str(project_identifier) or
+                (hasattr(reimb, 'project_name') and 
+                 reimb.project_name and 
+                 project_identifier.lower() in reimb.project_name.lower()) or
+                (hasattr(reimb, 'project_code') and 
+                 reimb.project_code and 
+                 str(reimb.project_code) == str(project_identifier))
+            )
+            
+            if project_match:
+                project_reimbursements.append(reimb)
+        
+        project_advances = []
+        for advance in all_advances:
+            project_match = (
+                str(advance.project_id) == str(project_identifier) or
+                (advance.project_name and 
+                 project_identifier.lower() in advance.project_name.lower()) or
+                (hasattr(advance, 'project_code') and 
+                 advance.project_code and 
+                 str(advance.project_code) == str(project_identifier))
+            )
+            
+            if project_match:
+                project_advances.append(advance)
+        
+        # Combine all requests
+        all_requests = list(project_reimbursements) + list(project_advances)
+        
+        if not all_requests:
+            return Response({
+                "employee_id": employee_id,
+                "employee_name": employee.fullName,
+                "project_identifier": project_identifier,
+                "period": period,
+                "total_requests": 0,
+                "total_amount": 0,
+                "pending_requests": 0,
+                "verified_requests": 0,
+                "requests": [],
+                "message": "No matching requests found for the specified criteria"
+            })
+        
+        # Calculate totals
+        total_amount = sum(float(req.amount) for req in all_requests)
+        pending_requests = len([req for req in all_requests if req.status == 'Pending'])
+        verified_requests = len([req for req in all_requests if req.status in ['Approved', 'Rejected', 'Paid']])
+        
+        # Format response data
+        requests_data = []
+        for req in all_requests:
+            is_reimbursement = hasattr(req, 'date')
+            request_data = {
+                'id': req.id,
+                'request_type': 'reimbursement' if is_reimbursement else 'advance',
+                'amount': float(req.amount),
+                'description': req.description,
+                'status': req.status,
+                'submitted_date': req.created_at.strftime('%Y-%m-%d') if req.created_at else None,
+                'approved_date': req.updated_at.strftime('%Y-%m-%d') if req.status == 'Approved' else None,
+                'payment_date': req.payment_date.strftime('%Y-%m-%d') if req.payment_date else None,
+                'project_id': req.project_id,
+                'project_name': getattr(req, 'project_name', None),
+                'approved_by_finance': getattr(req, 'approved_by_finance', False),
+                'current_approver_id': req.current_approver_id,
+            }
+            requests_data.append(request_data)
+        
+        return Response({
+            "employee_id": employee_id,
+            "employee_name": employee.fullName,
+            "project_identifier": project_identifier,
+            "period": period,
+            "total_requests": len(all_requests),
+            "total_amount": round(total_amount, 2),
+            "pending_requests": pending_requests,
+            "verified_requests": verified_requests,
+            "reimbursement_count": len(project_reimbursements),
+            "advance_count": len(project_advances),
+            "requests": requests_data
+        })
+class FinanceVerificationCSVReportView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Generate CSV report for Finance Verification - NEW ENDPOINT
+        """
+        if request.user.role != "Finance Verification":
+            return Response(
+                {"detail": "Access denied. Finance Verification role required."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        report_type = request.GET.get('report_type', 'verified')  # verified, pending, all
+        period = request.GET.get('period', '1_month')
+        finance_user_id = request.user.employee_id
+        
+        # Calculate date range
+        today = timezone.now().date()
+        if period == '1_month':
+            start_date = today - timedelta(days=30)
+        elif period == '3_months':
+            start_date = today - timedelta(days=90)
+        elif period == '6_months':
+            start_date = today - timedelta(days=180)
+        else:  # all_time
+            start_date = today - timedelta(days=365*5)
+        
+        # Get data based on report type
+        if report_type == 'verified':
+            # Get requests verified by this finance user
+            approvals = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                timestamp__gte=start_date
+            )
+            requests_data = self._get_requests_from_approvals(approvals, request)
+            
+        elif report_type == 'pending':
+            # Get pending requests assigned to this finance user
+            reimbursement_pending = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=start_date
+            ).select_related('employee')
+            
+            advance_pending = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=start_date
+            ).select_related('employee')
+            
+            requests_data = self._format_pending_requests(
+                list(reimbursement_pending) + list(advance_pending), 
+                request
+            )
+        else:  # all
+            # Combine verified and pending
+            approvals = ApprovalHistory.objects.filter(
+                approver_id=finance_user_id,
+                timestamp__gte=start_date
+            )
+            verified_data = self._get_requests_from_approvals(approvals, request)
+            
+            reimbursement_pending = Reimbursement.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=start_date
+            ).select_related('employee')
+            
+            advance_pending = AdvanceRequest.objects.filter(
+                current_approver_id=finance_user_id,
+                status="Pending",
+                created_at__gte=start_date
+            ).select_related('employee')
+            
+            pending_data = self._format_pending_requests(
+                list(reimbursement_pending) + list(advance_pending), 
+                request
+            )
+            
+            requests_data = verified_data + pending_data
+        
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="finance_verification_report_{report_type}_{period}_{today}.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow([
+            'Request ID', 'Employee ID', 'Employee Name', 'Request Type',
+            'Amount', 'Status', 'Submission Date', 'Verification Date',
+            'Project ID', 'Project Name', 'Description', 'Finance Action',
+            'Processing Time (Hours)'
+        ])
+        
+        for req in requests_data:
+            writer.writerow([
+                req['id'],
+                req['employee_id'],
+                req['employee_name'],
+                req['request_type'],
+                f"₹{req['amount']}",
+                req['status'],
+                req['submitted_date'],
+                req.get('verification_date', 'N/A'),
+                req.get('project_id', 'N/A'),
+                req.get('project_name', 'N/A'),
+                req['description'][:100] if req['description'] else 'No description',  # Truncate long descriptions
+                req.get('finance_action', 'pending'),
+                req.get('processing_time', 'N/A')
+            ])
+        
+        return response
+    
+    def _get_requests_from_approvals(self, approvals, request):
+        """Extract request data from approval history"""
+        requests_data = []
+        
+        for approval in approvals:
+            try:
+                if approval.request_type == 'reimbursement':
+                    req_obj = Reimbursement.objects.get(id=approval.request_id)
+                    project_name = getattr(req_obj, 'project_name', None)
+                else:
+                    req_obj = AdvanceRequest.objects.get(id=approval.request_id)
+                    project_name = req_obj.project_name
+                
+                # Calculate processing time
+                processing_time = ''
+                if req_obj.created_at and approval.timestamp:
+                    time_diff = approval.timestamp - req_obj.created_at
+                    processing_time = round(time_diff.total_seconds() / 3600, 1)
+                
+                request_data = {
+                    'id': req_obj.id,
+                    'employee_id': req_obj.employee.employee_id,
+                    'employee_name': req_obj.employee.fullName,
+                    'employee_avatar': request.build_absolute_uri(req_obj.employee.avatar.url) if req_obj.employee.avatar else None,
+                    'amount': float(req_obj.amount),
+                    'description': req_obj.description,
+                    'request_type': approval.request_type,
+                    'status': req_obj.status,
+                    'submitted_date': req_obj.created_at.strftime('%Y-%m-%d %H:%M') if req_obj.created_at else 'N/A',
+                    'verification_date': approval.timestamp.strftime('%Y-%m-%d %H:%M') if approval.timestamp else 'N/A',
+                    'project_id': req_obj.project_id,
+                    'project_name': project_name,
+                    'finance_action': approval.action,
+                    'processing_time': processing_time,
+                }
+                
+                requests_data.append(request_data)
+                
+            except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+                continue
+        
+        return requests_data
+    
+    def _format_pending_requests(self, pending_requests, request):
+        """Format pending requests data"""
+        requests_data = []
+        
+        for req in pending_requests:
+            is_reimbursement = hasattr(req, 'date')
+            
+            request_data = {
+                'id': req.id,
+                'employee_id': req.employee.employee_id,
+                'employee_name': req.employee.fullName,
+                'employee_avatar': request.build_absolute_uri(req.employee.avatar.url) if req.employee.avatar else None,
+                'amount': float(req.amount),
+                'description': req.description,
+                'request_type': 'reimbursement' if is_reimbursement else 'advance',
+                'status': 'Pending',
+                'submitted_date': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else 'N/A',
+                'verification_date': 'N/A',
+                'project_id': req.project_id,
+                'project_name': getattr(req, 'project_name', None),
+                'finance_action': 'pending',
+                'processing_time': 'N/A',
+            }
+            
+            requests_data.append(request_data)
+        
+        return requests_data
