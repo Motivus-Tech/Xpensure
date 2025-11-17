@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../screens/ceo_request_details.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
+import 'package:share_plus/share_plus.dart';
 
 class CEODashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -28,6 +34,10 @@ class _CEODashboardState extends State<CEODashboard> {
   bool _isLoading = true;
   final ApiService _apiService = ApiService();
 
+  // Real-time analytics refresh
+  Timer? _analyticsTimer;
+  final int _refreshInterval = 30000; // 30 seconds
+
   // Filter variables
   String _selectedFilter = 'All';
   final List<String> _filterOptions = [
@@ -37,13 +47,41 @@ class _CEODashboardState extends State<CEODashboard> {
     'Amount under 2000',
     'Amount above 2000',
     'Latest',
-    'Oldest'
+    'Oldest',
   ];
+
+  // Report generation variables
+  String _reportType = 'employee';
+  String _reportPeriod = '1_month';
+  String _reportIdentifier = '';
+  bool _isGeneratingReport = false;
+
+  // Employee project spending variables
+  String _employeeIdForProjectReport = '';
+  String _projectIdForEmployeeReport = '';
+  bool _isGeneratingEmployeeProjectReport = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _startRealTimeAnalytics();
+  }
+
+  @override
+  void dispose() {
+    _analyticsTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startRealTimeAnalytics() {
+    _analyticsTimer = Timer.periodic(Duration(milliseconds: _refreshInterval), (
+      Timer timer,
+    ) {
+      if (_activeTab == 1) {
+        _loadAnalyticsData();
+      }
+    });
   }
 
   Future<void> _loadData() async {
@@ -52,31 +90,28 @@ class _CEODashboardState extends State<CEODashboard> {
     });
 
     try {
-      // Load pending requests from actual API
       final dashboardData = await _apiService.getCEODashboardData(
         authToken: widget.authToken,
       );
 
       debugPrint('Dashboard Data: $dashboardData');
 
-      // Transform API data to match your UI structure
       final pendingReimbursements = List<Map<String, dynamic>>.from(
-          dashboardData['reimbursements_to_approve'] ?? []);
+        dashboardData['reimbursements_to_approve'] ?? [],
+      );
       final pendingAdvances = List<Map<String, dynamic>>.from(
-          dashboardData['advances_to_approve'] ?? []);
+        dashboardData['advances_to_approve'] ?? [],
+      );
 
-      // Combine and transform data
       final allPendingRequests = [
         ...pendingReimbursements.map((r) => _transformReimbursementData(r)),
         ...pendingAdvances.map((a) => _transformAdvanceData(a)),
       ];
 
-      // Load analytics from actual API
       final analytics = await _apiService.getCEOAnalytics(
         authToken: widget.authToken,
       );
 
-      // Load history from actual API - CEO actions only
       final history = await _apiService.getCEOHistory(
         authToken: widget.authToken,
       );
@@ -109,6 +144,24 @@ class _CEODashboardState extends State<CEODashboard> {
     }
   }
 
+  Future<void> _loadAnalyticsData() async {
+    try {
+      final analytics = await _apiService.getCEOAnalytics(
+        authToken: widget.authToken,
+      );
+
+      if (mounted) {
+        setState(() {
+          _analyticsData = analytics;
+        });
+      }
+
+      debugPrint('Real-time analytics updated: ${DateTime.now()}');
+    } catch (e) {
+      debugPrint('Error updating real-time analytics: $e');
+    }
+  }
+
   Map<String, dynamic> _transformReimbursementData(Map<String, dynamic> data) {
     return {
       'id': data['id'],
@@ -123,11 +176,9 @@ class _CEODashboardState extends State<CEODashboard> {
       'requestType': 'reimbursement',
       'employeeAvatar': data['employee_avatar'],
       'rejection_reason': data['rejection_reason'],
-      // ✅ ADD PROJECT INFORMATION
       'project_id': data['project_id'],
       'project_code': data['project_code'],
-      'projectId': data['project_id'], // Alternative key
-
+      'projectId': data['project_id'],
       'rawData': data,
     };
   }
@@ -150,9 +201,8 @@ class _CEODashboardState extends State<CEODashboard> {
       'project_code': data['project_code'],
       'project_name': data['project_name'],
       'project_title': data['project_title'],
-      'projectId': data['project_id'], // Alternative key
-      'projectName': data['project_name'], // Alternative key
-
+      'projectId': data['project_id'],
+      'projectName': data['project_name'],
       'rawData': data,
     };
   }
@@ -173,8 +223,9 @@ class _CEODashboardState extends State<CEODashboard> {
   }
 
   Future<void> _handleApprove(int requestId) async {
-    final request =
-        _pendingRequests.firstWhere((req) => req['id'] == requestId);
+    final request = _pendingRequests.firstWhere(
+      (req) => req['id'] == requestId,
+    );
     final requestType = request['requestType'];
 
     setState(() {
@@ -189,12 +240,13 @@ class _CEODashboardState extends State<CEODashboard> {
       );
 
       if (success) {
-        await _loadData(); // Reload to get updated counts
+        await _loadData();
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Request approved successfully - Sent to Finance for payment processing'),
+              'Request approved successfully - Sent to Finance for payment processing',
+            ),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -220,11 +272,11 @@ class _CEODashboardState extends State<CEODashboard> {
   }
 
   Future<void> _handleReject(int requestId) async {
-    final request =
-        _pendingRequests.firstWhere((req) => req['id'] == requestId);
+    final request = _pendingRequests.firstWhere(
+      (req) => req['id'] == requestId,
+    );
     final requestType = request['requestType'];
 
-    // Show reason dialog first
     final reason = await _showRejectionReasonDialog();
     if (reason == null || reason.isEmpty) return;
 
@@ -241,12 +293,13 @@ class _CEODashboardState extends State<CEODashboard> {
       );
 
       if (success) {
-        await _loadData(); // Reload to get updated counts
+        await _loadData();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text('Request rejected - Sent back to employee with reason'),
+            content: Text(
+              'Request rejected - Sent back to employee with reason',
+            ),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 3),
           ),
@@ -334,6 +387,440 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
+  Future<void> _generateEmployeeReport() async {
+    if (_reportIdentifier.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Please enter Employee ID"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingReport = true;
+    });
+
+    try {
+      final employeeData = _historyData.where((request) {
+        final employeeId = request['employeeId']?.toString() ??
+            request['employee_id']?.toString() ??
+            '';
+        return employeeId.contains(_reportIdentifier);
+      }).toList();
+
+      if (employeeData.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("No data found for Employee ID: $_reportIdentifier"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() => _isGeneratingReport = false);
+        return;
+      }
+
+      List<List<dynamic>> csvData = [];
+      csvData.add([
+        'Request ID',
+        'Employee ID',
+        'Employee Name',
+        'Request Type',
+        'Amount',
+        'Description',
+        'Submission Date',
+        'CEO Action',
+        'Status',
+        'Project Name',
+        'Rejection Reason',
+      ]);
+
+      for (var request in employeeData) {
+        csvData.add([
+          request['id'] ?? '',
+          request['employeeId'] ?? request['employee_id'] ?? '',
+          request['employeeName'] ?? request['employee_name'] ?? '',
+          request['requestType'] ?? request['type'] ?? '',
+          (request['amount'] ?? 0).toStringAsFixed(2),
+          request['description'] ?? '',
+          request['date'] ?? '',
+          request['ceo_action'] ?? 'Pending',
+          request['status'] ?? '',
+          request['project_name'] ?? '',
+          request['rejection_reason'] ?? '',
+        ]);
+      }
+
+      String csv = const ListToCsvConverter().convert(csvData);
+      final directory = await getTemporaryDirectory();
+      final filePath =
+          '${directory.path}/ceo_employee_report_${_reportIdentifier}_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final file = File(filePath);
+      await file.writeAsString(csv);
+
+      await Share.shareFiles(
+        [filePath],
+        text:
+            'CEO Employee Report\nEmployee: $_reportIdentifier\nTotal Records: ${employeeData.length}',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Employee report generated with ${employeeData.length} records",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint("❌ Error generating employee report: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error generating report: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isGeneratingReport = false);
+    }
+  }
+
+  Future<void> _generateProjectReport() async {
+    if (_reportIdentifier.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Please enter Project ID/Code/Name"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingReport = true;
+    });
+
+    try {
+      DateTime startDate;
+      final now = DateTime.now();
+
+      switch (_reportPeriod) {
+        case '1_month':
+          startDate = DateTime(now.year, now.month - 1, now.day);
+          break;
+        case '3_months':
+          startDate = DateTime(now.year, now.month - 3, now.day);
+          break;
+        case '6_months':
+          startDate = DateTime(now.year, now.month - 6, now.day);
+          break;
+        case 'all_time':
+          startDate = DateTime(2000);
+          break;
+        default:
+          startDate = DateTime(now.year, now.month - 1, now.day);
+      }
+
+      List<dynamic> reportData = [..._historyData, ..._pendingRequests].where((
+        request,
+      ) {
+        final projectId = request['project_id']?.toString() ?? '';
+        final projectName = request['project_name']?.toString() ?? '';
+        final projectCode = request['project_code']?.toString() ?? '';
+        final requestDate = DateTime.tryParse(request['date'] ?? '');
+
+        return (projectId.contains(_reportIdentifier) ||
+                projectName.toLowerCase().contains(
+                      _reportIdentifier.toLowerCase(),
+                    ) ||
+                projectCode.contains(_reportIdentifier)) &&
+            requestDate != null &&
+            requestDate.isAfter(startDate);
+      }).toList();
+
+      if (reportData.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("No data found for Project: $_reportIdentifier"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() {
+          _isGeneratingReport = false;
+        });
+        return;
+      }
+
+      List<List<dynamic>> csvData = [];
+
+      csvData.add([
+        'Request ID',
+        'Employee ID',
+        'Employee Name',
+        'Request Type',
+        'Amount',
+        'Description',
+        'Submission Date',
+        'Status',
+        'CEO Action',
+        'Project ID',
+        'Project Name',
+        'Rejection Reason',
+      ]);
+
+      for (var request in reportData) {
+        csvData.add([
+          request['id'] ?? '',
+          request['employeeId'] ?? request['employee_id'] ?? '',
+          request['employeeName'] ?? request['employee_name'] ?? '',
+          request['requestType'] ?? request['type'] ?? '',
+          (request['amount'] ?? 0).toStringAsFixed(2),
+          request['description'] ?? '',
+          request['date'] ?? '',
+          request['status'] ?? '',
+          request['ceo_action'] ?? 'Pending',
+          request['project_id'] ?? '',
+          request['project_name'] ?? '',
+          request['rejection_reason'] ?? '',
+        ]);
+      }
+
+      String csv = const ListToCsvConverter().convert(csvData);
+
+      final directory = await getTemporaryDirectory();
+      final filePath =
+          '${directory.path}/ceo_project_report_${_reportIdentifier}_${DateTime.now().millisecondsSinceEpoch}.csv';
+
+      final file = File(filePath);
+      await file.writeAsString(csv);
+
+      debugPrint("✅ CEO Project CSV file created at: $filePath");
+      debugPrint("✅ Report contains ${reportData.length} records");
+
+      await Share.shareFiles([
+        filePath,
+      ], text: 'CEO Project Report - Project: $_reportIdentifier');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Project report generated successfully with ${reportData.length} records",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint("❌ Error generating project report: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error generating report: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingReport = false;
+      });
+    }
+  }
+
+  Future<void> _generateEmployeeProjectReport() async {
+    if (_employeeIdForProjectReport.isEmpty ||
+        _projectIdForEmployeeReport.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Please enter both Employee ID and Project ID/Code/Name",
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingEmployeeProjectReport = true;
+    });
+
+    try {
+      final employeeProjectData = [..._historyData, ..._pendingRequests].where((
+        request,
+      ) {
+        final employeeId = request['employeeId']?.toString() ??
+            request['employee_id']?.toString() ??
+            '';
+        final projectId = request['project_id']?.toString() ?? '';
+        final projectName = request['project_name']?.toString() ?? '';
+        final projectCode = request['project_code']?.toString() ?? '';
+
+        return employeeId.contains(_employeeIdForProjectReport) &&
+            (projectId.contains(_projectIdForEmployeeReport) ||
+                projectName.toLowerCase().contains(
+                      _projectIdForEmployeeReport.toLowerCase(),
+                    ) ||
+                projectCode.contains(_projectIdForEmployeeReport));
+      }).toList();
+
+      if (employeeProjectData.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "No CEO approval data found for:\n"
+              "Employee: ${_employeeIdForProjectReport}\n"
+              "Project: ${_projectIdForEmployeeReport}",
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 6),
+          ),
+        );
+        setState(() {
+          _isGeneratingEmployeeProjectReport = false;
+        });
+        return;
+      }
+
+      double totalAmount = employeeProjectData.fold(
+        0,
+        (sum, request) => sum + (request['amount'] ?? 0),
+      );
+      int totalRequests = employeeProjectData.length;
+      int reimbursementCount = employeeProjectData
+          .where(
+            (r) =>
+                r['type'] == 'reimbursement' ||
+                r['requestType'] == 'reimbursement',
+          )
+          .length;
+      int advanceCount = employeeProjectData
+          .where((r) => r['type'] == 'advance' || r['requestType'] == 'advance')
+          .length;
+
+      int approvedCount = employeeProjectData
+          .where(
+            (r) => r['ceo_action'] == 'approved' || r['status'] == 'approved',
+          )
+          .length;
+      int rejectedCount = employeeProjectData
+          .where(
+            (r) => r['ceo_action'] == 'rejected' || r['status'] == 'rejected',
+          )
+          .length;
+      int pendingCount =
+          employeeProjectData.where((r) => r['status'] == 'pending').length;
+
+      List<List<dynamic>> csvData = [];
+
+      csvData.add(['CEO APPROVAL TRACKING REPORT']);
+      csvData.add(['Generated on', DateTime.now().toString().split(' ')[0]]);
+      csvData.add(['Employee ID', _employeeIdForProjectReport]);
+      csvData.add([
+        'Employee Name',
+        employeeProjectData.first['employeeName'] ??
+            employeeProjectData.first['employee_name'] ??
+            'Unknown',
+      ]);
+      csvData.add(['Project Identifier', _projectIdForEmployeeReport]);
+      csvData.add(['Report Period', _reportPeriod.replaceAll('_', ' ')]);
+      csvData.add([]);
+
+      csvData.add(['CEO APPROVAL SUMMARY']);
+      csvData.add(['Total Requests', totalRequests]);
+      csvData.add(['Reimbursements', reimbursementCount]);
+      csvData.add(['Advances', advanceCount]);
+      csvData.add(['Approved by CEO', approvedCount]);
+      csvData.add(['Rejected by CEO', rejectedCount]);
+      csvData.add(['Pending CEO Approval', pendingCount]);
+      csvData.add(['Total Amount', '₹${totalAmount.toStringAsFixed(2)}']);
+      csvData.add([]);
+
+      csvData.add(['DETAILED APPROVAL RECORDS']);
+      csvData.add([
+        'Request ID',
+        'Type',
+        'Amount',
+        'Description',
+        'Status',
+        'CEO Action',
+        'Submission Date',
+        'CEO Action Date',
+        'Project ID',
+        'Project Name',
+        'Rejection Reason',
+      ]);
+
+      for (var request in employeeProjectData) {
+        csvData.add([
+          request['id'] ?? '',
+          request['requestType'] ?? request['type'] ?? '',
+          '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
+          request['description'] ?? '',
+          request['status'] ?? '',
+          request['ceo_action'] ?? 'Pending',
+          request['date'] ?? '',
+          request['ceo_action_date'] ?? '',
+          request['project_id'] ?? '',
+          request['project_name'] ?? '',
+          request['rejection_reason'] ?? '',
+        ]);
+      }
+
+      String csv = const ListToCsvConverter().convert(csvData);
+
+      final directory = await getTemporaryDirectory();
+      final filePath =
+          '${directory.path}/ceo_employee_project_${_employeeIdForProjectReport}_${_projectIdForEmployeeReport}_${DateTime.now().millisecondsSinceEpoch}.csv';
+
+      final file = File(filePath);
+      await file.writeAsString(csv);
+
+      debugPrint("✅ CEO Employee-Project CSV file created at: $filePath");
+
+      await Share.shareFiles(
+        [filePath],
+        text: 'CEO Approval Tracking Report\n\n'
+            '👤 Employee: ${employeeProjectData.first['employeeName'] ?? 'Unknown'} ($_employeeIdForProjectReport)\n'
+            '📁 Project: $_projectIdForEmployeeReport\n'
+            '💰 Total Amount: ₹${totalAmount.toStringAsFixed(2)}\n'
+            '📊 Total Requests: $totalRequests\n'
+            '🧾 Reimbursements: $reimbursementCount | 💰 Advances: $advanceCount\n'
+            '✅ Approved: $approvedCount | ❌ Rejected: $rejectedCount | ⏳ Pending: $pendingCount\n'
+            '📅 Period: ${_reportPeriod.replaceAll('_', ' ')}',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("CEO Approval report generated successfully!"),
+              SizedBox(height: 4),
+              Text("Total Amount: ₹${totalAmount.toStringAsFixed(2)}"),
+              Text(
+                "Requests: $totalRequests (${reimbursementCount}R + ${advanceCount}A)",
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      debugPrint("❌ Error generating CEO employee-project report: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error generating report: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingEmployeeProjectReport = false;
+      });
+    }
+  }
+
   void _showRequestDetails(Map<String, dynamic> request) {
     Navigator.push(
       context,
@@ -385,7 +872,9 @@ class _CEODashboardState extends State<CEODashboard> {
 
   String _calculateTotalAmount() {
     double total = _filteredPendingRequests.fold(
-        0, (sum, request) => sum + (request['amount'] ?? 0));
+      0,
+      (sum, request) => sum + (request['amount'] ?? 0),
+    );
     return total.toStringAsFixed(0);
   }
 
@@ -419,6 +908,9 @@ class _CEODashboardState extends State<CEODashboard> {
             ),
           ),
           const Spacer(),
+          if (_activeTab == 1) ...[
+            const SizedBox(width: 8),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF2DD4BF)),
             onPressed: _loadData,
@@ -459,8 +951,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     : Colors.transparent,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              child: Text(tab,
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
+              child: Text(
+                tab,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
             ),
           );
         }).toList(),
@@ -502,7 +996,6 @@ class _CEODashboardState extends State<CEODashboard> {
   Widget _buildPendingTab() {
     return Column(
       children: [
-        // Filter Row
         Container(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -529,55 +1022,33 @@ class _CEODashboardState extends State<CEODashboard> {
             ],
           ),
         ),
-
-        // Stats Row
         Container(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Row(
             children: [
               _buildStatCard(
-                  'Total Pending', _filteredPendingRequests.length.toString()),
+                'Total Pending',
+                _filteredPendingRequests.length.toString(),
+              ),
               const SizedBox(width: 12),
               _buildStatCard('Total Amount', '₹${_calculateTotalAmount()}'),
               const SizedBox(width: 12),
-              _buildStatCard('Approval Rate',
-                  '${_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0'}%'),
+              _buildStatCard(
+                'Approval Rate',
+                '${_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0'}%',
+              ),
             ],
           ),
         ),
-
-        // Info Banner
-        if (_filteredPendingRequests.isNotEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E3A8A),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Approved requests go to Finance for payment. Rejected requests are sent back to employees with reasons.',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        // Requests List
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadData,
             color: const Color(0xFF2DD4BF),
             child: _filteredPendingRequests.isEmpty
-                ? _buildEmptyState('No Pending Requests',
-                    'All CEO approvals have been processed')
+                ? _buildEmptyState(
+                    'No Pending Requests',
+                    'All CEO approvals have been processed',
+                  )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _filteredPendingRequests.length,
@@ -601,10 +1072,8 @@ class _CEODashboardState extends State<CEODashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header - Enhanced with avatar and total info
             Row(
               children: [
-                // Avatar
                 if (request['employeeAvatar'] != null)
                   CircleAvatar(
                     radius: 16,
@@ -617,9 +1086,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     child: Text(
                       request['employeeName'][0],
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 const SizedBox(width: 8),
@@ -630,22 +1100,26 @@ class _CEODashboardState extends State<CEODashboard> {
                       Text(
                         request['employeeName'],
                         style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                       Text(
                         request['employeeId'],
                         style: const TextStyle(
-                            color: Color(0xFF9CA3AF), fontSize: 10),
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 10,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                // Status badge
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade800,
                     borderRadius: BorderRadius.circular(4),
@@ -653,16 +1127,15 @@ class _CEODashboardState extends State<CEODashboard> {
                   child: const Text(
                     'Pending CEO',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w500),
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-
-            // Enhanced Amount & Payment Info
             Row(
               children: [
                 Column(
@@ -671,9 +1144,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     Text(
                       "₹${request['amount'].toStringAsFixed(0)}",
                       style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2DD4BF)),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2DD4BF),
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -693,7 +1167,9 @@ class _CEODashboardState extends State<CEODashboard> {
                     const SizedBox(height: 2),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: request['type'] == 'reimbursement'
                             ? Colors.blue.shade900
@@ -705,9 +1181,10 @@ class _CEODashboardState extends State<CEODashboard> {
                             ? 'Reimbursement'
                             : 'Advance',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w500),
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
@@ -715,8 +1192,6 @@ class _CEODashboardState extends State<CEODashboard> {
               ],
             ),
             const SizedBox(height: 8),
-
-            // Submission Date
             Row(
               children: [
                 Icon(Icons.calendar_today, size: 12, color: Color(0xFF9CA3AF)),
@@ -728,8 +1203,6 @@ class _CEODashboardState extends State<CEODashboard> {
               ],
             ),
             const SizedBox(height: 8),
-
-            // Description - Compact
             Text(
               request['description'],
               style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 12),
@@ -737,8 +1210,6 @@ class _CEODashboardState extends State<CEODashboard> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
-
-            // Three Buttons
             Row(
               children: [
                 Expanded(
@@ -751,8 +1222,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     ),
                     child: const Text(
                       "Approve",
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -768,8 +1241,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     ),
                     child: const Text(
                       "Reject",
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -785,8 +1260,10 @@ class _CEODashboardState extends State<CEODashboard> {
                     ),
                     child: const Text(
                       "Details",
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -800,50 +1277,86 @@ class _CEODashboardState extends State<CEODashboard> {
 
   Widget _buildAnalyticsTab() {
     return RefreshIndicator(
-      onRefresh: _loadData,
+      onRefresh: _loadAnalyticsData,
       color: const Color(0xFF2DD4BF),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Enhanced Stats Cards with all requested metrics
-            Row(
-              children: [
-                _buildAnalyticsCard("Monthly Approved",
-                    "₹${(_analyticsData['monthly_spending'] ?? 0).toStringAsFixed(0)}"),
-                const SizedBox(width: 12),
-                _buildAnalyticsCard("Approval Rate",
-                    "${(_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0')}%"),
-              ],
+            Card(
+              color: const Color(0xFF1F2937),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Real-time Analytics',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Updated: ${DateFormat('HH:mm:ss').format(DateTime.now())}',
+                      style: const TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _buildAnalyticsCard("Avg. Request Amount",
-                    "₹${(_analyticsData['average_request_amount'] ?? 0).toStringAsFixed(0)}"),
-                const SizedBox(width: 12),
-                _buildAnalyticsCard("Monthly Approved Count",
-                    (_analyticsData['monthly_approved_count'] ?? 0).toString()),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
+            const SizedBox(height: 16),
+            GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.5,
               children: [
                 _buildAnalyticsCard(
-                    "Total Requests This Month",
-                    (_analyticsData['total_requests_this_month'] ?? 0)
-                        .toString()),
-                const SizedBox(width: 12),
-                _buildAnalyticsCard("Monthly Growth",
-                    "${(_analyticsData['monthly_growth'] ?? 0).toStringAsFixed(1)}%"),
+                  "Monthly Approved",
+                  "₹${(_analyticsData['monthly_spending'] ?? 0).toStringAsFixed(0)}",
+                ),
+                _buildAnalyticsCard(
+                  "Approval Rate",
+                  "${(_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0')}%",
+                ),
+                _buildAnalyticsCard(
+                  "Avg. Request Amount",
+                  "₹${(_analyticsData['average_request_amount'] ?? 0).toStringAsFixed(0)}",
+                ),
+                _buildAnalyticsCard(
+                  "Monthly Approved Count",
+                  (_analyticsData['monthly_approved_count'] ?? 0).toString(),
+                ),
+                _buildAnalyticsCard(
+                  "Total Requests This Month",
+                  (_analyticsData['total_requests_this_month'] ?? 0).toString(),
+                ),
+                _buildAnalyticsCard(
+                  "Monthly Growth",
+                  "${(_analyticsData['monthly_growth'] ?? 0).toStringAsFixed(1)}%",
+                ),
               ],
             ),
-            const SizedBox(height: 24),
-
-            // Charts
-            _buildChartCard("Request Types Distribution", _buildTypeChart()),
             const SizedBox(height: 16),
-            _buildChartCard("Monthly Spending Trend", _buildBarChart()),
+            _buildChartCard("Request Types Distribution", _buildTypeChart()),
             const SizedBox(height: 16),
             _buildChartCard("Department Distribution", _buildPieChart()),
             const SizedBox(height: 16),
@@ -857,7 +1370,6 @@ class _CEODashboardState extends State<CEODashboard> {
   Widget _buildHistoryTab() {
     return Column(
       children: [
-        // Filters
         Card(
           color: const Color(0xFF1F2937),
           margin: const EdgeInsets.all(16),
@@ -875,8 +1387,10 @@ class _CEODashboardState extends State<CEODashboard> {
                             .map((String value) {
                           return DropdownMenuItem(
                             value: value,
-                            child: Text(value,
-                                style: TextStyle(color: Colors.white)),
+                            child: Text(
+                              value,
+                              style: TextStyle(color: Colors.white),
+                            ),
                           );
                         }).toList(),
                         onChanged: (value) async {
@@ -911,39 +1425,21 @@ class _CEODashboardState extends State<CEODashboard> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        decoration: _buildDropdownDecoration("Status"),
-                        value: 'All Status',
-                        items: ['All Status', 'Approved', 'Rejected', 'Pending']
-                            .map((String value) {
-                          return DropdownMenuItem(
-                            value: value,
-                            child: Text(value,
-                                style: TextStyle(color: Colors.white)),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          // Client-side filtering can be implemented here
-                        },
-                        dropdownColor: const Color(0xFF374151),
-                      ),
-                    ),
                   ],
                 ),
               ],
             ),
           ),
         ),
-
-        // History List - Only shows CEO actions
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadData,
             color: const Color(0xFF2DD4BF),
             child: _historyData.isEmpty
                 ? _buildEmptyState(
-                    'No History', 'No CEO actions found for selected period')
+                    'No History',
+                    'No CEO actions found for selected period',
+                  )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _historyData.length,
@@ -966,7 +1462,7 @@ class _CEODashboardState extends State<CEODashboard> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Quick Reports
+            // Employee ID Report
             Card(
               color: const Color(0xFF1F2937),
               child: Padding(
@@ -974,26 +1470,121 @@ class _CEODashboardState extends State<CEODashboard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Download Reports (CSV)",
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white)),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    Row(
                       children: [
-                        _buildReportButton('Monthly Report', 'monthly'),
-                        _buildReportButton('Approved Requests', 'approved'),
-                        _buildReportButton('All Data', 'all'),
-                        _buildReportButton('Custom Range', 'custom'),
+                        Icon(Icons.person, color: Color(0xFF2DD4BF)),
+                        SizedBox(width: 8),
+                        Text(
+                          "By Employee ID",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      "Reports will be downloaded as CSV files containing:\n• Employee details\n• Request amounts\n• Status and CEO actions\n• Payment counts\n• Department information",
-                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+                    Text(
+                      "Employee ID:",
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          _reportIdentifier = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: "Enter Employee ID",
+                        hintStyle: TextStyle(color: Colors.grey[500]),
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFF2DD4BF)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF374151),
+                        prefixIcon: Icon(Icons.badge, color: Colors.grey),
+                      ),
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Time Period:",
+                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _reportPeriod,
+                      dropdownColor: const Color(0xFF374151),
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: _buildDropdownDecoration(""),
+                      items: [
+                        DropdownMenuItem(
+                          value: '1_month',
+                          child: Text('Last 1 Month'),
+                        ),
+                        DropdownMenuItem(
+                          value: '3_months',
+                          child: Text('Last 3 Months'),
+                        ),
+                        DropdownMenuItem(
+                          value: '6_months',
+                          child: Text('Last 6 Months'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'all_time',
+                          child: Text('All Time'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _reportPeriod = value!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isGeneratingReport
+                            ? null
+                            : _generateEmployeeReport,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _isGeneratingReport
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text("Generating Employee Report..."),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.people),
+                                  SizedBox(width: 8),
+                                  Text("Generate Employee Report"),
+                                ],
+                              ),
+                      ),
                     ),
                   ],
                 ),
@@ -1001,7 +1592,7 @@ class _CEODashboardState extends State<CEODashboard> {
             ),
             const SizedBox(height: 16),
 
-            // Recent Reports
+            // Project ID/Code/Name Report
             Card(
               color: const Color(0xFF1F2937),
               child: Padding(
@@ -1009,14 +1600,244 @@ class _CEODashboardState extends State<CEODashboard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Recent Reports",
-                        style: TextStyle(
-                            fontSize: 16,
+                    Row(
+                      children: [
+                        Icon(Icons.business, color: Color(0xFF10B981)),
+                        SizedBox(width: 8),
+                        Text(
+                          "By Project ID/Code/Name",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
-                    _buildReportItem("No reports generated",
-                        "Download your first report above"),
+                    Text(
+                      "Project ID/Code/Name:",
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          _reportIdentifier = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: "Enter Project ID, Code or Name",
+                        hintStyle: TextStyle(color: Colors.grey[500]),
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFF10B981)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF374151),
+                        prefixIcon: Icon(Icons.work, color: Colors.grey),
+                      ),
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Time Period:",
+                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _reportPeriod,
+                      dropdownColor: const Color(0xFF374151),
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: _buildDropdownDecoration(""),
+                      items: [
+                        DropdownMenuItem(
+                          value: '1_month',
+                          child: Text('Last 1 Month'),
+                        ),
+                        DropdownMenuItem(
+                          value: '3_months',
+                          child: Text('Last 3 Months'),
+                        ),
+                        DropdownMenuItem(
+                          value: '6_months',
+                          child: Text('Last 6 Months'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'all_time',
+                          child: Text('All Time'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _reportPeriod = value!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed:
+                            _isGeneratingReport ? null : _generateProjectReport,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _isGeneratingReport
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text("Generating Project Report..."),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.assignment),
+                                  SizedBox(width: 8),
+                                  Text("Generate Project Report"),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Employee ID in Particular Project Report
+            Card(
+              color: const Color(0xFF1F2937),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.person_search, color: Color(0xFF8B5CF6)),
+                        SizedBox(width: 8),
+                        Text(
+                          "Employee in Specific Project",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Employee ID:",
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          _employeeIdForProjectReport = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: "Enter Employee ID",
+                        hintStyle: TextStyle(color: Colors.grey[500]),
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFF8B5CF6)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF374151),
+                        prefixIcon: Icon(Icons.badge, color: Colors.grey),
+                      ),
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Project ID/Code/Name:",
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          _projectIdForEmployeeReport = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: "Enter Project ID, Code or Name",
+                        hintStyle: TextStyle(color: Colors.grey[500]),
+                        border: OutlineInputBorder(),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Color(0xFF8B5CF6)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        filled: true,
+                        fillColor: Color(0xFF374151),
+                        prefixIcon: Icon(Icons.work, color: Colors.grey),
+                      ),
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isGeneratingEmployeeProjectReport
+                            ? null
+                            : _generateEmployeeProjectReport,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _isGeneratingEmployeeProjectReport
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text("Generating Combined Report..."),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.insights),
+                                  SizedBox(width: 8),
+                                  Text("Generate Combined Report"),
+                                ],
+                              ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1038,37 +1859,11 @@ class _CEODashboardState extends State<CEODashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2DD4BF))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnalyticsCard(String title, String value) {
-    return Expanded(
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1F2937),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF374151)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
             Text(
               title,
               style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               value,
               style: const TextStyle(
@@ -1083,6 +1878,41 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
+  Widget _buildAnalyticsCard(String title, String value) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2937),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF374151)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2DD4BF),
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildChartCard(String title, Widget chart) {
     return Card(
       color: const Color(0xFF1F2937),
@@ -1091,92 +1921,37 @@ class _CEODashboardState extends State<CEODashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (_activeTab == 1)
+                  IconButton(
+                    icon: const Icon(
+                      Icons.refresh,
+                      size: 18,
+                      color: Color(0xFF2DD4BF),
+                    ),
+                    onPressed: _loadAnalyticsData,
+                    tooltip: 'Refresh Chart',
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             chart,
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildBarChart() {
-    return SizedBox(
-      height: 150,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.trending_up, size: 48, color: Color(0xFF2DD4BF)),
-            SizedBox(height: 8),
-            Text(
-              "Monthly Spending: ₹${_analyticsData['monthly_spending']?.toStringAsFixed(0) ?? '0'}",
-              style: TextStyle(color: Color(0xFF9CA3AF)),
-            ),
-            Text(
-              "Growth: ${_analyticsData['monthly_growth']?.toStringAsFixed(1) ?? '0'}%",
-              style: TextStyle(color: Color(0xFF2DD4BF)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPieChart() {
-    final departmentStats = List<Map<String, dynamic>>.from(
-        _analyticsData['department_stats'] ?? []);
-
-    if (departmentStats.isEmpty) {
-      return const SizedBox(
-        height: 150,
-        child: Center(
-          child: Text(
-            "No department data available",
-            style: TextStyle(color: Color(0xFF9CA3AF)),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 150,
-      child: ListView.builder(
-        padding: EdgeInsets.all(8),
-        itemCount: departmentStats.length,
-        itemBuilder: (context, index) {
-          final dept = departmentStats[index];
-          return ListTile(
-            leading: Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: [
-                  Colors.blue,
-                  Colors.green,
-                  Colors.orange,
-                  Colors.purple
-                ][index % 4],
-                shape: BoxShape.circle,
-              ),
-            ),
-            title: Text(
-              dept['department'],
-              style: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            trailing: Text(
-              "₹${dept['amount']?.toStringAsFixed(0) ?? '0'}",
-              style: TextStyle(color: Color(0xFF2DD4BF), fontSize: 12),
-            ),
-          );
-        },
       ),
     );
   }
@@ -1192,6 +1967,7 @@ class _CEODashboardState extends State<CEODashboard> {
           child: Text(
             "No data available",
             style: TextStyle(color: Color(0xFF9CA3AF)),
+            textAlign: TextAlign.center,
           ),
         ),
       );
@@ -1207,7 +1983,10 @@ class _CEODashboardState extends State<CEODashboard> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildChartLegend(
-                    "Reimbursements", Colors.blue, reimbursementCount),
+                  "Reimbursements",
+                  Colors.blue,
+                  reimbursementCount,
+                ),
                 _buildChartLegend("Advances", Colors.purple, advanceCount),
               ],
             ),
@@ -1215,9 +1994,100 @@ class _CEODashboardState extends State<CEODashboard> {
             Text(
               "Total: ${reimbursementCount + advanceCount} requests",
               style: const TextStyle(color: Color(0xFF9CA3AF)),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPieChart() {
+    final departmentStats = List<Map<String, dynamic>>.from(
+      _analyticsData['department_stats'] ?? [],
+    );
+
+    if (departmentStats.isEmpty) {
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.pie_chart, size: 48, color: Colors.grey.shade600),
+              SizedBox(height: 8),
+              Text(
+                "No department data",
+                style: TextStyle(color: Color(0xFF9CA3AF)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 200,
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: departmentStats.length,
+              itemBuilder: (context, index) {
+                final dept = departmentStats[index];
+                return Container(
+                  margin: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Color(0xFF374151),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: [
+                            Colors.blue,
+                            Colors.green,
+                            Colors.orange,
+                            Colors.purple,
+                            Colors.red,
+                            Colors.teal,
+                          ][index % 6],
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          dept['department'] ?? 'Unknown',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        "₹${dept['amount']?.toStringAsFixed(0) ?? '0'}",
+                        style: TextStyle(
+                          color: Color(0xFF2DD4BF),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            "Total Departments: ${departmentStats.length}",
+            style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+          ),
+        ],
       ),
     );
   }
@@ -1245,6 +2115,7 @@ class _CEODashboardState extends State<CEODashboard> {
             Text(
               "Total: ${approved + rejected + pending} requests",
               style: const TextStyle(color: Color(0xFF9CA3AF)),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -1255,19 +2126,18 @@ class _CEODashboardState extends State<CEODashboard> {
   Widget _buildChartLegend(String label, Color color, int count) {
     return Column(
       children: [
-        Container(
-          width: 20,
-          height: 20,
-          color: color,
-        ),
+        Container(width: 20, height: 20, color: color),
         const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(color: Colors.white, fontSize: 12),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
         ),
         Text(
           count.toString(),
           style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 16),
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -1296,6 +2166,7 @@ class _CEODashboardState extends State<CEODashboard> {
             color: Colors.white,
             fontWeight: FontWeight.w500,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1304,16 +2175,19 @@ class _CEODashboardState extends State<CEODashboard> {
             Text(
               request['type'] ?? 'Unknown type',
               style: const TextStyle(color: Color(0xFF9CA3AF)),
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
               request['date'] ?? 'Unknown date',
               style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+              overflow: TextOverflow.ellipsis,
             ),
             if (request['ceo_action'] == 'rejected' &&
                 request['rejection_reason'] != null)
               Text(
                 'CEO Rejected: ${request['rejection_reason']}',
                 style: const TextStyle(color: Colors.orange, fontSize: 11),
+                overflow: TextOverflow.ellipsis,
               ),
             if (request['ceo_action'] == 'approved')
               Text(
@@ -1347,49 +2221,11 @@ class _CEODashboardState extends State<CEODashboard> {
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildReportButton(String title, String type) {
-    return ElevatedButton(
-      onPressed: () => _generateReport(type),
-      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2DD4BF)),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-    );
-  }
-
-  Widget _buildReportItem(String title, String date) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.grey.shade800))),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(color: Colors.white, fontSize: 14)),
-                Text(date,
-                    style: const TextStyle(
-                        color: Color(0xFF9CA3AF), fontSize: 12)),
-              ],
-            ),
-          ),
-          OutlinedButton(
-            onPressed: () {},
-            style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF2DD4BF),
-                side: const BorderSide(color: Color(0xFF2DD4BF))),
-            child: const Text('Download'),
-          ),
-        ],
       ),
     );
   }
@@ -1401,15 +2237,21 @@ class _CEODashboardState extends State<CEODashboard> {
         children: [
           Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade600),
           const SizedBox(height: 16),
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 18,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 8),
-          Text(message,
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-              textAlign: TextAlign.center),
+          Text(
+            message,
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -1436,37 +2278,6 @@ class _CEODashboardState extends State<CEODashboard> {
         return Colors.blue.shade900;
       default:
         return Colors.grey.shade900;
-    }
-  }
-
-  Future<void> _generateReport(String type) async {
-    try {
-      setState(() => _isLoading = true);
-
-      final success = await _apiService.downloadCEOReport(
-        authToken: widget.authToken,
-        reportName: 'ceo_${type}_report',
-      );
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$type report downloaded successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        throw Exception('Failed to download report');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error generating report: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
     }
   }
 }

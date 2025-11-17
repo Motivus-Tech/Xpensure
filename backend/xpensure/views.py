@@ -758,9 +758,9 @@ class CEODashboardView(APIView):
                 "approved_by_finance": reimbursement.approved_by_finance,
                 "current_approver_id": reimbursement.current_approver_id,
                 # ✅ CRITICAL: ADD PROJECT INFORMATION FOR REIMBURSEMENTS
-                "project_id": reimbursement.project_id,  # This was missing!
-                "project_code": reimbursement.project_id,  # Using project_id as project_code
-                "project_name": None,  # Reimbursements typically don't have project_name
+                "project_id": reimbursement.project_id,
+                "project_code": reimbursement.project_id,
+                "project_name": getattr(reimbursement, 'project_name', None),
             })
 
         # Format pending advances - ✅ CRITICAL FIX: ADD PROJECT FIELDS
@@ -782,10 +782,10 @@ class CEODashboardView(APIView):
                 "approved_by_finance": advance.approved_by_finance,
                 "current_approver_id": advance.current_approver_id,
                 # ✅ CRITICAL: ADD PROJECT INFORMATION FOR ADVANCES
-                "project_id": advance.project_id,  # This was missing!
+                "project_id": advance.project_id,
                 "project_code": advance.project_id,
-                "project_name": advance.project_name,  # This was missing!
-                "project_title": advance.project_name,  # Alternative key
+                "project_name": advance.project_name,
+                "project_title": advance.project_name,
             })
 
         # Combine all pending requests
@@ -801,7 +801,6 @@ class CEODashboardView(APIView):
                 "advances_count": len(pending_advances_data)
             }
         }, status=status.HTTP_200_OK)
-        
 class CEOAnalyticsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -860,26 +859,111 @@ class CEOAnalyticsView(APIView):
         last_month_approved = last_month_approved_reimbursements.count() + last_month_approved_advances.count()
         monthly_growth = ((monthly_approved_count - last_month_approved) / last_month_approved * 100) if last_month_approved > 0 else 0
 
+        # NEW: Department-wise statistics
+        department_stats = []
+        all_departments = User.objects.values_list('department', flat=True).distinct()
+        
+        for dept in all_departments:
+            if dept:  # Skip empty departments
+                dept_reimbursements = Reimbursement.objects.filter(
+                    employee__department=dept,
+                    date__gte=month_start,
+                    status='Approved'
+                )
+                dept_advances = AdvanceRequest.objects.filter(
+                    employee__department=dept,
+                    request_date__gte=month_start,
+                    status='Approved'
+                )
+                
+                dept_amount = sum(r.amount for r in dept_reimbursements) + sum(a.amount for a in dept_advances)
+                dept_count = dept_reimbursements.count() + dept_advances.count()
+                
+                if dept_count > 0:
+                    department_stats.append({
+                        'department': dept,
+                        'amount': float(dept_amount),
+                        'count': dept_count
+                    })
+
+        # NEW: Performance metrics for real-time dashboard
+        # Average processing time (from submission to CEO approval)
+        ceo_approved_requests = ApprovalHistory.objects.filter(
+            approver_id=request.user.employee_id,
+            action='approved',
+            timestamp__gte=month_start
+        )
+        
+        total_processing_time = 0
+        processing_count = 0
+        
+        for approval in ceo_approved_requests:
+            try:
+                if approval.request_type == 'reimbursement':
+                    req = Reimbursement.objects.get(id=approval.request_id)
+                else:
+                    req = AdvanceRequest.objects.get(id=approval.request_id)
+                
+                if req.created_at and approval.timestamp:
+                    processing_time = approval.timestamp - req.created_at
+                    total_processing_time += processing_time.total_seconds() / 3600  # Convert to hours
+                    processing_count += 1
+            except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+                continue
+        
+        avg_processing_time = total_processing_time / processing_count if processing_count > 0 else 0
+
+        # NEW: Pending CEO actions count
+        pending_ceo_actions = Reimbursement.objects.filter(
+            current_approver_id=request.user.employee_id,
+            status="Pending"
+        ).count() + AdvanceRequest.objects.filter(
+            current_approver_id=request.user.employee_id,
+            status="Pending"
+        ).count()
+
+        # NEW: Weekly approved count
+        week_start = today - timedelta(days=today.weekday())
+        weekly_approved = Reimbursement.objects.filter(
+            date__gte=week_start,
+            status='Approved'
+        ).count() + AdvanceRequest.objects.filter(
+            request_date__gte=week_start,
+            status='Approved'
+        ).count()
+
+        # NEW: Today's requests
+        todays_requests = Reimbursement.objects.filter(
+            created_at__date=today
+        ).count() + AdvanceRequest.objects.filter(
+            created_at__date=today
+        ).count()
 
         # Add these to your existing analytics data
         analytics_data = {
-            # ... your existing analytics fields ...
-            
-            # NEW: Enhanced analytics as requested
+            # Enhanced analytics as requested
             'monthly_approved_count': monthly_approved_count,
             'monthly_spending': float(monthly_approved_spending),
             'approval_rate': float(approval_rate),
             'average_request_amount': float(average_request_amount),
             'total_requests_this_month': total_requests_this_month,
             'monthly_growth': float(monthly_growth),
+            
+            # Department statistics
+            'department_stats': department_stats,
+            
+            # Performance metrics for real-time dashboard
+            'avg_processing_time': round(avg_processing_time, 1),
+            'pending_ceo_actions': pending_ceo_actions,
+            'weekly_approved': weekly_approved,
+            'todays_requests': todays_requests,
+            
             # Keep your existing fields
             'reimbursement_count': total_reimbursements_this_month,
             'advance_count': total_advances_this_month,
             'approved_count': monthly_approved_count,
             'rejected_count': Reimbursement.objects.filter(date__gte=month_start, status='Rejected').count() + AdvanceRequest.objects.filter(request_date__gte=month_start, status='Rejected').count(),
             'pending_count': Reimbursement.objects.filter(date__gte=month_start, status='Pending').count() + AdvanceRequest.objects.filter(request_date__gte=month_start, status='Pending').count(),
-        
-            # ... rest of your existing analytics ...
         }
 
         return Response(analytics_data, status=status.HTTP_200_OK)
@@ -940,7 +1024,10 @@ class CEOHistoryView(APIView):
                 'ceo_action': 'approved' if reimbursement.status == 'Approved' else 'rejected',
                 'rejection_reason': reimbursement.rejection_reason,
                 'action_date': reimbursement.updated_at.strftime('%Y-%m-%d %H:%M'),
-                'submission_date': reimbursement.created_at.strftime('%Y-%m-%d') if reimbursement.created_at else None
+                'submission_date': reimbursement.created_at.strftime('%Y-%m-%d') if reimbursement.created_at else None,
+                # ✅ ADD PROJECT DATA TO HISTORY
+                'project_id': reimbursement.project_id,
+                'project_name': getattr(reimbursement, 'project_name', None),
             })
 
         for advance in advance_history:
@@ -957,7 +1044,10 @@ class CEOHistoryView(APIView):
                 'ceo_action': 'approved' if advance.status == 'Approved' else 'rejected',
                 'rejection_reason': advance.rejection_reason,
                 'action_date': advance.updated_at.strftime('%Y-%m-%d %H:%M'),
-                'submission_date': advance.created_at.strftime('%Y-%m-%d') if advance.created_at else None
+                'submission_date': advance.created_at.strftime('%Y-%m-%d') if advance.created_at else None,
+                # ✅ ADD PROJECT DATA TO HISTORY
+                'project_id': advance.project_id,
+                'project_name': advance.project_name,
             })
 
         # Sort by action date (most recent first)
@@ -1255,11 +1345,12 @@ class CEOGenerateReportView(APIView):
         response['Content-Disposition'] = f'attachment; filename="ceo_report_{report_type}_{months}months.csv"'
         
         writer = csv.writer(response)
-        # Enhanced CSV headers
+        # Enhanced CSV headers with project data
         writer.writerow([
             'Request ID', 'Employee ID', 'Employee Name', 'Department',
             'Request Type', 'Amount', 'Submission Date', 'Status',
             'CEO Action', 'Rejection Reason', 'Description', 'Payment Count',
+            'Project ID', 'Project Name',  # ✅ ADDED PROJECT COLUMNS
         ])
         
         # Write reimbursement data
@@ -1277,7 +1368,9 @@ class CEOGenerateReportView(APIView):
                 'Approved' if reimbursement.status == 'Approved' else 'Rejected' if reimbursement.status == 'Rejected' else 'Pending',
                 reimbursement.rejection_reason or '',
                 reimbursement.description,
-                payment_count
+                payment_count,
+                reimbursement.project_id or '',  # ✅ ADDED PROJECT DATA
+                getattr(reimbursement, 'project_name', '') or '',
             ])
         
         # Write advance data
@@ -1295,11 +1388,12 @@ class CEOGenerateReportView(APIView):
                 'Approved' if advance.status == 'Approved' else 'Rejected' if advance.status == 'Rejected' else 'Pending',
                 advance.rejection_reason or '',
                 advance.description,
-                payment_count
+                payment_count,
+                advance.project_id or '',  # ✅ ADDED PROJECT DATA
+                advance.project_name or '',
             ])
         
         return response
-    
 class ApprovalTimelineView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -2699,3 +2793,218 @@ class FinanceVerificationCSVReportView(APIView):
             requests_data.append(request_data)
         
         return requests_data
+    
+class CEOCSVReportView(APIView):
+    """Generate CSV reports for CEO dashboard"""
+    
+    def post(self, request):
+        try:
+            employee = request.user.employee
+            if employee.department.lower() != 'ceo':
+                return Response({'error': 'Unauthorized access'}, status=status.HTTP_403_FORBIDDEN)
+
+            report_type = request.data.get('report_type', 'employee')
+            period = request.data.get('period', '1_month')
+            identifier = request.data.get('identifier', '')
+            
+            if not identifier:
+                return Response({'error': 'Identifier required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Calculate date range
+            end_date = timezone.now().date()
+            if period == '1_month':
+                start_date = end_date - timedelta(days=30)
+            elif period == '3_months':
+                start_date = end_date - timedelta(days=90)
+            elif period == '6_months':
+                start_date = end_date - timedelta(days=180)
+            else:  # all_time
+                start_date = end_date - timedelta(days=365*5)
+
+            # Get all requests (both reimbursements and advances)
+            reimbursements = Reimbursement.objects.filter(
+                Q(status='pending_ceo') | Q(status='approved') | Q(status='rejected'),
+                created_at__date__gte=start_date
+            ).select_related('employee')
+            
+            advances = AdvanceRequest.objects.filter(
+                Q(status='pending_ceo') | Q(status='approved') | Q(status='rejected'),
+                created_at__date__gte=start_date
+            ).select_related('employee')
+
+            # Filter based on report type
+            if report_type == 'employee':
+                reimbursements = reimbursements.filter(employee__employee_id__icontains=identifier)
+                advances = advances.filter(employee__employee_id__icontains=identifier)
+            else:  # project
+                reimbursements = reimbursements.filter(
+                    Q(project_id__icontains=identifier) |
+                    Q(project_name__icontains=identifier)
+                )
+                advances = advances.filter(
+                    Q(project_id__icontains=identifier) |
+                    Q(project_name__icontains=identifier)
+                )
+
+            # Create CSV response
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="ceo_report_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+            
+            writer = csv.writer(response)
+            writer.writerow([
+                'Request ID', 'Employee ID', 'Employee Name', 'Request Type', 
+                'Amount', 'Description', 'Submission Date', 'Status', 'CEO Action',
+                'Project ID', 'Project Name', 'Rejection Reason'
+            ])
+
+            # Add reimbursement data
+            for reimbursement in reimbursements:
+                writer.writerow([
+                    reimbursement.id,
+                    reimbursement.employee.employee_id,
+                    reimbursement.employee.fullName,  # Fixed: use fullName instead of name
+                    'Reimbursement',
+                    reimbursement.amount,
+                    reimbursement.description,
+                    reimbursement.created_at.strftime('%Y-%m-%d') if reimbursement.created_at else '',
+                    reimbursement.status,
+                    'Approved' if reimbursement.status == 'approved' else 'Rejected' if reimbursement.status == 'rejected' else 'Pending',
+                    reimbursement.project_id or '',
+                    getattr(reimbursement, 'project_name', ''),
+                    getattr(reimbursement, 'rejection_reason', '')
+                ])
+
+            # Add advance data
+            for advance in advances:
+                writer.writerow([
+                    advance.id,
+                    advance.employee.employee_id,
+                    advance.employee.fullName,  # Fixed: use fullName instead of name
+                    'Advance',
+                    advance.amount,
+                    advance.description,
+                    advance.created_at.strftime('%Y-%m-%d') if advance.created_at else '',
+                    advance.status,
+                    'Approved' if advance.status == 'approved' else 'Rejected' if advance.status == 'rejected' else 'Pending',
+                    advance.project_id or '',
+                    getattr(advance, 'project_name', ''),
+                    getattr(advance, 'rejection_reason', '')
+                ])
+
+            return response
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class CEOEmployeeProjectReportView(APIView):
+    """Generate employee-project specific reports for CEO"""
+    
+    def post(self, request):
+        try:
+            employee = request.user.employee
+            if employee.department.lower() != 'ceo':
+                return Response({'error': 'Unauthorized access'}, status=status.HTTP_403_FORBIDDEN)
+
+            employee_id = request.data.get('employee_id', '')
+            project_identifier = request.data.get('project_identifier', '')
+            period = request.data.get('period', '1_month')
+            
+            if not employee_id or not project_identifier:
+                return Response({'error': 'Employee ID and Project Identifier required'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+
+            # Calculate date range
+            end_date = datetime.now()
+            if period == '1_month':
+                start_date = end_date - timedelta(days=30)
+            elif period == '3_months':
+                start_date = end_date - timedelta(days=90)
+            elif period == '6_months':
+                start_date = end_date - timedelta(days=180)
+            else:  # all_time
+                start_date = datetime(2000, 1, 1)
+
+            # Get employee
+            try:
+                emp = Employee.objects.get(employee_id__icontains=employee_id)
+            except Employee.DoesNotExist:
+                return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Get requests for this employee and project
+            reimbursements = Reimbursement.objects.filter(
+                employee=emp,
+                submitted_date__gte=start_date
+            ).filter(
+                Q(project__project_id__icontains=project_identifier) |
+                Q(project__project_name__icontains=project_identifier) |
+                Q(project__project_code__icontains=project_identifier)
+            ).select_related('project')
+            
+            advances = AdvanceRequest.objects.filter(
+                employee=emp,
+                submitted_date__gte=start_date
+            ).filter(
+                Q(project__project_id__icontains=project_identifier) |
+                Q(project__project_name__icontains=project_identifier) |
+                Q(project__project_code__icontains=project_identifier)
+            ).select_related('project')
+
+            # Prepare response data
+            total_requests = reimbursements.count() + advances.count()
+            total_amount = sum(r.amount for r in reimbursements) + sum(a.amount for a in advances)
+            
+            reimbursement_count = reimbursements.count()
+            advance_count = advances.count()
+            
+            approved_count = (reimbursements.filter(status='approved').count() + 
+                            advances.filter(status='approved').count())
+            rejected_count = (reimbursements.filter(status='rejected').count() + 
+                            advances.filter(status='rejected').count())
+            pending_count = (reimbursements.filter(status='pending_ceo').count() + 
+                           advances.filter(status='pending_ceo').count())
+
+            # Create detailed requests list
+            requests_data = []
+            for reimbursement in reimbursements:
+                requests_data.append({
+                    'id': reimbursement.id,
+                    'request_type': 'reimbursement',
+                    'amount': reimbursement.amount,
+                    'description': reimbursement.description,
+                    'status': reimbursement.status,
+                    'submitted_date': reimbursement.submitted_date.strftime('%Y-%m-%d') if reimbursement.submitted_date else '',
+                    'approved_date': reimbursement.approved_date.strftime('%Y-%m-%d') if reimbursement.approved_date else '',
+                    'project_id': reimbursement.project.project_id if reimbursement.project else '',
+                    'project_name': reimbursement.project.project_name if reimbursement.project else '',
+                })
+            
+            for advance in advances:
+                requests_data.append({
+                    'id': advance.id,
+                    'request_type': 'advance',
+                    'amount': advance.amount,
+                    'description': advance.description,
+                    'status': advance.status,
+                    'submitted_date': advance.submitted_date.strftime('%Y-%m-%d') if advance.submitted_date else '',
+                    'approved_date': advance.approved_date.strftime('%Y-%m-%d') if advance.approved_date else '',
+                    'project_id': advance.project.project_id if advance.project else '',
+                    'project_name': advance.project.project_name if advance.project else '',
+                })
+
+            response_data = {
+                'employee_id': emp.employee_id,
+                'employee_name': emp.name,
+                'project_identifier': project_identifier,
+                'total_requests': total_requests,
+                'total_amount': total_amount,
+                'reimbursement_count': reimbursement_count,
+                'advance_count': advance_count,
+                'approved_count': approved_count,
+                'rejected_count': rejected_count,
+                'pending_count': pending_count,
+                'requests': requests_data
+            }
+
+            return Response(response_data)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

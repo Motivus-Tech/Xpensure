@@ -1210,13 +1210,14 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  // APPROVE/REJECT METHODS
+// APPROVE/REJECT METHODS - UPDATED URLs
   Future<void> _approveRequest() async {
     setState(() => _isProcessing = true);
 
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/ceo-approval/approve/'),
+        // FIXED: Use the correct URL from Django URLs
+        Uri.parse('$baseUrl/api/ceo/approve-request/'),
         headers: {
           'Authorization': 'Token ${widget.authToken}',
           'Content-Type': 'application/json',
@@ -1336,7 +1337,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
 
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/ceo-approval/reject/'),
+        // FIXED: Use the correct URL from Django URLs
+        Uri.parse('$baseUrl/api/ceo/reject-request/'),
         headers: {
           'Authorization': 'Token ${widget.authToken}',
           'Content-Type': 'application/json',

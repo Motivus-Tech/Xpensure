@@ -26,7 +26,7 @@ dependencies:
   syncfusion_flutter_charts: ^23.1.44
   csv: ^5.0.0
   permission_handler: ^11.0.1  # Check for latest version
-  share_plus: ^7.0.1      
+  share_plus: ^7.2.2      
       # Check for latest version
 
 dev_dependencies:
