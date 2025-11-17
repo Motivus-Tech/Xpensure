@@ -61,6 +61,11 @@ class _CEODashboardState extends State<CEODashboard> {
   String _projectIdForEmployeeReport = '';
   bool _isGeneratingEmployeeProjectReport = false;
 
+  // Custom date range variables
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  bool _isGeneratingCustomDateReport = false;
+
   @override
   void initState() {
     super.initState();
@@ -821,6 +826,253 @@ class _CEODashboardState extends State<CEODashboard> {
     }
   }
 
+  Future<void> _generateCustomDateRangeReport() async {
+    if (_customStartDate == null || _customEndDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Please select both start and end dates"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_customStartDate!.isAfter(_customEndDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Start date cannot be after end date"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingCustomDateReport = true;
+    });
+
+    try {
+      final customDateData = [..._historyData, ..._pendingRequests].where((
+        request,
+      ) {
+        final requestDate = DateTime.tryParse(request['date'] ?? '');
+        if (requestDate == null) return false;
+
+        return (requestDate.isAfter(_customStartDate!) ||
+                requestDate.isAtSameMomentAs(_customStartDate!)) &&
+            (requestDate.isBefore(_customEndDate!) ||
+                requestDate.isAtSameMomentAs(_customEndDate!));
+      }).toList();
+
+      if (customDateData.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "No CEO approval data found for selected date range",
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() {
+          _isGeneratingCustomDateReport = false;
+        });
+        return;
+      }
+
+      double totalAmount = customDateData.fold(
+        0,
+        (sum, request) => sum + (request['amount'] ?? 0),
+      );
+      int totalRequests = customDateData.length;
+      int reimbursementCount = customDateData
+          .where(
+            (r) =>
+                r['type'] == 'reimbursement' ||
+                r['requestType'] == 'reimbursement',
+          )
+          .length;
+      int advanceCount = customDateData
+          .where((r) => r['type'] == 'advance' || r['requestType'] == 'advance')
+          .length;
+
+      int approvedCount = customDateData
+          .where(
+            (r) => r['ceo_action'] == 'approved' || r['status'] == 'approved',
+          )
+          .length;
+      int rejectedCount = customDateData
+          .where(
+            (r) => r['ceo_action'] == 'rejected' || r['status'] == 'rejected',
+          )
+          .length;
+      int pendingCount =
+          customDateData.where((r) => r['status'] == 'pending').length;
+
+      List<List<dynamic>> csvData = [];
+
+      csvData.add(['CEO APPROVAL REPORT - CUSTOM DATE RANGE']);
+      csvData.add(['Generated on', DateTime.now().toString().split(' ')[0]]);
+      csvData.add([
+        'Date Range',
+        '${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}'
+      ]);
+      csvData.add([]);
+
+      csvData.add(['CEO APPROVAL SUMMARY']);
+      csvData.add(['Total Requests', totalRequests]);
+      csvData.add(['Reimbursements', reimbursementCount]);
+      csvData.add(['Advances', advanceCount]);
+      csvData.add(['Approved by CEO', approvedCount]);
+      csvData.add(['Rejected by CEO', rejectedCount]);
+      csvData.add(['Pending CEO Approval', pendingCount]);
+      csvData.add(['Total Amount', '₹${totalAmount.toStringAsFixed(2)}']);
+      csvData.add([]);
+
+      csvData.add(['DETAILED APPROVAL RECORDS']);
+      csvData.add([
+        'Request ID',
+        'Employee ID',
+        'Employee Name',
+        'Request Type',
+        'Amount',
+        'Description',
+        'Submission Date',
+        'Status',
+        'CEO Action',
+        'Project ID',
+        'Project Name',
+        'Rejection Reason',
+      ]);
+
+      for (var request in customDateData) {
+        csvData.add([
+          request['id'] ?? '',
+          request['employeeId'] ?? request['employee_id'] ?? '',
+          request['employeeName'] ?? request['employee_name'] ?? '',
+          request['requestType'] ?? request['type'] ?? '',
+          '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
+          request['description'] ?? '',
+          request['date'] ?? '',
+          request['status'] ?? '',
+          request['ceo_action'] ?? 'Pending',
+          request['project_id'] ?? '',
+          request['project_name'] ?? '',
+          request['rejection_reason'] ?? '',
+        ]);
+      }
+
+      String csv = const ListToCsvConverter().convert(csvData);
+
+      final directory = await getTemporaryDirectory();
+      final filePath =
+          '${directory.path}/ceo_custom_date_report_${_customStartDate!.millisecondsSinceEpoch}_${_customEndDate!.millisecondsSinceEpoch}.csv';
+
+      final file = File(filePath);
+      await file.writeAsString(csv);
+
+      debugPrint("✅ CEO Custom Date Range CSV file created at: $filePath");
+
+      await Share.shareFiles(
+        [filePath],
+        text: 'CEO Approval Report - Custom Date Range\n\n'
+            '📅 Date Range: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}\n'
+            '💰 Total Amount: ₹${totalAmount.toStringAsFixed(2)}\n'
+            '📊 Total Requests: $totalRequests\n'
+            '🧾 Reimbursements: $reimbursementCount | 💰 Advances: $advanceCount\n'
+            '✅ Approved: $approvedCount | ❌ Rejected: $rejectedCount | ⏳ Pending: $pendingCount',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Custom date range report generated successfully!"),
+              SizedBox(height: 4),
+              Text(
+                  "Period: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}"),
+              Text("Total Amount: ₹${totalAmount.toStringAsFixed(2)}"),
+              Text(
+                "Requests: $totalRequests (${reimbursementCount}R + ${advanceCount}A)",
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      debugPrint("❌ Error generating custom date range report: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error generating report: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingCustomDateReport = false;
+      });
+    }
+  }
+
+  Future<void> _selectStartDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _customStartDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF2DD4BF),
+              onPrimary: Colors.white,
+              surface: Color(0xFF1F2937),
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: const Color(0xFF1F2937),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _customStartDate) {
+      setState(() {
+        _customStartDate = picked;
+      });
+    }
+  }
+
+  Future<void> _selectEndDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _customEndDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF2DD4BF),
+              onPrimary: Colors.white,
+              surface: Color(0xFF1F2937),
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: const Color(0xFF1F2937),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _customEndDate) {
+      setState(() {
+        _customEndDate = picked;
+      });
+    }
+  }
+
   void _showRequestDetails(Map<String, dynamic> request) {
     Navigator.push(
       context,
@@ -917,15 +1169,22 @@ class _CEODashboardState extends State<CEODashboard> {
             tooltip: 'Refresh',
           ),
           const SizedBox(width: 8),
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.grey.shade700,
-            child: const Icon(Icons.person, size: 18, color: Colors.white),
-          ),
+          // CEO Avatar - Check if avatar exists in userData
+          if (widget.userData['avatar'] != null)
+            CircleAvatar(
+              radius: 18,
+              backgroundImage: NetworkImage(widget.userData['avatar']),
+            )
+          else
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.grey.shade700,
+              child: const Icon(Icons.person, size: 18, color: Colors.white),
+            ),
           const SizedBox(width: 8),
-          const Text(
-            "CEO",
-            style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 14),
+          Text(
+            widget.userData['name'] ?? "CEO",
+            style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 14),
           ),
         ],
       ),
@@ -1834,6 +2093,187 @@ class _CEODashboardState extends State<CEODashboard> {
                                   Icon(Icons.insights),
                                   SizedBox(width: 8),
                                   Text("Generate Combined Report"),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Custom Date Range Report
+            Card(
+              color: const Color(0xFF1F2937),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, color: Color(0xFFF59E0B)),
+                        SizedBox(width: 8),
+                        Text(
+                          "Custom Date Range Report",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Select Date Range:",
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Start Date:",
+                                style: TextStyle(
+                                    color: Color(0xFF9CA3AF), fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              ElevatedButton(
+                                onPressed: () => _selectStartDate(context),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xFF374151),
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                                  minimumSize: Size(0, 40),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _customStartDate != null
+                                          ? DateFormat('MMM dd, yyyy')
+                                              .format(_customStartDate!)
+                                          : "Select Start Date",
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 12),
+                                    ),
+                                    Icon(Icons.calendar_today,
+                                        size: 16, color: Colors.grey),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "End Date:",
+                                style: TextStyle(
+                                    color: Color(0xFF9CA3AF), fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              ElevatedButton(
+                                onPressed: () => _selectEndDate(context),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xFF374151),
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                                  minimumSize: Size(0, 40),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _customEndDate != null
+                                          ? DateFormat('MMM dd, yyyy')
+                                              .format(_customEndDate!)
+                                          : "Select End Date",
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 12),
+                                    ),
+                                    Icon(Icons.calendar_today,
+                                        size: 16, color: Colors.grey),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_customStartDate != null && _customEndDate != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Color(0xFF374151),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.calendar_today,
+                                size: 16, color: Color(0xFFF59E0B)),
+                            SizedBox(width: 8),
+                            Text(
+                              "Selected: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isGeneratingCustomDateReport
+                            ? null
+                            : _generateCustomDateRangeReport,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFFF59E0B),
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _isGeneratingCustomDateReport
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text("Generating Date Range Report..."),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.date_range, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Text("Generate Date Range Report",
+                                      style: TextStyle(color: Colors.white)),
                                 ],
                               ),
                       ),
