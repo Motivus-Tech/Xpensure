@@ -556,7 +556,100 @@ class ApproveRequestAPIView(APIView):
         process_approval(obj, request.user, approved=True)
         return Response({"detail": "Request approved successfully."}, status=status.HTTP_200_OK)
 
+class ApproverCSVDownloadView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request):
+        try:
+            period = request.GET.get('period', '1 Month')
+            approver_id = request.user.employee_id
+            
+            # Calculate date range based on period
+            end_date = timezone.now().date()
+            if period == "1 Month":
+                start_date = end_date - timedelta(days=30)
+            elif period == "3 Months":
+                start_date = end_date - timedelta(days=90)
+            elif period == "6 Months":
+                start_date = end_date - timedelta(days=180)
+            elif period == "1 Year":
+                start_date = end_date - timedelta(days=365)
+            else:
+                start_date = end_date - timedelta(days=30)
+
+            # Get approval history for this approver within date range
+            approval_history = ApprovalHistory.objects.filter(
+                approver_id=approver_id,
+                timestamp__date__range=[start_date, end_date]
+            ).order_by('-timestamp')
+
+            # Create CSV response
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="approver_actions_{period.replace(" ", "_").lower()}_{end_date}.csv"'
+            
+            writer = csv.writer(response)
+            # Enhanced header with approval details
+            writer.writerow([
+                'S.No', 'Request Type', 'Request ID', 'Employee ID', 'Employee Name',
+                'Amount', 'Action', 'Action Date', 'Comments', 'Project ID', 'Project Name'
+            ])
+            
+            # Write approval history data
+            for i, approval in enumerate(approval_history, 1):
+                # Get request details
+                try:
+                    if approval.request_type == 'reimbursement':
+                        req = Reimbursement.objects.get(id=approval.request_id)
+                        amount = req.amount
+                        employee_name = req.employee.fullName
+                        employee_id = req.employee.employee_id
+                        project_id = req.project_id
+                        project_name = getattr(req, 'project_name', '')
+                    else:
+                        req = AdvanceRequest.objects.get(id=approval.request_id)
+                        amount = req.amount
+                        employee_name = req.employee.fullName
+                        employee_id = req.employee.employee_id
+                        project_id = req.project_id
+                        project_name = req.project_name
+                    
+                    writer.writerow([
+                        i,
+                        approval.request_type.title(),
+                        approval.request_id,
+                        employee_id,
+                        employee_name,
+                        f'₹{amount}',
+                        approval.action.title(),
+                        approval.timestamp.strftime('%Y-%m-%d %H:%M') if approval.timestamp else '-',
+                        approval.comments or 'No comments',
+                        project_id or '',
+                        project_name or ''
+                    ])
+                except (Reimbursement.DoesNotExist, AdvanceRequest.DoesNotExist):
+                    # If request doesn't exist anymore, still include the approval record
+                    writer.writerow([
+                        i,
+                        approval.request_type.title(),
+                        approval.request_id,
+                        'Unknown',
+                        'Unknown Employee',
+                        '₹0',
+                        approval.action.title(),
+                        approval.timestamp.strftime('%Y-%m-%d %H:%M') if approval.timestamp else '-',
+                        approval.comments or 'No comments',
+                        '',
+                        ''
+                    ])
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate CSV: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 class RejectRequestAPIView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]

@@ -38,6 +38,8 @@ from .views import (
     FinanceVerificationCSVReportView,
     CEOEmployeeProjectReportView,  # ADD THIS
     CEOCSVReportView,
+    ApproverCSVDownloadView,
+    
     health_check
 )
 
@@ -60,7 +62,7 @@ api_patterns = [
     # Reimbursements / Advances (List + Create)
     path('reimbursements/', ReimbursementListCreateView.as_view(), name='reimbursement-list-create'),
     path('advances/', AdvanceRequestListCreateView.as_view(), name='advance-list-create'),
-
+    
     # Employee Profile
     path('employees/<str:employee_id>/profile/', EmployeeProfileView.as_view(), name='employee-profile'),
     # Add this to your urlpatterns in urls.py
@@ -74,7 +76,8 @@ api_patterns = [
     path('approvals/pending/', PendingApprovalsView.as_view(), name='pending-approvals'),
     path('approvals/<int:request_id>/approve/', ApproveRequestAPIView.as_view(), name='approve-request'),
     path('approvals/<int:request_id>/reject/', RejectRequestAPIView.as_view(), name='reject-request'),
-
+    #Add this to your urlpatterns
+    path('approver/csv-download/', ApproverCSVDownloadView.as_view(), name='approver-csv-download'),
     
     
     path('ceo/dashboard/', CEODashboardView.as_view(), name='ceo-dashboard'),

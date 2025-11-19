@@ -1847,13 +1847,6 @@ class _HRDashboardState extends State<HRDashboard>
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                "HR Dashboard",
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-            ),
           ],
         ),
         actions: [
@@ -1862,43 +1855,6 @@ class _HRDashboardState extends State<HRDashboard>
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadData,
             tooltip: "Refresh Data",
-          ),
-          const SizedBox(width: 8),
-
-          // Notification Icon with Badge
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications, color: Colors.white),
-                onPressed: _showNotificationsDialog,
-                tooltip: "Notifications",
-              ),
-              if (unreadCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      unreadCount > 9 ? '9+' : unreadCount.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
           ),
           const SizedBox(width: 8),
 

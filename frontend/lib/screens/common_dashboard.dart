@@ -59,14 +59,28 @@ class _CommonDashboardState extends State<CommonDashboard>
   String _currentReimbursementFilter = 'latest';
   String _currentAdvanceFilter = 'latest';
 
-  int approvedCount = 0;
-  int rejectedCount = 0;
+  // Timer for real-time updates
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _initializeData();
+
+    // Set up real-time refresh every 30 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _fetchRequests();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _initializeData() async {
@@ -96,28 +110,9 @@ class _CommonDashboardState extends State<CommonDashboard>
       final pendingData =
           await apiService.getPendingApprovals(authToken: widget.authToken);
 
-      // ✅ DEBUG: Print the entire API response structure
-      debugPrint("=== FULL API RESPONSE ===");
-      debugPrint(pendingData.toString());
-      debugPrint("=========================");
-
       setState(() {
         reimbursementRequests =
             (pendingData['reimbursements_to_approve'] as List).map((r) {
-          // ✅ DEBUG: Print each reimbursement structure
-          debugPrint("=== REIMBURSEMENT ITEM ===");
-          debugPrint("Keys: ${r.keys.toList()}");
-          debugPrint("Payments type: ${r['payments']?.runtimeType}");
-          if (r['payments'] is List) {
-            debugPrint("Payments length: ${r['payments'].length}");
-            if (r['payments'].isNotEmpty) {
-              debugPrint(
-                  "First payment keys: ${r['payments'][0].keys.toList()}");
-            }
-          }
-          debugPrint("Project ID: ${r['projectId']}");
-          debugPrint("=========================");
-
           return Request(
             id: r['id'],
             employeeId: r['employee_id'] ?? 'Unknown',
@@ -132,21 +127,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         }).toList();
 
         advanceRequests = (pendingData['advances_to_approve'] as List).map((r) {
-          // ✅ DEBUG: Print each advance structure
-          debugPrint("=== ADVANCE ITEM ===");
-          debugPrint("Keys: ${r.keys.toList()}");
-          debugPrint("Payments type: ${r['payments']?.runtimeType}");
-          if (r['payments'] is List) {
-            debugPrint("Payments length: ${r['payments'].length}");
-            if (r['payments'].isNotEmpty) {
-              debugPrint(
-                  "First payment keys: ${r['payments'][0].keys.toList()}");
-            }
-          }
-          debugPrint("Project ID: ${r['projectId']}");
-          debugPrint("Project Name: ${r['projectName']}");
-          debugPrint("====================");
-
           return Request(
             id: r['id'],
             employeeId: r['employee_id'] ?? 'Unknown',
@@ -165,17 +145,14 @@ class _CommonDashboardState extends State<CommonDashboard>
     }
   }
 
-// ✅ IMPROVED: Parse reimbursement payments with better field detection
   List<dynamic> _parseReimbursementPayments(
       Map<String, dynamic> reimbursement) {
     try {
       List<dynamic> payments = [];
 
-      // Check if payments array exists
       if (reimbursement['payments'] is List &&
           reimbursement['payments'].isNotEmpty) {
         payments = reimbursement['payments'].map((payment) {
-          // Try different possible field names for each field
           return {
             'amount': payment['amount']?.toString() ??
                 payment['Amount']?.toString() ??
@@ -212,7 +189,6 @@ class _CommonDashboardState extends State<CommonDashboard>
           };
         }).toList();
       } else {
-        // If no payments array, create one from main reimbursement data
         payments = [
           {
             'amount': reimbursement['amount']?.toString() ?? '0',
@@ -237,16 +213,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         ];
       }
 
-      // ✅ DEBUG: Print parsed reimbursement payments
-      debugPrint("=== PARSED REIMBURSEMENT PAYMENTS ===");
-      debugPrint("Number of payments: ${payments.length}");
-      if (payments.isNotEmpty) {
-        debugPrint("First payment keys: ${payments[0].keys.toList()}");
-        debugPrint("Project ID in payment: ${payments[0]['projectId']}");
-        debugPrint("Payment Date in payment: ${payments[0]['paymentDate']}");
-      }
-      debugPrint("===================================");
-
       return payments;
     } catch (e) {
       debugPrint("Error parsing reimbursement payments: $e");
@@ -254,15 +220,12 @@ class _CommonDashboardState extends State<CommonDashboard>
     }
   }
 
-// ✅ IMPROVED: Parse advance payments with better field detection
   List<dynamic> _parseAdvancePayments(Map<String, dynamic> advance) {
     try {
       List<dynamic> payments = [];
 
-      // Check if payments array exists
       if (advance['payments'] is List && advance['payments'].isNotEmpty) {
         payments = advance['payments'].map((payment) {
-          // Try different possible field names for each field
           return {
             'amount': payment['amount']?.toString() ??
                 payment['Amount']?.toString() ??
@@ -302,7 +265,6 @@ class _CommonDashboardState extends State<CommonDashboard>
           };
         }).toList();
       } else {
-        // If no payments array, create one from main advance data
         payments = [
           {
             'amount': advance['amount']?.toString() ?? '0',
@@ -322,16 +284,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         ];
       }
 
-      // ✅ DEBUG: Print parsed advance payments
-      debugPrint("=== PARSED ADVANCE PAYMENTS ===");
-      debugPrint("Number of payments: ${payments.length}");
-      if (payments.isNotEmpty) {
-        debugPrint("First payment keys: ${payments[0].keys.toList()}");
-        debugPrint("Project ID in payment: ${payments[0]['projectId']}");
-        debugPrint("Project Name in payment: ${payments[0]['projectName']}");
-      }
-      debugPrint("==============================");
-
       return payments;
     } catch (e) {
       debugPrint("Error parsing advance payments: $e");
@@ -339,7 +291,7 @@ class _CommonDashboardState extends State<CommonDashboard>
     }
   }
 
-//filter methods
+  // Filter methods
   List<Request> _getFilteredReimbursementRequests() {
     return _applyFilter(reimbursementRequests, _currentReimbursementFilter);
   }
@@ -378,6 +330,13 @@ class _CommonDashboardState extends State<CommonDashboard>
         ? _currentReimbursementFilter
         : _currentAdvanceFilter;
 
+    List<Map<String, String>> filterOptions = [
+      {'title': 'Latest First', 'value': 'latest'},
+      {'title': 'Oldest First', 'value': 'oldest'},
+      {'title': 'Amount Under ₹2000', 'value': 'under_2000'},
+      {'title': 'Amount Above ₹2000', 'value': 'above_2000'},
+    ];
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -386,14 +345,14 @@ class _CommonDashboardState extends State<CommonDashboard>
             style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildFilterOption('Latest First', 'latest', currentFilter, type),
-            _buildFilterOption('Oldest First', 'oldest', currentFilter, type),
-            _buildFilterOption(
-                'Amount Under ₹2000', 'under_2000', currentFilter, type),
-            _buildFilterOption(
-                'Amount Above ₹2000', 'above_2000', currentFilter, type),
-          ],
+          children: filterOptions.map((option) {
+            return _buildFilterOption(
+              option['title']!,
+              option['value']!,
+              currentFilter,
+              type,
+            );
+          }).toList(),
         ),
         actions: [
           TextButton(
@@ -463,7 +422,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         } else {
           advanceRequests.removeWhere((r) => r.id == request.id);
         }
-        approvedCount++;
       });
     }
   }
@@ -484,7 +442,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         } else {
           advanceRequests.removeWhere((r) => r.id == request.id);
         }
-        rejectedCount++;
       });
     }
   }
@@ -526,9 +483,10 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
-  // 👇 CSV Download function for Common Dashboard
+  // CSV Download function - APPROVER VERSION
   Future<void> _downloadCSV(String period) async {
     try {
+      // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -537,107 +495,99 @@ class _CommonDashboardState extends State<CommonDashboard>
         ),
       );
 
-      // For Mobile - Download from backend and share
-      if (Platform.isAndroid || Platform.isIOS) {
-        await _downloadAndShareCSV(period);
+      // Use approver CSV endpoint
+      String baseUrl = 'http://10.0.2.2:8000'; // For Android emulator
+      // String baseUrl = 'http://your-real-server-ip:8000'; // For real device
+
+      final url =
+          Uri.parse('$baseUrl/api/approver/csv-download/?period=$period');
+
+      print('Downloading Approver CSV from: $url');
+      print('Period: $period');
+      print('Approver Token: ${widget.authToken.substring(0, 20)}...');
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Token ${widget.authToken}',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      // Close loading indicator
+      if (mounted) Navigator.pop(context);
+
+      if (response.statusCode == 200) {
+        print(
+            'Approver CSV download successful, content length: ${response.bodyBytes.length} bytes');
+
+        // For mobile - download and share
+        await _downloadAndShareCSV(response.bodyBytes, period);
+      } else {
+        throw Exception(
+            'Failed to download CSV: HTTP ${response.statusCode} - ${response.body}');
       }
-      // For Web - Direct download
-      else {
-        await _downloadCSVForWeb(period);
-      }
+    } on TimeoutException {
+      if (mounted) Navigator.pop(context);
+      _showErrorSnackBar('Request timed out. Please try again.');
     } catch (error) {
       if (mounted) Navigator.pop(context);
       print("Error generating CSV: $error");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error downloading CSV: $error"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showErrorSnackBar('Error downloading CSV: $error');
     }
   }
 
-  // 👇 Download from backend and share for Mobile
-  Future<void> _downloadAndShareCSV(String period) async {
+  Future<void> _downloadAndShareCSV(List<int> bytes, String period) async {
     try {
-      final response = await http.get(
-        Uri.parse(
-            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
-        headers: {
-          'Authorization': 'Token ${widget.authToken}',
-          'Content-Type': 'application/json',
-        },
+      final directory = await getTemporaryDirectory();
+      final fileName =
+          'Xpensure_Approver_Actions_${period.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final filePath = '${directory.path}/$fileName';
+
+      final File file = File(filePath);
+      await file.writeAsBytes(bytes);
+
+      print('CSV saved to: $filePath');
+      print('File exists: ${await file.exists()}');
+      print('File size: ${(await file.length())} bytes');
+
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: 'Xpensure Approver Actions - $period Period',
+        subject: 'Xpensure Approver CSV Export',
       );
 
-      if (response.statusCode == 200) {
-        final directory = await getTemporaryDirectory();
-        final fileName =
-            'Xpensure_${period.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.csv';
-        final filePath = '${directory.path}/$fileName';
-
-        final File file = File(filePath);
-        await file.writeAsBytes(response.bodyBytes);
-
-        if (mounted) Navigator.pop(context);
-
-        await Share.shareXFiles(
-          [XFile(filePath)],
-          text: 'Xpensure Requests - $period Period',
-          subject: 'Xpensure CSV Export',
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("CSV exported successfully!"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        throw Exception('Failed to download CSV: ${response.statusCode}');
-      }
+      _showSuccessSnackBar("CSV exported successfully!");
     } catch (error) {
-      throw error;
+      print("Error sharing CSV: $error");
+      _showErrorSnackBar('Error sharing CSV: $error');
     }
   }
 
-  // 👇 Direct download for Web
-  Future<void> _downloadCSVForWeb(String period) async {
-    try {
-      final response = await http.get(
-        Uri.parse(
-            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
-        headers: {
-          'Authorization': 'Token ${widget.authToken}',
-          'Content-Type': 'application/json',
-        },
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
       );
-
-      if (response.statusCode == 200) {
-        if (mounted) Navigator.pop(context);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("CSV downloaded successfully for $period period!"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        print("CSV Content Length: ${response.body.length} characters");
-      } else {
-        throw Exception('Failed to download CSV: ${response.statusCode}');
-      }
-    } catch (error) {
-      throw error;
     }
   }
 
-  // 👇 CSV Download Menu for App Bar
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
   Widget _buildCSVDownloadMenu() {
     return PopupMenuButton<String>(
       icon: Icon(Icons.download, color: Colors.grey[300]),
@@ -723,349 +673,8 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
-  Widget _buildPieChart() {
-    final pending = pendingCount;
-    final total = approvedCount + rejectedCount + pending;
-    if (total == 0) {
-      return const Center(
-          child: Text('No data yet', style: TextStyle(color: Colors.white54)));
-    }
-    return PieChart(
-      PieChartData(
-        sectionsSpace: 2,
-        centerSpaceRadius: 50,
-        sections: [
-          PieChartSectionData(
-            color: Colors.greenAccent,
-            value: approvedCount.toDouble(),
-            title: 'Approved\n$approvedCount',
-            radius: 70,
-            titleStyle: const TextStyle(
-                color: Colors.black, fontWeight: FontWeight.bold),
-          ),
-          PieChartSectionData(
-            color: Colors.redAccent,
-            value: rejectedCount.toDouble(),
-            title: 'Rejected\n$rejectedCount',
-            radius: 70,
-            titleStyle: const TextStyle(
-                color: Colors.black, fontWeight: FontWeight.bold),
-          ),
-          PieChartSectionData(
-            color: Colors.orangeAccent,
-            value: pending.toDouble(),
-            title: 'Pending\n$pending',
-            radius: 70,
-            titleStyle: const TextStyle(
-                color: Colors.black, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _emptyListWidget(String message) => Center(
       child: Text(message, style: const TextStyle(color: Colors.white54)));
-
-  // Helper method to extract file name from path
-  String _getFileName(String path) {
-    try {
-      return path.split('/').last;
-    } catch (e) {
-      return 'Unknown file';
-    }
-  }
-
-  // Check if file is an image
-  bool _isImageFile(String path) {
-    final ext = path.toLowerCase().split('.').last;
-    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
-  }
-
-  // Check if file is a PDF
-  bool _isPdfFile(String path) {
-    return path.toLowerCase().endsWith('.pdf');
-  }
-
-  // View attachment with actual file display
-  void _viewAttachment(String attachmentPath) {
-    if (_isImageFile(attachmentPath)) {
-      _showImageDialog(attachmentPath);
-    } else if (_isPdfFile(attachmentPath)) {
-      _openPdf(attachmentPath);
-    } else {
-      _downloadFile(attachmentPath);
-    }
-  }
-
-  // Show image in full screen dialog
-  void _showImageDialog(String imagePath) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(20),
-        child: Stack(
-          children: [
-            InteractiveViewer(
-              panEnabled: true,
-              minScale: 0.5,
-              maxScale: 3.0,
-              child: Center(
-                child: imagePath.startsWith('http')
-                    ? Image.network(imagePath, fit: BoxFit.contain)
-                    : Image.file(File(imagePath), fit: BoxFit.contain),
-              ),
-            ),
-            Positioned(
-              top: 10,
-              right: 10,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
-            Positioned(
-              bottom: 10,
-              right: 10,
-              child: ElevatedButton(
-                onPressed: () => _downloadFile(imagePath),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent),
-                child: const Text('Download'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Open PDF file
-  Future<void> _openPdf(String pdfPath) async {
-    try {
-      final url = pdfPath.startsWith('http') ? pdfPath : 'file://$pdfPath';
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Cannot open PDF file')));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error opening PDF: $e')));
-    }
-  }
-
-  // Download file functionality
-  Future<void> _downloadFile(String filePath) async {
-    try {
-      if (filePath.startsWith('http')) {
-        // For network files - download and save
-        final response = await http.get(Uri.parse(filePath));
-        final documentsDir = await getApplicationDocumentsDirectory();
-        final fileName = _getFileName(filePath);
-        final file = File('${documentsDir.path}/$fileName');
-
-        await file.writeAsBytes(response.bodyBytes);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('File downloaded to: ${file.path}')));
-      } else {
-        // For local files - just show path
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('File location: $filePath')));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error downloading file: $e')));
-    }
-  }
-
-  // Build attachment preview widget
-  Widget _buildAttachmentPreview(String attachmentPath) {
-    if (_isImageFile(attachmentPath)) {
-      return Column(
-        children: [
-          Container(
-            height: 120,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white24),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: attachmentPath.startsWith('http')
-                ? Image.network(attachmentPath, fit: BoxFit.cover)
-                : Image.file(File(attachmentPath), fit: BoxFit.cover),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              ElevatedButton(
-                onPressed: () => _showImageDialog(attachmentPath),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: const Text('View Image'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () => _downloadFile(attachmentPath),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                child: const Text('Download'),
-              ),
-            ],
-          ),
-        ],
-      );
-    } else if (_isPdfFile(attachmentPath)) {
-      return Column(
-        children: [
-          const Icon(Icons.picture_as_pdf, size: 50, color: Colors.red),
-          const SizedBox(height: 8),
-          Text(_getFileName(attachmentPath),
-              style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              ElevatedButton(
-                onPressed: () => _openPdf(attachmentPath),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Open PDF'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () => _downloadFile(attachmentPath),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                child: const Text('Download'),
-              ),
-            ],
-          ),
-        ],
-      );
-    } else {
-      return Column(
-        children: [
-          const Icon(Icons.insert_drive_file, size: 50, color: Colors.grey),
-          const SizedBox(height: 8),
-          Text(_getFileName(attachmentPath),
-              style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: () => _downloadFile(attachmentPath),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: const Text('Download File'),
-          ),
-        ],
-      );
-    }
-  }
-
-  void _showDetailsDialog(Request request) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Request Details',
-            style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _detailRow('Employee:', request.employeeName),
-              _detailRow('Date:', request.submissionDate),
-              _detailRow(
-                  'Total Amount:', '₹${request.amount.toStringAsFixed(2)}'),
-              _detailRow('Description:', request.description),
-              const SizedBox(height: 16),
-              const Text('Payment Details:',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-              if (request.payments != null && request.payments.isNotEmpty)
-                ...request.payments.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final payment = entry.value;
-                  return Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[900],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Payment ${index + 1}:',
-                            style: const TextStyle(
-                                color: Colors.tealAccent,
-                                fontWeight: FontWeight.bold)),
-                        _detailRow('Amount:',
-                            '₹${payment['amount']?.toString() ?? '0'}'),
-                        _detailRow('Description:',
-                            payment['description']?.toString() ?? ''),
-                        if (payment['claimType'] != null)
-                          _detailRow('Claim Type:',
-                              payment['claimType']?.toString() ?? ''),
-                        if (payment['date'] != null)
-                          _detailRow(
-                              'Date:', payment['date']?.toString() ?? ''),
-
-                        // ✅ ACTUAL FILE DISPLAY
-                        if (payment['attachmentPath'] != null)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 8),
-                              const Text('Attachment:',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold)),
-                              _detailRow('File:',
-                                  _getFileName(payment['attachmentPath'])),
-                              const SizedBox(height: 8),
-                              _buildAttachmentPreview(
-                                  payment['attachmentPath']),
-                            ],
-                          )
-                        else
-                          _detailRow('Attachment:', 'No attachment'),
-                      ],
-                    ),
-                  );
-                }).toList()
-              else
-                const Text('No payment details available',
-                    style: TextStyle(color: Colors.white70)),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close',
-                  style: TextStyle(color: Colors.tealAccent))),
-        ],
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: RichText(
-          text: TextSpan(
-            text: '$label ',
-            style: const TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.bold,
-                fontSize: 14),
-            children: [
-              TextSpan(
-                  text: value,
-                  style: const TextStyle(
-                      color: Colors.white70, fontWeight: FontWeight.normal))
-            ],
-          ),
-        ),
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -1090,7 +699,7 @@ class _CommonDashboardState extends State<CommonDashboard>
                     fontSize: 18),
               ),
             ),
-            _buildCSVDownloadMenu(), // ✅ ADD CSV DOWNLOAD BUTTON
+            _buildCSVDownloadMenu(),
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
@@ -1134,7 +743,6 @@ class _CommonDashboardState extends State<CommonDashboard>
               tabs: const [
                 Tab(text: "Reimbursement"),
                 Tab(text: "Advance"),
-                Tab(text: "Overview"),
               ],
             ),
           ),
@@ -1144,27 +752,6 @@ class _CommonDashboardState extends State<CommonDashboard>
               children: [
                 _buildRequestList('Reimbursement', reimbursementRequests),
                 _buildRequestList('Advance', advanceRequests),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          _buildStatsCard(
-                              'Total Reimbursement',
-                              '₹${totalReimbursement.toStringAsFixed(2)}',
-                              const Color.fromARGB(255, 129, 160, 214)),
-                          _buildStatsCard(
-                              'Total Advance',
-                              '₹${totalAdvance.toStringAsFixed(2)}',
-                              const Color.fromARGB(255, 129, 160, 214)),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Expanded(child: _buildPieChart()),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
