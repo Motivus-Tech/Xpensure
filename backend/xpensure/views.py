@@ -1487,6 +1487,7 @@ class CEOGenerateReportView(APIView):
             ])
         
         return response
+    
 class ApprovalTimelineView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1518,18 +1519,19 @@ class ApprovalTimelineView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # ✅ FIXED: Build proper stepper flow
-        timeline = self._build_proper_stepper_flow(request_obj, approval_history)
+        # ✅ FIXED: Build proper stepper flow with next approver
+        timeline = self._build_stepper_with_next_approver(request_obj, approval_history)
         
         return Response({
             'timeline': timeline,
             'current_status': request_obj.status,
-            'current_step': self._get_current_step(timeline, request_obj.status),
-            'is_rejected': request_obj.status == 'Rejected'
+            'current_step': self._get_current_step(timeline),
+            'is_rejected': request_obj.status == 'Rejected',
+            'next_approver': self._get_next_approver_info(request_obj)  # ✅ ADD NEXT APPROVER INFO
         })
 
-    def _build_proper_stepper_flow(self, request_obj, approval_history):
-        """Build proper stepper flow with clear steps - FIXED VERSION"""
+    def _build_stepper_with_next_approver(self, request_obj, approval_history):
+        """Build stepper flow showing next approver - FIXED VERSION"""
         timeline = []
         
         # Step 1: Request Submitted
@@ -1541,10 +1543,12 @@ class ApprovalTimelineView(APIView):
             'status': 'completed',
             'action': 'submitted',
             'step_type': 'submission',
-            'comments': 'Request submitted by employee'
+            'comments': 'Request submitted by employee',
+            'step_number': 1
         })
 
-        # ✅ FIXED: Add ALL approval steps from history
+        # ✅ ADD ALL COMPLETED APPROVAL STEPS FROM HISTORY
+        step_counter = 2
         for history in approval_history:
             if history.action == 'approved':
                 timeline.append({
@@ -1555,8 +1559,10 @@ class ApprovalTimelineView(APIView):
                     'status': 'completed',
                     'action': 'approved',
                     'step_type': self._get_step_type(history.approver_id),
-                    'comments': history.comments
+                    'comments': history.comments,
+                    'step_number': step_counter
                 })
+                step_counter += 1
             elif history.action == 'forwarded':
                 timeline.append({
                     'step': f'Forwarded by {history.approver_name}',
@@ -1566,8 +1572,10 @@ class ApprovalTimelineView(APIView):
                     'status': 'completed',
                     'action': 'forwarded',
                     'step_type': self._get_step_type(history.approver_id),
-                    'comments': history.comments
+                    'comments': history.comments,
+                    'step_number': step_counter
                 })
+                step_counter += 1
             elif history.action == 'rejected':
                 timeline.append({
                     'step': f'Rejected by {history.approver_name}',
@@ -1577,40 +1585,103 @@ class ApprovalTimelineView(APIView):
                     'status': 'rejected',
                     'action': 'rejected',
                     'step_type': self._get_step_type(history.approver_id),
-                    'comments': history.comments
+                    'comments': history.comments,
+                    'step_number': step_counter
                 })
+                step_counter += 1
 
-        # ✅ FIXED: Check for CEO approval and add Finance Payment step
+        # ✅ ADD NEXT APPROVER STEP IF REQUEST IS STILL PENDING
+        if request_obj.status == 'Pending' and request_obj.current_approver_id:
+            next_approver_info = self._get_next_approver_info(request_obj)
+            if next_approver_info:
+                timeline.append({
+                    'step': f'Pending with {next_approver_info["approver_name"]}',
+                    'approver_name': next_approver_info["approver_name"],
+                    'approver_id': next_approver_info["approver_id"],
+                    'approver_role': next_approver_info["approver_role"],
+                    'timestamp': None,  # No timestamp yet
+                    'status': 'pending',
+                    'action': 'pending',
+                    'step_type': next_approver_info["approver_role"].lower().replace(' ', '_'),
+                    'comments': f'Awaiting approval from {next_approver_info["approver_role"]}',
+                    'step_number': step_counter,
+                    'is_next_approver': True  # ✅ FLAG TO IDENTIFY NEXT APPROVER
+                })
+                step_counter += 1
+
+        # ✅ ADD FINANCE PAYMENT STEP IF APPROVED BY CEO
         if request_obj.status == 'Approved' and request_obj.approved_by_ceo:
-            # Add Finance Payment step
-            timeline.append({
-                'step': 'Ready for Payment Processing',
-                'approver_name': 'Finance Payment',
-                'approver_id': 'finance_payment',
-                'timestamp': None,
-                'status': 'pending' if request_obj.status == 'Approved' else 'completed',
-                'action': 'pending',
-                'step_type': 'finance_payment',
-                'comments': 'Ready for payment processing by Finance Team'
-            })
+            # Check if already assigned to Finance Payment
+            if request_obj.current_approver_id:
+                finance_payment_info = self._get_next_approver_info(request_obj)
+                timeline.append({
+                    'step': 'Ready for Payment Processing',
+                    'approver_name': finance_payment_info["approver_name"],
+                    'approver_id': finance_payment_info["approver_id"],
+                    'approver_role': finance_payment_info["approver_role"],
+                    'timestamp': None,
+                    'status': 'pending',
+                    'action': 'pending',
+                    'step_type': 'finance_payment',
+                    'comments': 'Ready for payment processing by Finance Team',
+                    'step_number': step_counter,
+                    'is_next_approver': True
+                })
+            else:
+                timeline.append({
+                    'step': 'Ready for Payment Processing',
+                    'approver_name': 'Finance Payment Team',
+                    'approver_id': 'finance_payment',
+                    'approver_role': 'Finance Payment',
+                    'timestamp': None,
+                    'status': 'pending',
+                    'action': 'pending',
+                    'step_type': 'finance_payment',
+                    'comments': 'Ready for payment processing',
+                    'step_number': step_counter,
+                    'is_next_approver': True
+                })
+            step_counter += 1
 
-        # ✅ FIXED: Add Payment Processed Step if paid
+        # ✅ ADD PAYMENT PROCESSED STEP IF PAID
         if request_obj.status == 'Paid':
-            # Remove the pending payment step if exists and add completed one
-            timeline = [t for t in timeline if not (t['step_type'] == 'finance_payment' and t['status'] == 'pending')]
-            
             timeline.append({
                 'step': 'Payment Processed',
                 'approver_name': 'Finance Payment',
                 'approver_id': 'finance_payment',
+                'approver_role': 'Finance Payment',
                 'timestamp': request_obj.payment_date,
                 'status': 'paid',
                 'action': 'paid',
                 'step_type': 'finance_payment',
-                'comments': 'Payment has been processed successfully'
+                'comments': 'Payment has been processed successfully',
+                'step_number': step_counter
             })
 
         return timeline
+
+    def _get_next_approver_info(self, request_obj):
+        """Get detailed information about the next approver"""
+        if not request_obj.current_approver_id:
+            return None
+            
+        try:
+            next_approver = User.objects.get(employee_id=request_obj.current_approver_id)
+            return {
+                'approver_name': next_approver.fullName,
+                'approver_id': next_approver.employee_id,
+                'approver_role': next_approver.role,
+                'approver_email': next_approver.email,
+                'approver_department': next_approver.department
+            }
+        except User.DoesNotExist:
+            return {
+                'approver_name': 'Unknown Approver',
+                'approver_id': request_obj.current_approver_id,
+                'approver_role': 'Approver',
+                'approver_email': '',
+                'approver_department': ''
+            }
 
     def _get_step_type(self, approver_id):
         """Determine step type based on approver role"""
@@ -1622,33 +1693,13 @@ class ApprovalTimelineView(APIView):
                 return 'system'
             return 'unknown'
 
-    def _get_current_step(self, timeline, status):
+    def _get_current_step(self, timeline):
         """Get current active step number"""
-        if status == 'Rejected':
-            return len([t for t in timeline if t['status'] in ['completed', 'rejected']])
-        
-        if status == 'Paid':
-            return len(timeline)
-            
-        completed_steps = len([t for t in timeline if t['status'] in ['completed', 'paid']])
-        return completed_steps + 1  # +1 for the next pending step
-
-    def _get_step_type(self, approver_id):
-        """Determine step type based on approver role"""
-        try:
-            approver = User.objects.get(employee_id=approver_id)
-            return approver.role.lower()
-        except User.DoesNotExist:
-            return 'system'
-
-    def _get_current_step(self, timeline, status):
-        """Get current active step number"""
-        if status == 'Rejected':
-            return len(timeline)
-        
-        completed_steps = len([t for t in timeline if t['status'] in ['completed', 'paid']])
-        return completed_steps
-    
+        for step in reversed(timeline):
+            if step['status'] in ['pending']:
+                return step['step_number']
+        # If no pending steps, return the last completed step
+        return timeline[-1]['step_number'] if timeline else 1
 
 class FinanceVerificationDashboardView(APIView):
     authentication_classes = [TokenAuthentication]

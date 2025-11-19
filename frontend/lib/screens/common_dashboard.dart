@@ -59,6 +59,10 @@ class _CommonDashboardState extends State<CommonDashboard>
   String _currentReimbursementFilter = 'latest';
   String _currentAdvanceFilter = 'latest';
 
+  // Employee ID search - FIXED: Remove debouncing
+  String _reimbursementEmployeeSearch = '';
+  String _advanceEmployeeSearch = '';
+
   // Timer for real-time updates
   Timer? _refreshTimer;
 
@@ -89,13 +93,16 @@ class _CommonDashboardState extends State<CommonDashboard>
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Connection Error'),
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Connection Error',
+              style: TextStyle(color: Colors.white)),
           content: const Text(
-              'Cannot connect to server. Please check your network.'),
+              'Cannot connect to server. Please check your network.',
+              style: TextStyle(color: Colors.white70)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
+              child: const Text('OK', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -293,11 +300,43 @@ class _CommonDashboardState extends State<CommonDashboard>
 
   // Filter methods
   List<Request> _getFilteredReimbursementRequests() {
-    return _applyFilter(reimbursementRequests, _currentReimbursementFilter);
+    List<Request> filtered =
+        _applyFilter(reimbursementRequests, _currentReimbursementFilter);
+
+    // Apply employee ID search
+    if (_reimbursementEmployeeSearch.isNotEmpty) {
+      filtered = filtered
+          .where((request) =>
+              request.employeeId
+                  .toLowerCase()
+                  .contains(_reimbursementEmployeeSearch.toLowerCase()) ||
+              request.employeeName
+                  .toLowerCase()
+                  .contains(_reimbursementEmployeeSearch.toLowerCase()))
+          .toList();
+    }
+
+    return filtered;
   }
 
   List<Request> _getFilteredAdvanceRequests() {
-    return _applyFilter(advanceRequests, _currentAdvanceFilter);
+    List<Request> filtered =
+        _applyFilter(advanceRequests, _currentAdvanceFilter);
+
+    // Apply employee ID search
+    if (_advanceEmployeeSearch.isNotEmpty) {
+      filtered = filtered
+          .where((request) =>
+              request.employeeId
+                  .toLowerCase()
+                  .contains(_advanceEmployeeSearch.toLowerCase()) ||
+              request.employeeName
+                  .toLowerCase()
+                  .contains(_advanceEmployeeSearch.toLowerCase()))
+          .toList();
+    }
+
+    return filtered;
   }
 
   List<Request> _applyFilter(List<Request> requests, String filter) {
@@ -342,7 +381,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text('Filter $type Requests',
-            style: const TextStyle(color: Colors.white)),
+            style: const TextStyle(color: Colors.white, fontSize: 18)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: filterOptions.map((option) {
@@ -382,7 +421,7 @@ class _CommonDashboardState extends State<CommonDashboard>
           });
           Navigator.pop(context);
         },
-        activeColor: Colors.tealAccent,
+        activeColor: Colors.deepPurpleAccent,
       ),
     );
   }
@@ -453,13 +492,19 @@ class _CommonDashboardState extends State<CommonDashboard>
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text('Reject $type Request',
-            style: const TextStyle(color: Colors.white)),
+            style: const TextStyle(color: Colors.white, fontSize: 18)),
         content: TextField(
           controller: reasonController,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter rejection reason',
-            hintStyle: TextStyle(color: Colors.white54),
+            hintStyle: const TextStyle(color: Colors.white54),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            filled: true,
+            fillColor: const Color(0xFF1F1F1F),
           ),
           maxLines: 3,
         ),
@@ -468,15 +513,32 @@ class _CommonDashboardState extends State<CommonDashboard>
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel',
                   style: TextStyle(color: Colors.white70))),
-          ElevatedButton(
-            onPressed: () {
-              final reason = reasonController.text.trim();
-              if (reason.isEmpty) return;
-              Navigator.pop(context);
-              _rejectRequest(request, type, reason);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('Reject'),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Colors.redAccent, Colors.deepOrange],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ElevatedButton(
+              onPressed: () {
+                final reason = reasonController.text.trim();
+                if (reason.isEmpty) return;
+                Navigator.pop(context);
+                _rejectRequest(request, type, reason);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child:
+                  const Text('Reject', style: TextStyle(color: Colors.white)),
+            ),
           ),
         ],
       ),
@@ -490,21 +552,33 @@ class _CommonDashboardState extends State<CommonDashboard>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
+        builder: (context) => Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.deepPurpleAccent)),
+              ],
+            ),
+          ),
         ),
       );
 
       // Use approver CSV endpoint
       String baseUrl = 'http://10.0.2.2:8000'; // For Android emulator
-      // String baseUrl = 'http://your-real-server-ip:8000'; // For real device
 
       final url =
           Uri.parse('$baseUrl/api/approver/csv-download/?period=$period');
 
-      print('Downloading Approver CSV from: $url');
-      print('Period: $period');
-      print('Approver Token: ${widget.authToken.substring(0, 20)}...');
+      debugPrint('Downloading Approver CSV from: $url');
+      debugPrint('Period: $period');
 
       final response = await http.get(
         url,
@@ -518,7 +592,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       if (mounted) Navigator.pop(context);
 
       if (response.statusCode == 200) {
-        print(
+        debugPrint(
             'Approver CSV download successful, content length: ${response.bodyBytes.length} bytes');
 
         // For mobile - download and share
@@ -532,7 +606,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       _showErrorSnackBar('Request timed out. Please try again.');
     } catch (error) {
       if (mounted) Navigator.pop(context);
-      print("Error generating CSV: $error");
+      debugPrint("Error generating CSV: $error");
       _showErrorSnackBar('Error downloading CSV: $error');
     }
   }
@@ -547,9 +621,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       final File file = File(filePath);
       await file.writeAsBytes(bytes);
 
-      print('CSV saved to: $filePath');
-      print('File exists: ${await file.exists()}');
-      print('File size: ${(await file.length())} bytes');
+      debugPrint('CSV saved to: $filePath');
 
       await Share.shareXFiles(
         [XFile(filePath)],
@@ -559,7 +631,7 @@ class _CommonDashboardState extends State<CommonDashboard>
 
       _showSuccessSnackBar("CSV exported successfully!");
     } catch (error) {
-      print("Error sharing CSV: $error");
+      debugPrint("Error sharing CSV: $error");
       _showErrorSnackBar('Error sharing CSV: $error');
     }
   }
@@ -590,7 +662,18 @@ class _CommonDashboardState extends State<CommonDashboard>
 
   Widget _buildCSVDownloadMenu() {
     return PopupMenuButton<String>(
-      icon: Icon(Icons.download, color: Colors.grey[300]),
+      icon: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Colors.deepPurple, Colors.purpleAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.download, color: Colors.white, size: 20),
+      ),
       onSelected: _downloadCSV,
       itemBuilder: (context) => [
         PopupMenuItem(
@@ -638,33 +721,55 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
+  // FIXED: Compact stats card to prevent overflow
   Widget _buildStatsCard(String title, String value, Color color) {
     return Expanded(
       child: Container(
-        height: 90,
-        margin: const EdgeInsets.all(6),
-        padding: const EdgeInsets.all(12),
+        height: 70, // Reduced height
+        margin: const EdgeInsets.all(4), // Reduced margin
+        padding: const EdgeInsets.all(8), // Reduced padding
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(16),
+          color: const Color(0xFF1F1F1F),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(title,
-                  style: TextStyle(
-                      color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: 4),
+                Expanded(
+                  child: Text(title,
+                      style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10, // Smaller font
+                          fontWeight: FontWeight.w500)),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 2),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(value,
                   style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 14, // Smaller font
                       fontWeight: FontWeight.bold)),
             ),
           ],
@@ -674,12 +779,24 @@ class _CommonDashboardState extends State<CommonDashboard>
   }
 
   Widget _emptyListWidget(String message) => Center(
-      child: Text(message, style: const TextStyle(color: Colors.white54)));
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inbox, size: 48, color: Colors.white54),
+            SizedBox(height: 12),
+            Text(message,
+                style: TextStyle(color: Colors.white54, fontSize: 14)),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
-    final fullName = widget.userData['fullName'] ?? 'Employee';
-    final avatarUrl = widget.userData['avatar'];
+    final userRole = widget.userData['role'] ?? 'Approver';
+    final userName = widget.userData['name'] ?? 'Approver';
+    final userAvatar = widget.userData['avatar'] ??
+        widget.userData['profile_picture'] ??
+        widget.userData['image_url'];
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -690,62 +807,111 @@ class _CommonDashboardState extends State<CommonDashboard>
         titleSpacing: 16,
         title: Row(
           children: [
-            Expanded(
-              child: Text(
-                "Welcome, $fullName",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 18),
+            // Xpensure logo with welcome message below
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 120,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.deepPurple, Colors.purpleAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.all(Radius.circular(6)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      "Xpensure",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  "Welcome, $userName", // FIXED: Shows actual name instead of "Approver"
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10, // Small font size
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            _buildCSVDownloadMenu(),
+            const SizedBox(width: 12),
+            // User Avatar - FIXED: Proper avatar display
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.deepPurpleAccent,
+                  width: 1.5,
+                ),
+              ),
+              child: ClipOval(
+                child: userAvatar != null
+                    ? Image.network(
+                        userAvatar,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildFallbackAvatar(userName);
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return _buildFallbackAvatar(userName);
+                        },
+                      )
+                    : _buildFallbackAvatar(userName),
               ),
             ),
-            _buildCSVDownloadMenu(),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey[700],
-              backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                  ? NetworkImage(avatarUrl)
-                  : null,
-              child: avatarUrl == null || avatarUrl.isEmpty
-                  ? Text(fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold))
-                  : null,
-            ),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.deepPurpleAccent,
+          labelColor: Colors.deepPurpleAccent,
+          unselectedLabelColor: Colors.white54,
+          labelStyle:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          tabs: const [
+            Tab(text: "Reimbursement"),
+            Tab(text: "Advance"),
           ],
         ),
       ),
       body: Column(
         children: [
+          // Stats Cards - FIXED: More compact container
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            height: 90, // Fixed height
             child: Row(
               children: [
                 _buildStatsCard(
-                    'Pending Reimbursement',
-                    '${reimbursementRequests.length}',
-                    const Color.fromARGB(255, 230, 219, 99)),
-                _buildStatsCard('Pending Advance', '${advanceRequests.length}',
-                    const Color.fromARGB(255, 230, 219, 99)),
+                  'Pending Reimbursement',
+                  '${reimbursementRequests.length}',
+                  const Color.fromARGB(255, 103, 168, 221),
+                ),
+                _buildStatsCard(
+                  'Pending Advance',
+                  '${advanceRequests.length}',
+                  const Color.fromARGB(255, 132, 222, 122),
+                ),
               ],
             ),
           ),
-          Container(
-            color: const Color(0xFF1E1E1E),
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: Colors.tealAccent,
-              labelColor: Colors.tealAccent,
-              unselectedLabelColor: Colors.white54,
-              labelStyle:
-                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-              tabs: const [
-                Tab(text: "Reimbursement"),
-                Tab(text: "Advance"),
-              ],
-            ),
-          ),
+
+          // TabBarView
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -760,6 +926,29 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
+  Widget _buildFallbackAvatar(String userName) {
+    return Container(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Colors.tealAccent, Colors.greenAccent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          userName.isNotEmpty ? userName[0].toUpperCase() : 'A',
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRequestList(String type, List<Request> requests) {
     final filteredRequests = type == 'Reimbursement'
         ? _getFilteredReimbursementRequests()
@@ -769,74 +958,229 @@ class _CommonDashboardState extends State<CommonDashboard>
         ? _currentReimbursementFilter
         : _currentAdvanceFilter;
 
+    // Use local state for search to prevent rebuilds
+    return _RequestListContent(
+      type: type,
+      filteredRequests: filteredRequests,
+      currentFilter: currentFilter,
+      reimbursementEmployeeSearch: _reimbursementEmployeeSearch,
+      advanceEmployeeSearch: _advanceEmployeeSearch,
+      onSearchChanged: (value) {
+        setState(() {
+          if (type == 'Reimbursement') {
+            _reimbursementEmployeeSearch = value;
+          } else {
+            _advanceEmployeeSearch = value;
+          }
+        });
+      },
+      onApprove: _approveRequest,
+      onReject: _showRejectDialog,
+      onDetails: (request) async {
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ApproverRequestDetails(
+              request: request,
+              authToken: widget.authToken,
+            ),
+          ),
+        );
+        if (result == true) {
+          setState(() {
+            if (type == 'Reimbursement') {
+              reimbursementRequests.removeWhere((r) => r.id == request.id);
+            } else {
+              advanceRequests.removeWhere((r) => r.id == request.id);
+            }
+          });
+        }
+      },
+      onRefresh: _fetchRequests,
+      emptyListWidget: _emptyListWidget,
+      showFilterDialog: _showFilterDialog,
+      getFilterText: _getFilterText,
+    );
+  }
+}
+
+// Separate widget for request list content to prevent rebuilds
+class _RequestListContent extends StatefulWidget {
+  final String type;
+  final List<Request> filteredRequests;
+  final String currentFilter;
+  final String reimbursementEmployeeSearch;
+  final String advanceEmployeeSearch;
+  final Function(String) onSearchChanged;
+  final Function(Request, String) onApprove;
+  final Function(Request, String) onReject;
+  final Function(Request) onDetails;
+  final Future<void> Function() onRefresh;
+  final Widget Function(String) emptyListWidget;
+  final Function(String) showFilterDialog;
+  final Function(String) getFilterText;
+
+  const _RequestListContent({
+    Key? key,
+    required this.type,
+    required this.filteredRequests,
+    required this.currentFilter,
+    required this.reimbursementEmployeeSearch,
+    required this.advanceEmployeeSearch,
+    required this.onSearchChanged,
+    required this.onApprove,
+    required this.onReject,
+    required this.onDetails,
+    required this.onRefresh,
+    required this.emptyListWidget,
+    required this.showFilterDialog,
+    required this.getFilterText,
+  }) : super(key: key);
+
+  @override
+  State<_RequestListContent> createState() => _RequestListContentState();
+}
+
+class _RequestListContentState extends State<_RequestListContent> {
+  late TextEditingController _searchController;
+  late FocusNode _searchFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(
+      text: widget.type == 'Reimbursement'
+          ? widget.reimbursementEmployeeSearch
+          : widget.advanceEmployeeSearch,
+    );
+    _searchFocusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_RequestListContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update controller text if search changed from parent
+    final currentSearch = widget.type == 'Reimbursement'
+        ? widget.reimbursementEmployeeSearch
+        : widget.advanceEmployeeSearch;
+    if (_searchController.text != currentSearch) {
+      _searchController.text = currentSearch;
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
-        // Filter header
+        // Filter header with search
         Container(
           color: const Color(0xFF1E1E1E),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
             children: [
-              Text(
-                '${filteredRequests.length} requests found',
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
-              ),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Filter: ${_getFilterText(currentFilter)}',
+                    '${widget.filteredRequests.length} requests found',
                     style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon:
-                        const Icon(Icons.filter_list, color: Colors.tealAccent),
-                    onPressed: () => _showFilterDialog(type),
-                    tooltip: 'Filter requests',
+                  Row(
+                    children: [
+                      Text(
+                        'Filter: ${widget.getFilterText(widget.currentFilter)}',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Colors.deepPurple, Colors.purpleAccent],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.filter_list,
+                              color: Colors.white, size: 20),
+                          onPressed: () => widget.showFilterDialog(widget.type),
+                          tooltip: 'Filter requests',
+                        ),
+                      ),
+                    ],
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Employee ID Search - FIXED: No debouncing, immediate update
+              Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F1F1F),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: (value) {
+                    // Immediate update without delay
+                    widget.onSearchChanged(value);
+                  },
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search by Employee ID or Name...',
+                    hintStyle:
+                        const TextStyle(color: Colors.white54, fontSize: 14),
+                    prefixIcon: const Icon(Icons.search,
+                        color: Colors.white54, size: 20),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    // Clear button
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear,
+                                color: Colors.white54, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              widget.onSearchChanged('');
+                              _searchFocusNode.requestFocus();
+                            },
+                          )
+                        : null,
+                  ),
+                ),
               ),
             ],
           ),
         ),
+        // Request List
         Expanded(
           child: RefreshIndicator(
-            onRefresh: _fetchRequests,
-            child: filteredRequests.isEmpty
-                ? _emptyListWidget('No pending $type requests')
+            backgroundColor: Color(0xFF1E1E1E),
+            color: Colors.deepPurpleAccent,
+            onRefresh: widget.onRefresh,
+            child: widget.filteredRequests.isEmpty
+                ? widget.emptyListWidget('No pending ${widget.type} requests')
                 : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filteredRequests.length,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: widget.filteredRequests.length,
                     itemBuilder: (context, index) {
-                      final request = filteredRequests[index];
+                      final request = widget.filteredRequests[index];
                       return _RequestTile(
                         request: request,
-                        type: type,
-                        onApprove: () => _approveRequest(request, type),
-                        onReject: () => _showRejectDialog(request, type),
-                        onDetails: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ApproverRequestDetails(
-                                request: request,
-                                authToken: widget.authToken,
-                              ),
-                            ),
-                          );
-                          if (result == true) {
-                            setState(() {
-                              if (type == 'Reimbursement') {
-                                reimbursementRequests
-                                    .removeWhere((r) => r.id == request.id);
-                              } else {
-                                advanceRequests
-                                    .removeWhere((r) => r.id == request.id);
-                              }
-                            });
-                          }
-                        },
+                        type: widget.type,
+                        onApprove: () => widget.onApprove(request, widget.type),
+                        onReject: () => widget.onReject(request, widget.type),
+                        onDetails: () => widget.onDetails(request),
                       );
                     },
                   ),
@@ -865,89 +1209,224 @@ class _RequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color pastelTeal = Color(0xFF80CBC4);
-    const Color pastelOrange = Color(0xFFFFAB91);
-
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1F1F),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundImage: request.avatarUrl != null
-                          ? NetworkImage(request.avatarUrl!)
-                          : null,
-                      child: request.avatarUrl == null
-                          ? const Icon(Icons.person, color: Colors.white70)
-                          : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(request.employeeName,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      // Employee Avatar - FIXED: Proper avatar display
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.deepPurpleAccent,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: ClipOval(
+                          child: request.avatarUrl != null &&
+                                  request.avatarUrl!.isNotEmpty
+                              ? Image.network(
+                                  request.avatarUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return _buildEmployeeFallbackAvatar(
+                                        request.employeeName);
+                                  },
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return _buildEmployeeFallbackAvatar(
+                                        request.employeeName);
+                                  },
+                                )
+                              : _buildEmployeeFallbackAvatar(
+                                  request.employeeName),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              request.employeeName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'ID: ${request.employeeId}',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                      color:
-                          type == 'Reimbursement' ? pastelTeal : pastelOrange,
-                      borderRadius: BorderRadius.circular(12)),
+                    gradient: LinearGradient(
+                      colors: type == 'Reimbursement'
+                          ? [Colors.blueAccent, Colors.lightBlueAccent]
+                          : [Colors.greenAccent, Colors.tealAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(type,
                       style: const TextStyle(
-                          color: Colors.black87, fontWeight: FontWeight.w600)),
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 10)),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text('Submitted: ${request.submissionDate}',
-                style: const TextStyle(color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 6),
-            Text('Amount: ₹${request.amount.toStringAsFixed(2)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: Text('Submitted: ${request.submissionDate}',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
+                ),
+                Text('₹${request.amount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+              ],
+            ),
             if (request.payments != null && request.payments.isNotEmpty)
-              Text('Payments: ${request.payments.length}',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12)),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('${request.payments.length} payment(s)',
+                    style:
+                        const TextStyle(color: Colors.white60, fontSize: 11)),
+              ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                    onPressed: onDetails,
-                    child: const Text('Details',
-                        style: TextStyle(color: Color(0xFF80CBC4)))),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                    onPressed: onApprove,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: pastelTeal,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8))),
-                    child: const Text('Approve')),
-                const SizedBox(width: 8),
-                ElevatedButton(
+                  onPressed: onDetails,
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  child: const Text('Details',
+                      style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.redAccent, Colors.deepOrange],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ElevatedButton(
                     onPressed: onReject,
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: pastelOrange,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8))),
-                    child: const Text('Reject')),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Reject',
+                        style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.greenAccent, Colors.tealAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ElevatedButton(
+                    onPressed: onApprove,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Approve',
+                        style: TextStyle(color: Colors.black87, fontSize: 12)),
+                  ),
+                ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmployeeFallbackAvatar(String employeeName) {
+    return Container(
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Colors.deepPurple, Colors.purpleAccent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          employeeName.isNotEmpty ? employeeName[0].toUpperCase() : '?',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
         ),
       ),
     );

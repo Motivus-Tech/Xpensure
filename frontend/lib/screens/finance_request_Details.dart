@@ -1017,19 +1017,39 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // MAIN BUILD METHOD
+// MAIN BUILD METHOD
   @override
   Widget build(BuildContext context) {
     final request = widget.request;
+
     final isReimbursement =
         request.requestType.toLowerCase().contains('reimbursement');
     final isAdvance = request.requestType.toLowerCase().contains('advance');
+
+    // ✅ FIXED: PROPERLY CAPITALIZED TITLE FUNCTION
+    String getCapitalizedTitle() {
+      String requestType = request.requestType.toLowerCase();
+      if (requestType.contains('reimbursement')) {
+        return 'Reimbursement Details';
+      } else if (requestType.contains('advance')) {
+        return 'Advance Details';
+      } else {
+        // Fallback: Capitalize first letter of each word
+        List<String> words = requestType.split(' ');
+        for (int i = 0; i < words.length; i++) {
+          if (words[i].isNotEmpty) {
+            words[i] = words[i][0].toUpperCase() + words[i].substring(1);
+          }
+        }
+        return words.join(' ') + ' Details';
+      }
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: Text(
-          '${widget.request.requestType} Details',
+          getCapitalizedTitle(), // ✅ USE THE FIXED FUNCTION INSTEAD OF DIRECT requestType
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -1040,7 +1060,8 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline),
+            icon: const Icon(Icons.info_outline,
+                color: Colors.white), // ✅ ADD WHITE COLOR TO ICON
             onPressed: () {
               showDialog(
                 context: context,
@@ -1050,7 +1071,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                       style: TextStyle(color: Colors.white)),
                   content: Text(
                     'Request ID: ${request.id}\n'
-                    'Type: ${request.requestType}\n'
+                    'Type: ${getCapitalizedTitle().replaceAll(' Details', '')}\n' // ✅ FIXED TYPE DISPLAY
                     'Status: ${request.displayStatus}\n'
                     'Total Amount: ₹${_formatAmount(request.amount)}',
                     style: const TextStyle(color: Colors.white70),
@@ -1058,7 +1079,9 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Close'),
+                      child: const Text('Close',
+                          style:
+                              TextStyle(color: Colors.white)), // ✅ WHITE TEXT
                     ),
                   ],
                 ),

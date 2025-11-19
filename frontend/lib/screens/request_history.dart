@@ -36,6 +36,7 @@ class RequestHistoryScreen extends StatefulWidget {
 class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   List<ApprovalTimelineItem> _timelineItems = [];
   bool _isLoadingTimeline = true;
+  Map<String, dynamic>? _nextApprover;
 
   @override
   void initState() {
@@ -48,8 +49,6 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     print("🎯 Request ID: ${widget.requestId}");
     print("🎯 Request Type: ${widget.requestType}");
     print("🎯 Auth Token Present: ${widget.authToken.isNotEmpty}");
-    //print(
-    // "🎯 Auth Token First 20 chars: ${widget.authToken.substring(0, min(20, widget.authToken.length))}...");
     print(
         "🎯 Full URL: http://10.0.2.2:8000/api/approval-timeline/${widget.requestId}/?request_type=${widget.requestType}");
 
@@ -64,38 +63,34 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       );
 
       print("🎯 API RESPONSE STATUS: ${response.statusCode}");
-      print("🎯 API RESPONSE BODY: ${response.body}");
-      print("🎯 API RESPONSE HEADERS: ${response.headers}");
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         print("🎯 TIMELINE DATA RECEIVED: ${data['timeline']}");
         final timelineData = data['timeline'] as List;
-        print("🎯 TIMELINE ITEMS COUNT: ${timelineData.length}");
 
         setState(() {
           _timelineItems = timelineData
               .map((item) => ApprovalTimelineItem.fromJson(item))
               .toList();
+          _nextApprover = data['next_approver'];
           _isLoadingTimeline = false;
         });
 
+        print("🎯 NEXT APPROVER DATA: $_nextApprover");
         print("🎯 TIMELINE LOADED SUCCESSFULLY!");
       } else {
         print("❌ API ERROR: Status ${response.statusCode}");
         print("❌ Error Body: ${response.body}");
-        // Fallback to static timeline if API fails
         _createFallbackTimeline();
       }
     } catch (e) {
       print("❌ EXCEPTION loading timeline: $e");
-      print("❌ Stack trace: ${e.toString()}");
       _createFallbackTimeline();
     }
   }
 
   void _createFallbackTimeline() {
-    // Create timeline based on available data
     final payment = widget.payments.isNotEmpty ? widget.payments[0] : {};
 
     List<ApprovalTimelineItem> fallbackItems = [];
@@ -109,53 +104,53 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         status: "completed",
         action: "submitted",
         stepType: "submission",
-        comments: "Your request has been submitted"));
+        comments: "Request submitted"));
 
     // Add steps based on current status
     if (widget.status == "Rejected") {
       fallbackItems.add(ApprovalTimelineItem(
-          step: "Back to Employee - Rejected",
+          step: "Request Rejected",
           approverName: "System",
           approverId: "",
           timestamp: DateTime.now(),
           status: "rejected",
           action: "rejected",
           stepType: "rejection",
-          comments: widget.rejectionReason ?? "Request was rejected"));
+          comments: widget.rejectionReason ?? "Request rejected"));
     } else if (widget.status == "Approved" || widget.status == "Paid") {
       // Add completed steps
       fallbackItems.add(ApprovalTimelineItem(
-          step: "Reporting Manager Approval",
+          step: "Approved by Manager",
           approverName: "Manager",
           approverId: "",
           timestamp: DateTime.now().subtract(Duration(days: 1)),
           status: "completed",
           action: "approved",
           stepType: "reporting_manager",
-          comments: "Approved by reporting manager"));
+          comments: "Approved"));
 
       if (widget.status == "Paid") {
         fallbackItems.add(ApprovalTimelineItem(
             step: "Payment Processed",
-            approverName: "Finance Department",
+            approverName: "Finance",
             approverId: "",
             timestamp: DateTime.now(),
             status: "paid",
             action: "paid",
             stepType: "payment",
-            comments: "Payment has been processed successfully"));
+            comments: "Payment completed"));
       }
     } else {
       // Pending - show current step
       fallbackItems.add(ApprovalTimelineItem(
-          step: "With Reporting Manager",
-          approverName: "Your Manager",
+          step: "Pending Approval",
+          approverName: "Manager",
           approverId: "",
           timestamp: null,
           status: "pending",
           action: "pending",
           stepType: "reporting_manager",
-          comments: "Waiting for manager approval"));
+          comments: "Waiting for approval"));
     }
 
     setState(() {
@@ -179,7 +174,9 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         personName: timelineItem.approverName,
         isRejected: timelineItem.status == "rejected",
         statusText: _getStatusText(timelineItem),
-        description: timelineItem.comments ?? _getStepDescription(timelineItem),
+        description: _getCleanStepDescription(timelineItem),
+        isNextApprover: timelineItem.isNextApprover ?? false,
+        approverRole: timelineItem.approverRole,
       );
     }).toList();
   }
@@ -193,7 +190,9 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
         personName: "System",
         isRejected: false,
         statusText: "Loading",
-        description: "Please wait while we load the approval timeline",
+        description: "Loading approval timeline",
+        isNextApprover: false,
+        approverRole: null,
       ),
     ];
   }
@@ -206,46 +205,48 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       case "rejected":
         return "Rejected";
       case "pending":
-        return "In Progress";
+        return "Pending";
       default:
         return "Pending";
     }
   }
 
-  String _getStepDescription(ApprovalTimelineItem item) {
+  // ✅ CLEAN STEP DESCRIPTION WITHOUT "PROCESSING" AND SIMPLIFIED
+  String _getCleanStepDescription(ApprovalTimelineItem item) {
     switch (item.stepType) {
       case "submission":
-        return "Your request has been submitted for approval";
+        return "Request submitted for approval";
       case "reporting_manager":
         if (item.status == "completed") {
-          return "Approved by ${item.approverName} - Moving forward";
+          return "Approved";
         } else if (item.status == "rejected") {
-          return "Rejected by ${item.approverName} - Sent back to employee";
+          return "Rejected";
         } else {
-          return "Currently with ${item.approverName} for approval";
+          return "Pending approval";
         }
       case "finance":
         if (item.status == "completed") {
-          return "Finance verification completed";
+          return "Finance verification done";
         } else {
-          return "Under finance verification";
+          return "Finance verification pending";
         }
       case "ceo":
         if (item.status == "completed") {
-          return "CEO approval granted";
+          return "CEO approval done";
         } else {
-          return "Waiting for CEO approval";
+          return "CEO approval pending";
         }
       case "payment":
         if (item.status == "paid") {
-          return "Payment processed successfully";
+          return "Payment processed";
         } else {
-          return "Waiting for payment processing";
+          return "Payment pending";
         }
       case "rejection":
-        return "Request was rejected and sent back";
+        return "Request rejected";
       default:
-        return "Processing request...";
+        // Remove "Processing..." and show empty or simple text
+        return "";
     }
   }
 
@@ -277,7 +278,14 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       backgroundColor: const Color(0xFF181A20),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1F222B),
-        title: Text(widget.requestTitle),
+        title: Text(
+          widget.requestTitle, // YEH LINE CHANGE KARO
+          style: TextStyle(
+            color: Colors.white, // ✅ EXPLICITLY WHITE COLOR SET KARO
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        iconTheme: IconThemeData(color: Colors.white), // ✅ BACK ARROW BHI WHITE
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -309,7 +317,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
-                          "Live Request Tracking",
+                          "Request Tracking",
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 20,
@@ -332,10 +340,10 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Tracking Steps
+                  // Tracking Steps - CLEAN VERSION WITHOUT SUMMARY BOXES
                   _isLoadingTimeline
                       ? _buildLoadingStepper()
-                      : _buildAmazonStyleStepper(stepperItems),
+                      : _buildCleanStepper(stepperItems),
                 ],
               ),
             ),
@@ -377,8 +385,6 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                   _summaryRow("Date of Submission", earliestRequestDate),
                   _summaryRow("Current Status", widget.status ?? "Pending"),
                   _summaryRow("Request ID", widget.requestId),
-                  _summaryRow("Approval Progress",
-                      "${_getCompletedStepsCount()}/${_timelineItems.length} steps completed"),
                 ],
               ),
             ),
@@ -522,52 +528,17 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     );
   }
 
-  int _getCompletedStepsCount() {
-    return _timelineItems
-        .where((item) =>
-            item.status == "completed" ||
-            item.status == "paid" ||
-            item.status == "approved")
-        .length;
-  }
-
-  String _getCurrentStatus() {
-    switch (widget.status?.toLowerCase()) {
-      case "pending":
-        return "Your request is progressing through approval levels";
-      case "approved":
-        return "Your request has been approved! Waiting for payment.";
-      case "paid":
-        return "Payment processed successfully!";
-      case "rejected":
-        return "Request was rejected and sent back to you";
-      default:
-        return "Tracking your request...";
-    }
-  }
-
-  Widget _buildLoadingStepper() {
-    return Column(
-      children: [
-        CircularProgressIndicator(),
-        SizedBox(height: 16),
-        Text(
-          "Loading approval timeline...",
-          style: TextStyle(color: Colors.white70),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAmazonStyleStepper(List<StepperItem> items) {
+  // ✅ CLEAN STEPPER WITHOUT SUMMARY BOXES AND PROCESSING TEXT
+  Widget _buildCleanStepper(List<StepperItem> items) {
     return Column(
       children: items.asMap().entries.map((entry) {
         final index = entry.key;
         final item = entry.value;
         final isLast = index == items.length - 1;
+        final isNextApproverStep = item.isNextApprover;
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 20),
+          margin: const EdgeInsets.only(bottom: 16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -586,22 +557,26 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
 
                   // Step icon
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 28,
+                    height: 28,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: item.isRejected
                           ? Colors.red
                           : item.completed
                               ? Colors.green
-                              : Colors.grey[700],
+                              : isNextApproverStep
+                                  ? Colors.blue
+                                  : Colors.grey[700],
                       border: Border.all(
                         color: item.isRejected
                             ? Colors.redAccent
                             : item.completed
                                 ? Colors.greenAccent
-                                : Colors.grey,
-                        width: 2,
+                                : isNextApproverStep
+                                    ? Colors.blueAccent
+                                    : Colors.grey,
+                        width: isNextApproverStep ? 2 : 1,
                       ),
                     ),
                     child: Icon(
@@ -609,9 +584,11 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                           ? Icons.close
                           : item.completed
                               ? Icons.check
-                              : Icons.access_time,
+                              : isNextApproverStep
+                                  ? Icons.person
+                                  : Icons.access_time,
                       color: Colors.white,
-                      size: 16,
+                      size: 14,
                     ),
                   ),
 
@@ -624,9 +601,9 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                     ),
                 ],
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
 
-              // Content
+              // Content - SIMPLIFIED WITHOUT SUMMARY BOXES
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,106 +615,86 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
                             ? Colors.redAccent
                             : item.completed
                                 ? Colors.greenAccent
-                                : Colors.white,
+                                : isNextApproverStep
+                                    ? Colors.blueAccent
+                                    : Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
 
-                    // Person name
+                    // Person name only (no role badge)
                     if (item.personName.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.person,
-                            color: item.completed
-                                ? Colors.greenAccent
-                                : Colors.white70,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            item.personName,
-                            style: TextStyle(
-                              color: item.completed
-                                  ? Colors.greenAccent
+                      Text(
+                        item.personName,
+                        style: TextStyle(
+                          color: item.completed
+                              ? Colors.greenAccent
+                              : isNextApproverStep
+                                  ? Colors.blueAccent
                                   : Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                          fontSize: 12,
+                        ),
                       ),
 
                     // Date
                     if (item.date != null)
+                      Text(
+                        _formatDate(item.date!),
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 10,
+                        ),
+                      ),
+
+                    // Status and description - SIMPLIFIED (NO SUMMARY BOX)
+                    if (item.description.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.calendar_today,
-                              color: item.completed
-                                  ? Colors.greenAccent
-                                  : Colors.white70,
-                              size: 12,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: item.isRejected
+                                    ? Colors.red.withOpacity(0.2)
+                                    : item.completed
+                                        ? Colors.green.withOpacity(0.2)
+                                        : isNextApproverStep
+                                            ? Colors.blue.withOpacity(0.2)
+                                            : Colors.orange.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                isNextApproverStep ? "NEXT" : item.statusText,
+                                style: TextStyle(
+                                  color: item.isRejected
+                                      ? Colors.redAccent
+                                      : item.completed
+                                          ? Colors.greenAccent
+                                          : isNextApproverStep
+                                              ? Colors.blueAccent
+                                              : Colors.orangeAccent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _formatDate(item.date!),
-                              style: TextStyle(
-                                color: item.completed
-                                    ? Colors.greenAccent
-                                    : Colors.white70,
-                                fontSize: 12,
+                            SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                item.description,
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-
-                    // Status and description
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: item.isRejected
-                                  ? Colors.red.withOpacity(0.2)
-                                  : item.completed
-                                      ? Colors.green.withOpacity(0.2)
-                                      : Colors.orange.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              item.statusText.toUpperCase(),
-                              style: TextStyle(
-                                color: item.isRejected
-                                    ? Colors.redAccent
-                                    : item.completed
-                                        ? Colors.greenAccent
-                                        : Colors.orangeAccent,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.description,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -745,6 +702,43 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  int _getCompletedStepsCount() {
+    return _timelineItems
+        .where((item) =>
+            item.status == "completed" ||
+            item.status == "paid" ||
+            item.status == "approved")
+        .length;
+  }
+
+  String _getCurrentStatus() {
+    switch (widget.status?.toLowerCase()) {
+      case "pending":
+        return "Request is in approval process";
+      case "approved":
+        return "Request approved - Waiting for payment";
+      case "paid":
+        return "Payment processed successfully";
+      case "rejected":
+        return "Request was rejected";
+      default:
+        return "Tracking request...";
+    }
+  }
+
+  Widget _buildLoadingStepper() {
+    return Column(
+      children: [
+        CircularProgressIndicator(),
+        SizedBox(height: 16),
+        Text(
+          "Loading timeline...",
+          style: TextStyle(color: Colors.white70),
+        ),
+      ],
     );
   }
 
@@ -769,7 +763,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       },
       'pending': {
         'color': Colors.orange,
-        'text': 'IN PROGRESS',
+        'text': 'PENDING',
         'icon': Icons.pending
       },
     };
@@ -777,22 +771,22 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     final config = statusConfig[statusLower] ?? statusConfig['pending']!;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: config['color'].withOpacity(0.3),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: config['color']),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(config['icon'], color: config['color'], size: 16),
-          const SizedBox(width: 6),
+          Icon(config['icon'], color: config['color'], size: 14),
+          const SizedBox(width: 4),
           Text(
             config['text'],
             style: TextStyle(
               color: config['color'],
-              fontSize: 12,
+              fontSize: 10,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1029,7 +1023,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   }
 
   String _formatDate(DateTime date) {
-    return "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+    return "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}";
   }
 
   DateTime _parseDate(dynamic d) {
@@ -1053,6 +1047,8 @@ class StepperItem {
   final bool isRejected;
   final String statusText;
   final String description;
+  final bool isNextApprover;
+  final String? approverRole;
 
   StepperItem({
     required this.title,
@@ -1062,6 +1058,8 @@ class StepperItem {
     required this.isRejected,
     required this.statusText,
     required this.description,
+    required this.isNextApprover,
+    this.approverRole,
   });
 }
 
@@ -1070,11 +1068,13 @@ class ApprovalTimelineItem {
   final String approverName;
   final String approverId;
   final DateTime? timestamp;
-  final String status; // "completed", "pending", "rejected", "paid"
-  final String action; // "submitted", "approved", "rejected", "forwarded"
-  final String
-      stepType; // "submission", "reporting_manager", "finance", "ceo", "payment", "rejection"
+  final String status;
+  final String action;
+  final String stepType;
   final String? comments;
+  final int? stepNumber;
+  final bool? isNextApprover;
+  final String? approverRole;
 
   ApprovalTimelineItem({
     required this.step,
@@ -1085,6 +1085,9 @@ class ApprovalTimelineItem {
     required this.action,
     required this.stepType,
     this.comments,
+    this.stepNumber,
+    this.isNextApprover,
+    this.approverRole,
   });
 
   factory ApprovalTimelineItem.fromJson(Map<String, dynamic> json) {
@@ -1098,6 +1101,9 @@ class ApprovalTimelineItem {
       action: json['action'] ?? '',
       stepType: json['step_type'] ?? '',
       comments: json['comments'],
+      stepNumber: json['step_number'],
+      isNextApprover: json['is_next_approver'] ?? false,
+      approverRole: json['approver_role'],
     );
   }
 }

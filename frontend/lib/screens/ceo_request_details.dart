@@ -107,6 +107,17 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return 0.0;
   }
 
+  // ✅ UTILITY FUNCTION FOR CAPITALIZING REQUEST TYPES
+  String capitalizeRequestType(String requestType) {
+    if (requestType.toLowerCase().contains('reimbursement')) {
+      return 'Reimbursement';
+    } else if (requestType.toLowerCase().contains('advance')) {
+      return 'Advance';
+    } else {
+      return requestType[0].toUpperCase() + requestType.substring(1);
+    }
+  }
+
   String _formatAmount(dynamic amount) {
     final parsedAmount = _parseAmount(amount);
     return parsedAmount.toStringAsFixed(2);
@@ -1524,7 +1535,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: Text(
-          '${widget.requestType.toUpperCase()} Details',
+          '${capitalizeRequestType(widget.requestType)} Details', // ✅ USE THE UTILITY FUNCTION
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -1535,7 +1546,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline),
+            icon: const Icon(Icons.info_outline,
+                color: Colors.white), // ✅ WHITE ICON
             onPressed: () {
               final projectInfo = _getProjectInfo();
               showDialog(
@@ -1546,7 +1558,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                       style: TextStyle(color: Colors.white)),
                   content: Text(
                     'Request ID: ${widget.requestId}\n'
-                    'Type: ${widget.requestType}\n'
+                    'Type: ${capitalizeRequestType(widget.requestType)}\n' // ✅ FIXED TYPE DISPLAY
                     'Status: ${widget.getRequestData('status') ?? 'Unknown'}\n'
                     'Total Amount: ₹${_formatAmount(widget.getRequestData('amount'))}\n'
                     'Project Code: ${projectInfo['id'] ?? 'Not specified'}\n'
@@ -1556,7 +1568,9 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Close'),
+                      child: const Text('Close',
+                          style:
+                              TextStyle(color: Colors.white)), // ✅ WHITE TEXT
                     ),
                   ],
                 ),
@@ -1605,7 +1619,9 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                           widget.getRequestData('submitted_date') ??
                               widget.getRequestData('date')),
                       _detailItem(
-                          'Request Type', widget.requestType.toUpperCase(),
+                          'Request Type',
+                          capitalizeRequestType(widget.requestType)
+                              .toUpperCase(), // ✅ FIXED TYPE DISPLAY
                           isImportant: true),
                       _detailItem('Total Amount',
                           '₹${_formatAmount(widget.getRequestData('amount'))}',

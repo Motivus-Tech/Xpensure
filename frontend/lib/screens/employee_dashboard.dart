@@ -1036,7 +1036,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                         ListTile(
                           leading: const Icon(Icons.edit, color: Colors.white),
                           title: const Text(
-                            "Edit Profile",
+                            "Profile",
                             style: TextStyle(color: Colors.white),
                           ),
                           onTap: () async {

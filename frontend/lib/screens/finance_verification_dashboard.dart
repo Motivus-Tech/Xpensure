@@ -2224,14 +2224,13 @@ class _FinanceVerificationDashboardState
     return Scaffold(
       backgroundColor: Color(0xFF121212),
       appBar: AppBar(
-        title: Text("Finance Verification",
+        title: Text("Finance",
             style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontSize: 20)),
+                fontSize: 25)),
         backgroundColor: Color.fromARGB(255, 12, 15, 49),
         foregroundColor: Colors.white,
-        centerTitle: true,
         actions: [
           IconButton(
               icon: Icon(Icons.filter_list),
