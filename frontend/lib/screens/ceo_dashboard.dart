@@ -48,6 +48,7 @@ class _CEODashboardState extends State<CEODashboard> {
     'Amount above 2000',
     'Latest',
     'Oldest',
+    'Search by Employee ID', // Add this new option
   ];
 
   // Report generation variables
@@ -55,6 +56,9 @@ class _CEODashboardState extends State<CEODashboard> {
   String _reportPeriod = '1_month';
   String _reportIdentifier = '';
   bool _isGeneratingReport = false;
+
+// Add this variable for employee ID search
+  String _employeeIdSearchQuery = '';
 
   // Employee project spending variables
   String _employeeIdForProjectReport = '';
@@ -1108,6 +1112,21 @@ class _CEODashboardState extends State<CEODashboard> {
       case 'Oldest':
         filtered.sort((a, b) => a['date'].compareTo(b['date']));
         break;
+      case 'Search by Employee ID':
+        if (_employeeIdSearchQuery.isNotEmpty) {
+          filtered = filtered.where((req) {
+            final employeeId =
+                req['employeeId']?.toString().toLowerCase() ?? '';
+            final employeeName =
+                req['employeeName']?.toString().toLowerCase() ?? '';
+            final searchQuery = _employeeIdSearchQuery.toLowerCase();
+
+            // Search in both employee ID and name
+            return employeeId.contains(searchQuery) ||
+                employeeName.contains(searchQuery);
+          }).toList();
+        }
+        break;
     }
 
     setState(() {
@@ -1257,27 +1276,73 @@ class _CEODashboardState extends State<CEODashboard> {
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  decoration: _buildDropdownDecoration("Filter"),
-                  value: _selectedFilter,
-                  items: _filterOptions.map((String value) {
-                    return DropdownMenuItem(
-                      value: value,
-                      child: Text(value, style: TextStyle(color: Colors.white)),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedFilter = value!;
-                      _applyFilter();
-                    });
-                  },
-                  dropdownColor: const Color(0xFF374151),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      decoration: _buildDropdownDecoration("Filter"),
+                      value: _selectedFilter,
+                      items: _filterOptions.map((String value) {
+                        return DropdownMenuItem(
+                          value: value,
+                          child: Text(value,
+                              style: TextStyle(color: Colors.white)),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedFilter = value!;
+                          _employeeIdSearchQuery =
+                              ''; // Clear search when changing filter
+                          _applyFilter();
+                        });
+                      },
+                      dropdownColor: const Color(0xFF374151),
+                    ),
+                  ),
+                ],
               ),
+              // Add search field when "Search by Employee ID" is selected
+              if (_selectedFilter == 'Search by Employee ID')
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: TextField(
+                    onChanged: (value) {
+                      setState(() {
+                        _employeeIdSearchQuery = value;
+                        _applyFilter();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Enter Employee ID to search...",
+                      hintStyle: TextStyle(color: Colors.grey[500]),
+                      border: OutlineInputBorder(),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF2DD4BF)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
+                      ),
+                      filled: true,
+                      fillColor: Color(0xFF374151),
+                      prefixIcon: Icon(Icons.search, color: Colors.grey),
+                      suffixIcon: _employeeIdSearchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.clear, color: Colors.grey),
+                              onPressed: () {
+                                setState(() {
+                                  _employeeIdSearchQuery = '';
+                                  _applyFilter();
+                                });
+                              },
+                            )
+                          : null,
+                    ),
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
             ],
           ),
         ),
@@ -1305,8 +1370,14 @@ class _CEODashboardState extends State<CEODashboard> {
             color: const Color(0xFF2DD4BF),
             child: _filteredPendingRequests.isEmpty
                 ? _buildEmptyState(
-                    'No Pending Requests',
-                    'All CEO approvals have been processed',
+                    _selectedFilter == 'Search by Employee ID' &&
+                            _employeeIdSearchQuery.isNotEmpty
+                        ? 'No Matching Employee ID'
+                        : 'No Pending Requests',
+                    _selectedFilter == 'Search by Employee ID' &&
+                            _employeeIdSearchQuery.isNotEmpty
+                        ? 'No pending requests found for Employee ID: $_employeeIdSearchQuery'
+                        : 'All CEO approvals have been processed',
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
