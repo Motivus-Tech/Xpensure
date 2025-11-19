@@ -114,6 +114,19 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                 ),
               ),
             );
+          } else if (role == 'HR' ||
+              role == 'hr' ||
+              role == 'Human Resources') {
+            // ✅ HR को common dashboard में भेजें
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => common.CommonDashboard(
+                  userData: userData,
+                  authToken: token,
+                ),
+              ),
+            );
           } else if (role == 'Common' ||
               role == 'common' ||
               role == 'Employee') {
