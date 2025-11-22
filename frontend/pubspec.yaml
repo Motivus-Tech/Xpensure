@@ -1,7 +1,7 @@
 name: xpensure
 description: Company Expense Management App
 
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: 'none'
 
 version: 1.0.0+1
 
@@ -21,19 +21,28 @@ dependencies:
   fl_chart: ^1.0.0
   font_awesome_flutter: ^10.4.0
   intl: ^0.18.1
-  
   path_provider: ^2.0.15
   syncfusion_flutter_charts: ^23.1.44
   csv: ^5.0.0
-  permission_handler: ^11.0.1  # Check for latest version
-  share_plus: ^7.2.2      
-      # Check for latest version
+  permission_handler: ^11.0.1
+  share_plus: ^7.2.2
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo/logo.png
+
+# YEH LAST MEIN ADD KARO ▼
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo/logo.png"
+  adaptive_icon_background: "#00000000"  # Transparent background
+  adaptive_icon_foreground: "assets/logo/androidicon.png"
