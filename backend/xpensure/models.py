@@ -154,6 +154,7 @@ class AdvanceRequest(models.Model):
     final_approver = models.CharField(max_length=50, null=True, blank=True)  # ✅ ADDED FINAL APPROVER FIELD
     approved_by_ceo = models.BooleanField(default=False)  # ✅ ADDED CEO APPROVAL FLAG
     approved_by_finance = models.BooleanField(default=False)  # ✅ ADDED FINANCE APPROVAL FLAG
+    approved_by_hr = models.BooleanField(default=False)   # ✅ ADDED HR APPROVAL FLAG
 
     def __str__(self):
         return f"{self.employee_id_display} - {self.amount}"

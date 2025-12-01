@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:open_file/open_file.dart';
 import '../services/api_service.dart';
 import 'common_dashboard.dart';
 
@@ -33,13 +35,54 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     }
   }
 
+  String _getFileExtension(String path) {
+    try {
+      return path.toLowerCase().split('.').last;
+    } catch (e) {
+      return '';
+    }
+  }
+
   bool _isImageFile(String path) {
-    final ext = path.toLowerCase().split('.').last;
+    final ext = _getFileExtension(path);
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
   }
 
   bool _isPdfFile(String path) {
-    return path.toLowerCase().endsWith('.pdf');
+    return _getFileExtension(path) == 'pdf';
+  }
+
+  bool _isDocumentFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['doc', 'docx'].contains(ext);
+  }
+
+  bool _isExcelFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['xls', 'xlsx'].contains(ext);
+  }
+
+  bool _isTextFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['txt', 'rtf'].contains(ext);
+  }
+
+  IconData _getFileIcon(String path) {
+    if (_isImageFile(path)) return Icons.image;
+    if (_isPdfFile(path)) return Icons.picture_as_pdf;
+    if (_isDocumentFile(path)) return Icons.description;
+    if (_isExcelFile(path)) return Icons.table_chart;
+    if (_isTextFile(path)) return Icons.text_snippet;
+    return Icons.insert_drive_file;
+  }
+
+  Color _getFileIconColor(String path) {
+    if (_isImageFile(path)) return Colors.amber;
+    if (_isPdfFile(path)) return Colors.red;
+    if (_isDocumentFile(path)) return Colors.blue;
+    if (_isExcelFile(path)) return Colors.green;
+    if (_isTextFile(path)) return Colors.orange;
+    return Colors.grey;
   }
 
   // Get all attachment paths from a payment (handles both single and multiple)
@@ -86,7 +129,7 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               bottom: 10,
               right: 10,
               child: ElevatedButton.icon(
-                onPressed: () => _downloadFile(imagePath),
+                onPressed: () => _downloadAndOpenFile(imagePath),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
@@ -101,52 +144,114 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     );
   }
 
-  Future<void> _openPdf(String pdfPath) async {
+  Future<void> _openFileWithDialog(String filePath) async {
     try {
-      final url = pdfPath.startsWith('http') ? pdfPath : 'file://$pdfPath';
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
+      // First download the file if it's from network
+      String localPath;
+      if (filePath.startsWith('http')) {
+        localPath = await _downloadFile(filePath);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cannot open PDF file'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        localPath = filePath;
       }
+
+      // Use open_file to show the "Open With" dialog
+      final result = await OpenFile.open(localPath);
+
+      // Handle the result
+      _handleOpenFileResult(result, filePath);
     } catch (e) {
+      print('Error opening file: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error opening PDF: $e'),
+          content: Text('Error opening file: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  Future<void> _downloadFile(String filePath) async {
+  void _handleOpenFileResult(OpenResult result, String originalPath) {
+    switch (result.type) {
+      case ResultType.done:
+        print("File opened successfully");
+        break;
+      case ResultType.noAppToOpen:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No app found to open this file'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        break;
+      case ResultType.fileNotFound:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.permissionDenied:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permission denied to open file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.error:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+    }
+  }
+
+  Future<String> _downloadFile(String filePath) async {
     try {
       if (filePath.startsWith('http')) {
         final response = await http.get(Uri.parse(filePath));
-        final documentsDir = await getApplicationDocumentsDirectory();
+        final tempDir = await getTemporaryDirectory();
         final fileName = _getFileName(filePath);
-        final file = File('${documentsDir.path}/$fileName');
+        final file = File('${tempDir.path}/$fileName');
 
         await file.writeAsBytes(response.bodyBytes);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('File downloaded to: ${file.path}'),
-            backgroundColor: const Color(0xFF1E8C3E),
-          ),
-        );
+        return file.path;
       } else {
+        return filePath;
+      }
+    } catch (e) {
+      throw Exception('Download failed: $e');
+    }
+  }
+
+  Future<void> _downloadAndOpenFile(String filePath) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File location: $filePath'),
-            backgroundColor: const Color(0xFF1A237E),
+            content: Text('File downloaded successfully!'),
+            backgroundColor: const Color(0xFF1E8C3E),
+            duration: const Duration(seconds: 2),
           ),
         );
+
+        // Auto-open the file with "Open With" dialog
+        await _openFileWithDialog(downloadedPath);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,9 +263,217 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     }
   }
 
+  Future<void> _downloadOnly(String filePath) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      String downloadedPath;
+
+      if (filePath.startsWith('http')) {
+        // Download from network
+        final response = await http.get(Uri.parse(filePath));
+
+        // Use Downloads directory for user-accessible storage
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final file = File('${downloadsDir.path}/$fileName');
+
+        await file.writeAsBytes(response.bodyBytes);
+        downloadedPath = file.path;
+      } else {
+        // For local files, copy to downloads directory
+        final originalFile = File(filePath);
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final newFile = File('${downloadsDir.path}/$fileName');
+
+        await originalFile.copy(newFile.path);
+        downloadedPath = newFile.path;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('File downloaded successfully!'),
+              Text(
+                'Location: ${downloadedPath.split('/').last}',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E8C3E),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OPEN',
+            textColor: Colors.white,
+            onPressed: () => _openFileWithDialog(downloadedPath),
+          ),
+        ),
+      );
+
+      print('File downloaded to: $downloadedPath');
+    } catch (e) {
+      print('Error downloading file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error downloading file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareFile(String filePath) async {
+    try {
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
+        await Share.shareXFiles(
+          [XFile(downloadedPath)],
+          text: 'Check out this file: ${_getFileName(filePath)}',
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sharing file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+        ),
+      );
+    }
+  }
+
+  Widget _buildFileActions(String filePath) {
+    final isImage = _isImageFile(filePath);
+
+    if (isImage) {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () => _showImageDialog(filePath),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7B1FA2),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.visibility, size: 18),
+              label: const Text('View'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _openFileWithDialog(filePath),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1976D2),
+                side: const BorderSide(color: Color(0xFF1976D2)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Open'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _downloadOnly(filePath),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF388E3C),
+                side: const BorderSide(color: Color(0xFF388E3C)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('Download'),
+            ),
+          ),
+        ],
+      );
+    } else {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () => _openFileWithDialog(filePath),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFC62828),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Open'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _downloadOnly(filePath),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1976D2),
+                side: const BorderSide(color: Color(0xFF1976D2)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('Download'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _shareFile(filePath),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF388E3C),
+                side: const BorderSide(color: Color(0xFF388E3C)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('Share'),
+            ),
+          ),
+        ],
+      );
+    }
+  }
+
   Widget _buildSingleAttachmentPreview(String attachmentPath) {
     final isImage = _isImageFile(attachmentPath);
-    final isPdf = _isPdfFile(attachmentPath);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -177,27 +490,32 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
             Row(
               children: [
                 Icon(
-                  isImage
-                      ? Icons.image
-                      : isPdf
-                          ? Icons.picture_as_pdf
-                          : Icons.insert_drive_file,
-                  color: isImage
-                      ? Colors.amber
-                      : isPdf
-                          ? Colors.red
-                          : Colors.grey[400],
+                  _getFileIcon(attachmentPath),
+                  color: _getFileIconColor(attachmentPath),
                   size: 24,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    _getFileName(attachmentPath),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getFileName(attachmentPath),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      Text(
+                        _getFileExtension(attachmentPath).toUpperCase(),
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -214,64 +532,38 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: attachmentPath.startsWith('http')
-                      ? Image.network(attachmentPath, fit: BoxFit.cover)
-                      : Image.file(File(attachmentPath), fit: BoxFit.cover),
+                      ? Image.network(
+                          attachmentPath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: 40,
+                              ),
+                            );
+                          },
+                        )
+                      : Image.file(
+                          File(attachmentPath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: 40,
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (isImage)
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showImageDialog(attachmentPath),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF7B1FA2),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.visibility, size: 18),
-                      label: const Text('View'),
-                    ),
-                  ),
-                if (isImage) const SizedBox(width: 8),
-                if (isPdf)
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openPdf(attachmentPath),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFC62828),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: const Text('Open PDF'),
-                    ),
-                  ),
-                if (isPdf) const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _downloadFile(attachmentPath),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF1976D2),
-                      side: const BorderSide(color: Color(0xFF1976D2)),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Download'),
-                  ),
-                ),
-              ],
-            ),
+            if (isImage) const SizedBox(height: 12),
+            _buildFileActions(attachmentPath),
           ],
         ),
       ),
@@ -524,6 +816,22 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     final request = widget.request;
     final isReimbursement =
         request.requestType.toLowerCase().contains("reimbursement");
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+    final isTablet = screenWidth >= 600 && screenWidth < 1024;
+    final isDesktop = screenWidth >= 1024;
+
+    // Responsive sizing
+    final double cardPadding = isMobile
+        ? 12.0
+        : isTablet
+            ? 16.0
+            : 20.0;
+    final double buttonHeight = isMobile
+        ? 45.0
+        : isTablet
+            ? 50.0
+            : 55.0;
 
     // Better project info detection
     bool hasProjectInfo = false;
@@ -573,261 +881,331 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               ),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Request Overview Card
-                  _buildDetailCard('Request Overview', [
-                    _detailItem('Employee', request.employeeName,
-                        isImportant: true),
-                    _detailItem('Request Type', request.requestType),
-                    _detailItem('Date', request.submissionDate),
-                    _detailItem(
-                        'Amount', '₹${request.amount.toStringAsFixed(2)}',
-                        isImportant: true),
-                  ]),
-
-                  // Project Information Card with flexible field detection
-                  if (hasProjectInfo)
-                    _buildDetailCard('Project Information', [
-                      if (projectId != null)
-                        _detailItem('Project ID', projectId!),
-                      if (!isReimbursement && projectName != null)
-                        _detailItem('Project Name', projectName!),
+              padding: EdgeInsets.all(isMobile ? 12.0 : 16.0),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Request Overview Card
+                    _buildDetailCard('Request Overview', [
+                      _detailItem('Employee', request.employeeName,
+                          isImportant: true),
+                      _detailItem('Request Type', request.requestType),
+                      _detailItem('Date', request.submissionDate),
+                      _detailItem(
+                          'Amount', '₹${request.amount.toStringAsFixed(2)}',
+                          isImportant: true),
                     ]),
 
-                  // Payment Details Card
-                  _buildDetailCard('Payment Details', [
-                    if (request.payments.isNotEmpty)
-                      ...request.payments.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final payment = entry.value;
-                        final attachmentPaths = _getAttachmentPaths(payment);
+                    // Project Information Card with flexible field detection
+                    if (hasProjectInfo)
+                      _buildDetailCard('Project Information', [
+                        if (projectId != null)
+                          _detailItem('Project ID', projectId!),
+                        if (!isReimbursement && projectName != null)
+                          _detailItem('Project Name', projectName!),
+                      ]),
 
-                        return Container(
-                          margin: EdgeInsets.only(top: index > 0 ? 12 : 0),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A1A),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[800]!),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Payment ${index + 1}',
-                                style: const TextStyle(
-                                  color: Color(0xFF00E5FF),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                    // Payment Details Card
+                    _buildDetailCard('Payment Details', [
+                      if (request.payments.isNotEmpty)
+                        ...request.payments.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final payment = entry.value;
+                          final attachmentPaths = _getAttachmentPaths(payment);
+
+                          return Container(
+                            margin: EdgeInsets.only(top: index > 0 ? 12 : 0),
+                            padding: EdgeInsets.all(cardPadding),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A1A1A),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey[800]!),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Payment ${index + 1}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF00E5FF),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
+                                const SizedBox(height: 8),
 
-                              // Common fields for both types
-                              _detailItem(
-                                  'Amount', '₹${payment['amount'] ?? '0'}'),
+                                // Common fields for both types
+                                _detailItem(
+                                    'Amount', '₹${payment['amount'] ?? '0'}'),
 
-                              // REIMBURSEMENT SPECIFIC FIELDS
-                              if (isReimbursement) ...[
-                                // Try multiple field names for payment date
-                                if (_getFieldValue(payment, [
-                                      'paymentDate',
-                                      'payment_date',
-                                      'date'
-                                    ]) !=
-                                    null)
-                                  _detailItem(
-                                      'Payment Date',
-                                      _getFieldValue(payment, [
+                                // REIMBURSEMENT SPECIFIC FIELDS
+                                if (isReimbursement) ...[
+                                  // Try multiple field names for payment date
+                                  if (_getFieldValue(payment, [
                                         'paymentDate',
                                         'payment_date',
                                         'date'
-                                      ])!),
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Payment Date',
+                                        _getFieldValue(payment, [
+                                          'paymentDate',
+                                          'payment_date',
+                                          'date'
+                                        ])!),
 
-                                // Try multiple field names for claim type
-                                if (_getFieldValue(payment,
-                                        ['claimType', 'claim_type', 'type']) !=
-                                    null)
-                                  _detailItem(
-                                      'Claim Type',
-                                      _getFieldValue(payment, [
+                                  // Try multiple field names for claim type
+                                  if (_getFieldValue(payment, [
                                         'claimType',
                                         'claim_type',
                                         'type'
-                                      ])!),
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Claim Type',
+                                        _getFieldValue(payment, [
+                                          'claimType',
+                                          'claim_type',
+                                          'type'
+                                        ])!),
 
-                                // Try multiple field names for description
-                                if (_getFieldValue(payment, [
-                                      'description',
-                                      'Description',
-                                      'desc'
-                                    ]) !=
-                                    null)
-                                  _detailItem(
-                                      'Description',
-                                      _getFieldValue(payment, [
+                                  // Try multiple field names for description
+                                  if (_getFieldValue(payment, [
                                         'description',
                                         'Description',
                                         'desc'
-                                      ])!),
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Description',
+                                        _getFieldValue(payment, [
+                                          'description',
+                                          'Description',
+                                          'desc'
+                                        ])!),
 
-                                // Custom Claim Type for "Other" category
-                                if (_getFieldValue(payment, [
-                                      'customClaimType',
-                                      'custom_claim_type',
-                                      'otherType'
-                                    ]) !=
-                                    null)
-                                  _detailItem(
-                                      'Custom Claim Type',
-                                      _getFieldValue(payment, [
+                                  // Custom Claim Type for "Other" category
+                                  if (_getFieldValue(payment, [
                                         'customClaimType',
                                         'custom_claim_type',
                                         'otherType'
-                                      ])!),
-                              ]
-                              // ADVANCE REQUEST SPECIFIC FIELDS
-                              else ...[
-                                // Try multiple field names for request date
-                                if (_getFieldValue(payment, [
-                                      'requestDate',
-                                      'request_date',
-                                      'date'
-                                    ]) !=
-                                    null)
-                                  _detailItem(
-                                      'Request Date',
-                                      _getFieldValue(payment, [
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Custom Claim Type',
+                                        _getFieldValue(payment, [
+                                          'customClaimType',
+                                          'custom_claim_type',
+                                          'otherType'
+                                        ])!),
+                                ]
+                                // ADVANCE REQUEST SPECIFIC FIELDS
+                                else ...[
+                                  // Try multiple field names for request date
+                                  if (_getFieldValue(payment, [
                                         'requestDate',
                                         'request_date',
                                         'date'
-                                      ])!),
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Request Date',
+                                        _getFieldValue(payment, [
+                                          'requestDate',
+                                          'request_date',
+                                          'date'
+                                        ])!),
 
-                                // Try multiple field names for project date
-                                if (_getFieldValue(payment,
-                                        ['projectDate', 'project_date']) !=
-                                    null)
-                                  _detailItem(
-                                      'Project Date',
-                                      _getFieldValue(payment,
-                                          ['projectDate', 'project_date'])!),
+                                  // Try multiple field names for project date
+                                  if (_getFieldValue(payment,
+                                          ['projectDate', 'project_date']) !=
+                                      null)
+                                    _detailItem(
+                                        'Project Date',
+                                        _getFieldValue(payment,
+                                            ['projectDate', 'project_date'])!),
 
-                                // Try multiple field names for particulars
-                                if (_getFieldValue(payment, [
-                                      'particulars',
-                                      'Particulars',
-                                      'description'
-                                    ]) !=
-                                    null)
-                                  _detailItem(
-                                      'Particulars',
-                                      _getFieldValue(payment, [
+                                  // Try multiple field names for particulars
+                                  if (_getFieldValue(payment, [
                                         'particulars',
                                         'Particulars',
                                         'description'
-                                      ])!),
+                                      ]) !=
+                                      null)
+                                    _detailItem(
+                                        'Particulars',
+                                        _getFieldValue(payment, [
+                                          'particulars',
+                                          'Particulars',
+                                          'description'
+                                        ])!),
+                                ],
+
+                                // Attachments section
+                                _buildAttachmentsSection(attachmentPaths),
                               ],
-
-                              // Attachments section
-                              _buildAttachmentsSection(attachmentPaths),
-                            ],
-                          ),
-                        );
-                      }).toList()
-                    else
-                      const Text(
-                        'No payment details available',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                  ]),
-
-                  // Action Buttons
-                  Card(
-                    color: const Color.fromARGB(255, 24, 24, 24),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey[800]!, width: 1),
-                    ),
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Take Action',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed:
-                                      _isProcessing ? null : _approveRequest,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1E8C3E),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 15),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.check_circle),
-                                  label: const Text(
-                                    'Approve',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed:
-                                      _isProcessing ? null : _rejectRequest,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFC62828),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 15),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.cancel),
-                                  label: const Text(
-                                    'Reject',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_isProcessing) ...[
-                            const SizedBox(height: 16),
-                            const CircularProgressIndicator(
-                                color: Color(0xFF00E5FF)),
-                            const SizedBox(height: 8),
+                          );
+                        }).toList()
+                      else
+                        const Text(
+                          'No payment details available',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                    ]),
+
+                    // Action Buttons - Responsive layout
+                    Card(
+                      color: const Color.fromARGB(255, 24, 24, 24),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.grey[800]!, width: 1),
+                      ),
+                      elevation: 4,
+                      child: Padding(
+                        padding: EdgeInsets.all(cardPadding),
+                        child: Column(
+                          children: [
                             const Text(
-                              'Processing your request...',
-                              style: TextStyle(color: Colors.grey),
+                              'Take Action',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
+                            const SizedBox(height: 16),
+                            if (isMobile)
+                              Column(
+                                children: [
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: buttonHeight,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _isProcessing
+                                          ? null
+                                          : _approveRequest,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFF1E8C3E),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.check_circle),
+                                      label: const Text(
+                                        'Approve',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: buttonHeight,
+                                    child: ElevatedButton.icon(
+                                      onPressed:
+                                          _isProcessing ? null : _rejectRequest,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFFC62828),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.cancel),
+                                      label: const Text(
+                                        'Reject',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: buttonHeight,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isProcessing
+                                            ? null
+                                            : _approveRequest,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFF1E8C3E),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        icon: const Icon(Icons.check_circle),
+                                        label: const Text(
+                                          'Approve',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: isTablet ? 12 : 16),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: buttonHeight,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isProcessing
+                                            ? null
+                                            : _rejectRequest,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFFC62828),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        icon: const Icon(Icons.cancel),
+                                        label: const Text(
+                                          'Reject',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            if (_isProcessing) ...[
+                              const SizedBox(height: 16),
+                              const CircularProgressIndicator(
+                                  color: Color(0xFF00E5FF)),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Processing your request...',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
     );

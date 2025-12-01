@@ -427,27 +427,88 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 def get_next_approver(employee):
     """
-    FIXED: Returns the next approver based on report_to hierarchy.
+    SMART ROUTING: Returns next approver based on report_to hierarchy
+    with special handling for role-based routing
     """
-    if not employee or not employee.report_to:
+    if not employee:
+        print("❌ No employee provided to get_next_approver")
+        return None
+    
+    print(f"🔍 Getting next approver for: {employee.employee_id} ({employee.role})")
+    
+    # SPECIAL CASE: If current user is Finance Verification
+    # Don't use report_to chain - use special logic in process_approval_dynamic
+    if employee.role == "Finance Verification":
+        print(f"⚠️ Finance Verification should use special routing, not report_to chain")
+        return None
+    
+    # SPECIAL CASE: If current user is HR
+    if employee.role == "HR":
+        print(f"🔍 HR user - checking CEO...")
+        ceo_user = User.objects.filter(role="CEO").first()
+        if ceo_user:
+            print(f"✅ HR → CEO: {ceo_user.employee_id}")
+            return ceo_user.employee_id
+        else:
+            print(f"❌ No CEO found for HR to report to")
+            return None
+    
+    # SPECIAL CASE: If current user is CEO
+    if employee.role == "CEO":
+        print(f"🔍 CEO user - checking Finance Payment...")
+        finance_payment_user = User.objects.filter(role="Finance Payment").first()
+        if finance_payment_user:
+            print(f"✅ CEO → Finance Payment: {finance_payment_user.employee_id}")
+            return finance_payment_user.employee_id
+        else:
+            print(f"❌ No Finance Payment found for CEO to report to")
+            return None
+    
+    # SPECIAL CASE: If current user is Finance Payment
+    if employee.role == "Finance Payment":
+        print(f"🎯 Finance Payment is final approver - no next approver")
+        return None
+    
+    # NORMAL CHAIN: Use report_to field for Common and other roles
+    if not employee.report_to:
+        print(f"📭 {employee.employee_id} has no report_to (end of chain)")
+        
+        # If it's a Common role with no report_to, suggest Finance Verification
+        if employee.role == "Common":
+            finance_user = User.objects.filter(role="Finance Verification").first()
+            if finance_user:
+                print(f"💡 Suggesting Finance Verification: {finance_user.employee_id}")
+                # Note: This is just a suggestion - actual routing happens in process_approval_dynamic
+                return finance_user.employee_id
+        
         return None
     
     try:
         next_approver = User.objects.get(employee_id=employee.report_to)
-        print(f"🔗 Next approver for {employee.employee_id}: {next_approver.employee_id} ({next_approver.role})")
+        print(f"✅ Normal chain: {employee.employee_id} → {next_approver.employee_id} ({next_approver.role})")
         return next_approver.employee_id
     except User.DoesNotExist:
         print(f"❌ Next approver {employee.report_to} not found for {employee.employee_id}")
+        
+        # Fallback: Try to find Finance Verification
+        if employee.role == "Common":
+            finance_user = User.objects.filter(role="Finance Verification").first()
+            if finance_user:
+                print(f"🔄 Fallback to Finance Verification: {finance_user.employee_id}")
+                return finance_user.employee_id
+        
         return None
     
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     """
-    FIXED VERSION: CEO approve -> Status=Approved, Finance Payment -> Status=Paid
+    FIXED: Proper routing after Finance Verification
+    Advance: Finance → HR → CEO → Finance Payment
+    Reimbursement: Finance → CEO → Finance Payment
     """
     request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
     
     if not approved:
-        # REJECTION
+        # REJECTION logic
         request_obj.status = "Rejected"
         request_obj.rejection_reason = rejection_reason
         request_obj.current_approver_id = None
@@ -465,71 +526,161 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         request_obj.save()
         return request_obj
 
-    # ✅ CREATE APPROVAL HISTORY FOR CURRENT APPROVER
+    # ✅ CREATE APPROVAL HISTORY
     ApprovalHistory.objects.create(
         request_type=request_type,
         request_id=request_obj.id,
         approver_id=approver_employee.employee_id,
         approver_name=approver_employee.fullName,
         action='approved',
-        comments=f'Approved by {approver_employee.role} ({approver_employee.fullName})'
+        comments=f'Approved by {approver_employee.role}'
     )
 
-    # ✅ FIXED: CEO APPROVAL = FINAL APPROVAL (Status=Approved)
-    if approver_employee.role == "CEO":
+    # ✅ FINANCE VERIFICATION APPROVAL - UPDATED WITH DIRECT IDS
+    if approver_employee.role == "Finance Verification":
+        request_obj.approved_by_finance = True
+        
+        if request_type == "advance":
+            # FOR ADVANCE: Send to HR (MIPL-0029)
+            try:
+                hr_user = User.objects.get(employee_id="MIPL-0029")  # DIRECT ID
+                request_obj.current_approver_id = hr_user.employee_id
+                request_obj.status = "Pending"
+                request_obj.currentStep = 4  # HR approval step
+                print(f"✅ Finance → HR: Advance sent to HR: MIPL-0029")
+            except User.DoesNotExist:
+                print(f"❌ HR user MIPL-0029 not found!")
+                # Fallback: Use CEO
+                ceo_user = User.objects.filter(role="CEO").first()
+                if ceo_user:
+                    request_obj.current_approver_id = ceo_user.employee_id
+                    request_obj.status = "Pending"
+                    request_obj.currentStep = 5  # CEO approval step
+                    print(f"⚠️ No HR found, sending advance to CEO: {ceo_user.employee_id}")
+                else:
+                    # No approver found
+                    request_obj.status = "Approved"
+                    request_obj.current_approver_id = None
+                    request_obj.final_approver = approver_employee.employee_id
+        
+        else:  # reimbursement
+            # FOR REIMBURSEMENT: Send DIRECTLY to CEO (MIPL-0047) - SKIP HR!
+            try:
+                ceo_user = User.objects.get(employee_id="MIPL-0047")  # DIRECT ID
+                request_obj.current_approver_id = ceo_user.employee_id
+                request_obj.status = "Pending"
+                request_obj.currentStep = 4  # CEO approval step (skip HR)
+                print(f"✅ Finance → CEO: Reimbursement sent DIRECTLY to CEO: MIPL-0047 (SKIPPED HR!)")
+            except User.DoesNotExist:
+                print(f"❌ CEO user MIPL-0047 not found!")
+                # If no CEO, auto-approve
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                request_obj.final_approver = approver_employee.employee_id
+    
+    # ✅ HR APPROVAL - Only for advance requests
+    elif approver_employee.role == "HR":
+        # Only advance requests should reach HR
+        if request_type == "advance":
+            request_obj.approved_by_hr = True
+            
+            # Send to CEO (MIPL-0047)
+            try:
+                ceo_user = User.objects.get(employee_id="MIPL-0047")  # DIRECT ID
+                request_obj.current_approver_id = ceo_user.employee_id
+                request_obj.status = "Pending"
+                request_obj.currentStep = 5  # CEO approval step
+                print(f"✅ HR → CEO: Advance sent to CEO: MIPL-0047")
+            except User.DoesNotExist:
+                print(f"❌ CEO user MIPL-0047 not found!")
+                # If no CEO, auto-approve
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                request_obj.final_approver = approver_employee.employee_id
+        else:
+            # Reimbursement should never reach HR (this is an error)
+            print(f"❌ ERROR: Reimbursement request reached HR!")
+            # Auto-approve and send to CEO
+            try:
+                ceo_user = User.objects.get(employee_id="MIPL-0047")
+                request_obj.current_approver_id = ceo_user.employee_id
+                request_obj.status = "Pending"
+                request_obj.currentStep = 4
+                print(f"⚠️ Reimbursement in HR, forwarding to CEO: MIPL-0047")
+            except User.DoesNotExist:
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                request_obj.final_approver = approver_employee.employee_id
+    
+    # ✅ CEO APPROVAL
+    elif approver_employee.role == "CEO":
         request_obj.status = "Approved"
         request_obj.current_approver_id = None
         request_obj.final_approver = approver_employee.employee_id
         request_obj.currentStep = 6
-        request_obj.approved_by_ceo = True  # ✅ IMPORTANT: Set this flag
-        print(f"✅ CEO Final Approval: Request {request_obj.id} approved by CEO")
+        request_obj.approved_by_ceo = True
         
-        # ✅ AUTO-ASSIGN TO FINANCE PAYMENT FOR PROCESSING
-        finance_payment_users = User.objects.filter(role="Finance Payment")
-        if finance_payment_users.exists():
-            next_approver = finance_payment_users.first()
-            request_obj.current_approver_id = next_approver.employee_id
-            print(f"💰 Sent to Finance Payment for payment processing: {next_approver.employee_id}")
-
-    # ✅ FINANCE PAYMENT = MARK AS PAID
+        # ✅ AUTO-ASSIGN TO FINANCE PAYMENT (011605)
+        try:
+            finance_payment_user = User.objects.get(employee_id="011605")  # DIRECT ID
+            request_obj.current_approver_id = finance_payment_user.employee_id
+            print(f"💰 CEO → Finance Payment: Sent to 011605")
+        except User.DoesNotExist:
+            print(f"❌ Finance Payment user 011605 not found!")
+    
+    # ✅ FINANCE PAYMENT APPROVAL (Mark as Paid)
     elif approver_employee.role == "Finance Payment":
         request_obj.status = "Paid"
         request_obj.current_approver_id = None
         request_obj.payment_date = timezone.now()
         request_obj.currentStep = 7
-        print(f"💰 Payment Processed: Request {request_obj.id} marked as paid by Finance Payment")
-
-    # ✅ OTHER ROLES (Common, Finance Verification) - NORMAL CHAIN FLOW
+        print(f"✅ Payment processed by Finance Payment: {approver_employee.employee_id}")
+    
+    # ✅ OTHER ROLES (Common, etc.)
     else:
         next_approver_id = get_next_approver(approver_employee)
         
         if next_approver_id:
-            request_obj.current_approver_id = next_approver_id
-            request_obj.status = "Pending"
-            
-            # Track steps based on next approver's role
             try:
-                next_approver = User.objects.get(employee_id=next_approver_id)
-                if next_approver.role == "Finance Verification":
-                    request_obj.currentStep = 3
-                    request_obj.approved_by_finance = False
-                elif next_approver.role == "CEO":
-                    request_obj.currentStep = 4
-                elif next_approver.role == "Finance Payment":
-                    request_obj.currentStep = 5
+                next_user = User.objects.get(employee_id=next_approver_id)
+                
+                # If next user is Finance Verification, route to them
+                if next_user.role == "Finance Verification":
+                    request_obj.current_approver_id = next_approver_id
+                    request_obj.status = "Pending"
+                    request_obj.currentStep = 3  # Finance verification step
+                    print(f"✅ Common → Finance: Sent to Finance Verification: {next_approver_id}")
                 else:
+                    # Normal chain flow
+                    request_obj.current_approver_id = next_approver_id
+                    request_obj.status = "Pending"
                     request_obj.currentStep = 2
+                    print(f"✅ Normal chain: {approver_employee.employee_id} → {next_approver_id}")
                     
-                print(f"✅ {approver_employee.role} → {next_approver.role}: Request {request_obj.id} sent to {next_approver_id}")
             except User.DoesNotExist:
-                print(f"❌ Next approver {next_approver_id} not found")
+                # Route to Finance Verification
+                finance_user = User.objects.filter(role="Finance Verification").first()
+                if finance_user:
+                    request_obj.current_approver_id = finance_user.employee_id
+                    request_obj.status = "Pending"
+                    request_obj.currentStep = 3
+                    print(f"⚠️ Next approver not found, routing to Finance: {finance_user.employee_id}")
+                else:
+                    request_obj.status = "Approved"
+                    request_obj.current_approver_id = None
+                    request_obj.final_approver = approver_employee.employee_id
         else:
-            # No next approver - final approval (for non-CEO roles)
-            request_obj.status = "Approved"
-            request_obj.current_approver_id = None
-            request_obj.final_approver = approver_employee.employee_id
-            request_obj.currentStep = 6
-            print(f"✅ Final approval by {approver_employee.role}")
+            # End of chain, route to Finance Verification
+            finance_user = User.objects.filter(role="Finance Verification").first()
+            if finance_user:
+                request_obj.current_approver_id = finance_user.employee_id
+                request_obj.status = "Pending"
+                request_obj.currentStep = 3
+                print(f"✅ End of chain → Finance: Sent to Finance Verification: {finance_user.employee_id}")
+            else:
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                request_obj.final_approver = approver_employee.employee_id
 
     request_obj.save()
     return request_obj
@@ -3152,3 +3303,196 @@ class CEOEmployeeProjectReportView(APIView):
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+# ==============================
+# HR APPROVAL APIS - ADD THESE
+# ==============================
+class HRPendingApprovalsView(APIView):
+    """Get all advance requests pending HR approval"""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            # Only HR users can access this
+            if request.user.role != 'HR':
+                return Response(
+                    {'error': 'HR access required'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get advance requests where current approver is HR and status is Pending
+            pending_requests = AdvanceRequest.objects.filter(
+                current_approver_id=request.user.employee_id,
+                status='Pending'
+            ).select_related('employee')
+            
+            requests_data = []
+            for req in pending_requests:
+                requests_data.append({
+                    'id': req.id,
+                    'employee_id': req.employee.employee_id,
+                    'employee_name': req.employee.fullName,
+                    'amount': str(req.amount),
+                    'purpose': req.description or 'Not specified',
+                    'request_date': req.request_date.isoformat() if req.request_date else None,
+                    'project_date': req.project_date.isoformat() if req.project_date else None,
+                    'created_at': req.created_at.isoformat() if req.created_at else None,
+                    'current_step': req.currentStep,
+                    'project_id': req.project_id,
+                    'project_name': req.project_name,
+                })
+            
+            # ✅ FIXED: Remove safe=False parameter
+            return Response(requests_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ HR Pending Approvals Error: {str(e)}")
+            return Response(
+                {'error': f'Failed to fetch HR pending approvals: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+class HRApproveRequestView(APIView):
+    """HR approves an advance request"""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        try:
+            # Only HR users can approve
+            if request.user.role != 'HR':
+                return Response(
+                    {'error': 'HR access required'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get the advance request
+            try:
+                advance_request = AdvanceRequest.objects.get(id=request_id)
+            except AdvanceRequest.DoesNotExist:
+                return Response(
+                    {'error': 'Advance request not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Check if current user is the approver
+            if advance_request.current_approver_id != request.user.employee_id:
+                return Response(
+                    {'error': 'Not authorized to approve this request'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Process HR approval
+            process_approval(advance_request, request.user, approved=True)
+            
+            return Response({
+                'message': 'Advance request approved by HR successfully',
+                'status': advance_request.status
+            })
+            
+        except Exception as e:
+            print(f"❌ HR Approve Error: {str(e)}")
+            return Response(
+                {'error': f'Failed to approve request: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class HRRejectRequestView(APIView):
+    """HR rejects an advance request"""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        try:
+            # Only HR users can reject
+            if request.user.role != 'HR':
+                return Response(
+                    {'error': 'HR access required'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            rejection_reason = request.data.get('rejection_reason', '')
+            if not rejection_reason:
+                return Response(
+                    {'error': 'rejection_reason is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the advance request
+            try:
+                advance_request = AdvanceRequest.objects.get(id=request_id)
+            except AdvanceRequest.DoesNotExist:
+                return Response(
+                    {'error': 'Advance request not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Check if current user is the approver
+            if advance_request.current_approver_id != request.user.employee_id:
+                return Response(
+                    {'error': 'Not authorized to reject this request'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Process HR rejection
+            process_approval(advance_request, request.user, approved=False, rejection_reason=rejection_reason)
+            
+            return Response({
+                'message': 'Advance request rejected by HR',
+                'status': advance_request.status
+            })
+            
+        except Exception as e:
+            print(f"❌ HR Reject Error: {str(e)}")
+            return Response(
+                {'error': f'Failed to reject request: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        # Add this method to your HR approval API views
+def get_request_details(request, request_id):
+    """Get detailed request information for HR view"""
+    try:
+        advance_request = AdvanceRequest.objects.get(id=request_id)
+        
+        # Get approval timeline
+        approval_history = ApprovalHistory.objects.filter(
+            request_type='advance',
+            request_id=request_id
+        ).order_by('timestamp')
+        
+        timeline_data = []
+        for history in approval_history:
+            timeline_data.append({
+                'action': history.action,
+                'approver_name': history.approver_name,
+                'approver_id': history.approver_id,
+                'timestamp': history.timestamp.isoformat() if history.timestamp else None,
+                'comments': history.comments,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'request': {
+                'id': advance_request.id,
+                'employee_id': advance_request.employee.employee_id,
+                'employee_name': advance_request.employee.fullName,
+                'amount': str(advance_request.amount),
+                'purpose': advance_request.description,
+                'request_date': advance_request.request_date.isoformat() if advance_request.request_date else None,
+                'project_date': advance_request.project_date.isoformat() if advance_request.project_date else None,
+                'status': advance_request.status,
+                'current_approver_id': advance_request.current_approver_id,
+                'rejection_reason': advance_request.rejection_reason,
+                'project_id': advance_request.project_id,
+                'project_name': advance_request.project_name,
+                'created_at': advance_request.created_at.isoformat() if advance_request.created_at else None,
+                'updated_at': advance_request.updated_at.isoformat() if advance_request.updated_at else None,
+            },
+            'attachments': advance_request.attachments if advance_request.attachments else [],
+            'approval_timeline': timeline_data,
+            'payments': advance_request.payments if advance_request.payments else [],
+        })
+        
+    except AdvanceRequest.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Request not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

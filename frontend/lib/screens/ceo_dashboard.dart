@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
-import '../screens/ceo_request_details.dart';
+import 'ceo_request_details.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -12,11 +12,13 @@ import 'package:share_plus/share_plus.dart';
 class CEODashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
   final String authToken;
+  final VoidCallback onLogout;
 
   const CEODashboard({
     super.key,
     required this.userData,
     required this.authToken,
+    required this.onLogout,
   });
 
   @override
@@ -48,7 +50,7 @@ class _CEODashboardState extends State<CEODashboard> {
     'Amount above 2000',
     'Latest',
     'Oldest',
-    'Search by Employee ID', // Add this new option
+    'Search by Employee ID',
   ];
 
   // Report generation variables
@@ -57,7 +59,7 @@ class _CEODashboardState extends State<CEODashboard> {
   String _reportIdentifier = '';
   bool _isGeneratingReport = false;
 
-// Add this variable for employee ID search
+  // Add this variable for employee ID search
   String _employeeIdSearchQuery = '';
 
   // Employee project spending variables
@@ -1149,33 +1151,82 @@ class _CEODashboardState extends State<CEODashboard> {
     return total.toStringAsFixed(0);
   }
 
+  // Logout confirmation dialog
+  Future<void> _showLogoutDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1F2937),
+          title: const Text(
+            'Logout',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Are you sure you want to logout?',
+            style: TextStyle(color: Colors.grey),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text(
+                'Logout',
+                style: TextStyle(color: Colors.red),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onLogout();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+    final isLargeScreen = screenWidth > 1200;
+
     return Scaffold(
       backgroundColor: const Color(0xFF111827),
       body: SafeArea(
         child: Column(
           children: [
-            _buildAppBar(),
-            _buildTabBar(),
-            Expanded(child: _buildContent()),
+            _buildAppBar(isSmallScreen),
+            _buildTabBar(isSmallScreen),
+            Expanded(child: _buildContent(isSmallScreen, isLargeScreen)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAppBar() {
+  Widget _buildAppBar(bool isSmallScreen) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 12 : 16,
+        vertical: 8,
+      ),
       child: Row(
         children: [
-          const Text(
+          Text(
             "CEO Dashboard",
             style: TextStyle(
-              fontSize: 20,
+              fontSize: isSmallScreen ? 18 : 20,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF2DD4BF),
+              color: const Color(0xFF2DD4BF),
             ),
           ),
           const Spacer(),
@@ -1183,64 +1234,97 @@ class _CEODashboardState extends State<CEODashboard> {
             const SizedBox(width: 8),
           ],
           IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF2DD4BF)),
+            icon: Icon(Icons.refresh,
+                color: const Color(0xFF2DD4BF), size: isSmallScreen ? 20 : 24),
             onPressed: _loadData,
             tooltip: 'Refresh',
           ),
+          const SizedBox(width: 4),
+          // Logout button
+          IconButton(
+            icon: Icon(Icons.logout,
+                color: Colors.red.shade400, size: isSmallScreen ? 20 : 24),
+            onPressed: _showLogoutDialog,
+            tooltip: 'Logout',
+          ),
           const SizedBox(width: 8),
-          // CEO Avatar - Check if avatar exists in userData
+          // CEO Avatar
           if (widget.userData['avatar'] != null)
             CircleAvatar(
-              radius: 18,
+              radius: isSmallScreen ? 16 : 18,
               backgroundImage: NetworkImage(widget.userData['avatar']),
             )
           else
             CircleAvatar(
-              radius: 18,
+              radius: isSmallScreen ? 16 : 18,
               backgroundColor: Colors.grey.shade700,
-              child: const Icon(Icons.person, size: 18, color: Colors.white),
+              child: Icon(Icons.person,
+                  size: isSmallScreen ? 16 : 18, color: Colors.white),
             ),
-          const SizedBox(width: 8),
-          Text(
-            widget.userData['name'] ?? "CEO",
-            style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 14),
-          ),
+          if (!isSmallScreen) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                widget.userData['name'] ?? "CEO",
+                style: TextStyle(
+                  color: const Color(0xFFD1D5DB),
+                  fontSize: isSmallScreen ? 12 : 14,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(bool isSmallScreen) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: _tabs.asMap().entries.map((entry) {
-          final index = entry.key;
-          final tab = entry.value;
-          return Expanded(
-            child: TextButton(
-              onPressed: () => setState(() => _activeTab = index),
-              style: TextButton.styleFrom(
-                foregroundColor: _activeTab == index
-                    ? const Color(0xFF2DD4BF)
-                    : const Color(0xFF9CA3AF),
-                backgroundColor: _activeTab == index
-                    ? const Color(0xFF374151)
-                    : Colors.transparent,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: SingleChildScrollView(
+        scrollDirection: isSmallScreen ? Axis.horizontal : Axis.horizontal,
+        child: Row(
+          children: _tabs.asMap().entries.map((entry) {
+            final index = entry.key;
+            final tab = entry.value;
+            return Container(
+              width: isSmallScreen
+                  ? MediaQuery.of(context).size.width / 4 - 8
+                  : null,
+              child: TextButton(
+                onPressed: () => setState(() => _activeTab = index),
+                style: TextButton.styleFrom(
+                  foregroundColor: _activeTab == index
+                      ? const Color(0xFF2DD4BF)
+                      : const Color(0xFF9CA3AF),
+                  backgroundColor: _activeTab == index
+                      ? const Color(0xFF374151)
+                      : Colors.transparent,
+                  padding: EdgeInsets.symmetric(
+                    vertical: isSmallScreen ? 10 : 12,
+                    horizontal: isSmallScreen ? 4 : 8,
+                  ),
+                  minimumSize: Size.zero,
+                ),
+                child: Text(
+                  tab,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: isSmallScreen ? 12 : 14,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              child: Text(
-                tab,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(bool isSmallScreen, bool isLargeScreen) {
     if (_isLoading) {
       return const Center(
         child: Column(
@@ -1259,52 +1343,58 @@ class _CEODashboardState extends State<CEODashboard> {
 
     switch (_activeTab) {
       case 0:
-        return _buildPendingTab();
+        return _buildPendingTab(isSmallScreen);
       case 1:
-        return _buildAnalyticsTab();
+        return _buildAnalyticsTab(isSmallScreen, isLargeScreen);
       case 2:
-        return _buildHistoryTab();
+        return _buildHistoryTab(isSmallScreen);
       case 3:
-        return _buildReportsTab();
+        return _buildReportsTab(isSmallScreen);
       default:
-        return _buildPendingTab();
+        return _buildPendingTab(isSmallScreen);
     }
   }
 
-  Widget _buildPendingTab() {
+  Widget _buildPendingTab(bool isSmallScreen) {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           child: Column(
             children: [
               Row(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      decoration: _buildDropdownDecoration("Filter"),
+                      decoration:
+                          _buildDropdownDecoration("Filter", isSmallScreen),
                       value: _selectedFilter,
                       items: _filterOptions.map((String value) {
                         return DropdownMenuItem(
                           value: value,
-                          child: Text(value,
-                              style: TextStyle(color: Colors.white)),
+                          child: Text(
+                            value,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmallScreen ? 12 : 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: (value) {
                         setState(() {
                           _selectedFilter = value!;
-                          _employeeIdSearchQuery =
-                              ''; // Clear search when changing filter
+                          _employeeIdSearchQuery = '';
                           _applyFilter();
                         });
                       },
                       dropdownColor: const Color(0xFF374151),
+                      isExpanded: true,
                     ),
                   ),
                 ],
               ),
-              // Add search field when "Search by Employee ID" is selected
               if (_selectedFilter == 'Search by Employee ID')
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -1317,20 +1407,26 @@ class _CEODashboardState extends State<CEODashboard> {
                     },
                     decoration: InputDecoration(
                       hintText: "Enter Employee ID to search...",
-                      hintStyle: TextStyle(color: Colors.grey[500]),
-                      border: OutlineInputBorder(),
-                      focusedBorder: OutlineInputBorder(
+                      hintStyle: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: isSmallScreen ? 12 : 14,
+                      ),
+                      border: const OutlineInputBorder(),
+                      focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Color(0xFF2DD4BF)),
                       ),
-                      enabledBorder: OutlineInputBorder(
+                      enabledBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.grey),
                       ),
                       filled: true,
-                      fillColor: Color(0xFF374151),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey),
+                      fillColor: const Color(0xFF374151),
+                      prefixIcon: Icon(Icons.search,
+                          color: Colors.grey, size: isSmallScreen ? 18 : 24),
                       suffixIcon: _employeeIdSearchQuery.isNotEmpty
                           ? IconButton(
-                              icon: Icon(Icons.clear, color: Colors.grey),
+                              icon: Icon(Icons.clear,
+                                  color: Colors.grey,
+                                  size: isSmallScreen ? 18 : 24),
                               onPressed: () {
                                 setState(() {
                                   _employeeIdSearchQuery = '';
@@ -1339,28 +1435,45 @@ class _CEODashboardState extends State<CEODashboard> {
                               },
                             )
                           : null,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: isSmallScreen ? 12 : 16,
+                      ),
                     ),
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isSmallScreen ? 12 : 14,
+                    ),
                   ),
                 ),
             ],
           ),
         ),
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: EdgeInsets.fromLTRB(isSmallScreen ? 12 : 16, 0,
+              isSmallScreen ? 12 : 16, isSmallScreen ? 12 : 16),
           child: Row(
             children: [
-              _buildStatCard(
+              Expanded(
+                  child: _buildStatCard(
                 'Total Pending',
                 _filteredPendingRequests.length.toString(),
-              ),
-              const SizedBox(width: 12),
-              _buildStatCard('Total Amount', '₹${_calculateTotalAmount()}'),
-              const SizedBox(width: 12),
-              _buildStatCard(
+                isSmallScreen,
+              )),
+              SizedBox(width: isSmallScreen ? 8 : 12),
+              Expanded(
+                  child: _buildStatCard(
+                'Total Amount',
+                '₹${_calculateTotalAmount()}',
+                isSmallScreen,
+              )),
+              SizedBox(width: isSmallScreen ? 8 : 12),
+              Expanded(
+                  child: _buildStatCard(
                 'Approval Rate',
                 '${_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0'}%',
-              ),
+                isSmallScreen,
+              )),
             ],
           ),
         ),
@@ -1378,13 +1491,16 @@ class _CEODashboardState extends State<CEODashboard> {
                             _employeeIdSearchQuery.isNotEmpty
                         ? 'No pending requests found for Employee ID: $_employeeIdSearchQuery'
                         : 'All CEO approvals have been processed',
+                    isSmallScreen,
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isSmallScreen ? 12 : 16,
+                    ),
                     itemCount: _filteredPendingRequests.length,
                     itemBuilder: (context, index) {
                       final request = _filteredPendingRequests[index];
-                      return _buildRequestCard(request);
+                      return _buildRequestCard(request, isSmallScreen);
                     },
                   ),
           ),
@@ -1393,12 +1509,12 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildRequestCard(Map<String, dynamic> request) {
+  Widget _buildRequestCard(Map<String, dynamic> request, bool isSmallScreen) {
     return Card(
       color: const Color(0xFF1F2937),
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: EdgeInsets.only(bottom: isSmallScreen ? 6 : 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1406,66 +1522,68 @@ class _CEODashboardState extends State<CEODashboard> {
               children: [
                 if (request['employeeAvatar'] != null)
                   CircleAvatar(
-                    radius: 16,
+                    radius: isSmallScreen ? 14 : 16,
                     backgroundImage: NetworkImage(request['employeeAvatar']),
                   )
                 else
                   CircleAvatar(
-                    radius: 16,
+                    radius: isSmallScreen ? 14 : 16,
                     backgroundColor: Colors.grey.shade800,
                     child: Text(
                       request['employeeName'][0],
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                        fontSize: isSmallScreen ? 10 : 12,
                       ),
                     ),
                   ),
-                const SizedBox(width: 8),
+                SizedBox(width: isSmallScreen ? 6 : 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         request['employeeName'],
-                        style: const TextStyle(
-                          fontSize: 14,
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 12 : 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         request['employeeId'],
-                        style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontSize: 10,
+                        style: TextStyle(
+                          color: const Color(0xFF9CA3AF),
+                          fontSize: isSmallScreen ? 9 : 10,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 4 : 6,
+                    vertical: isSmallScreen ? 1 : 2,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade800,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Pending CEO',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 8,
+                      fontSize: isSmallScreen ? 7 : 8,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isSmallScreen ? 6 : 8),
             Row(
               children: [
                 Column(
@@ -1473,16 +1591,18 @@ class _CEODashboardState extends State<CEODashboard> {
                   children: [
                     Text(
                       "₹${request['amount'].toStringAsFixed(0)}",
-                      style: const TextStyle(
-                        fontSize: 16,
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 14 : 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF2DD4BF),
+                        color: const Color(0xFF2DD4BF),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: isSmallScreen ? 1 : 2),
                     Text(
                       "Total Amount",
-                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 10),
+                      style: TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: isSmallScreen ? 9 : 10),
                     ),
                   ],
                 ),
@@ -1492,13 +1612,15 @@ class _CEODashboardState extends State<CEODashboard> {
                   children: [
                     Text(
                       "${_getPaymentCount(request)} payments",
-                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 10),
+                      style: TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: isSmallScreen ? 9 : 10),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: isSmallScreen ? 1 : 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 4 : 6,
+                        vertical: isSmallScreen ? 1 : 2,
                       ),
                       decoration: BoxDecoration(
                         color: request['type'] == 'reimbursement'
@@ -1510,9 +1632,9 @@ class _CEODashboardState extends State<CEODashboard> {
                         request['type'] == 'reimbursement'
                             ? 'Reimbursement'
                             : 'Advance',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
-                          fontSize: 8,
+                          fontSize: isSmallScreen ? 7 : 8,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1521,25 +1643,29 @@ class _CEODashboardState extends State<CEODashboard> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isSmallScreen ? 6 : 8),
             Row(
               children: [
-                Icon(Icons.calendar_today, size: 12, color: Color(0xFF9CA3AF)),
-                const SizedBox(width: 4),
+                Icon(Icons.calendar_today,
+                    size: isSmallScreen ? 10 : 12, color: Color(0xFF9CA3AF)),
+                SizedBox(width: isSmallScreen ? 3 : 4),
                 Text(
                   "Submitted: ${request['date']}",
-                  style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 10),
+                  style: TextStyle(
+                      color: Color(0xFF9CA3AF),
+                      fontSize: isSmallScreen ? 9 : 10),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isSmallScreen ? 6 : 8),
             Text(
               request['description'],
-              style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 12),
+              style: TextStyle(
+                  color: Color(0xFFD1D5DB), fontSize: isSmallScreen ? 11 : 12),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: isSmallScreen ? 10 : 12),
             Row(
               children: [
                 Expanded(
@@ -1547,52 +1673,58 @@ class _CEODashboardState extends State<CEODashboard> {
                     onPressed: () => _handleApprove(request['id']),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF16A34A),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 6 : 8,
+                      ),
                       minimumSize: const Size(0, 36),
                     ),
-                    child: const Text(
+                    child: Text(
                       "Approve",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        fontSize: isSmallScreen ? 11 : 12,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isSmallScreen ? 6 : 8),
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => _handleReject(request['id']),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
                       side: const BorderSide(color: Color(0xFFDC2626)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 6 : 8,
+                      ),
                       minimumSize: const Size(0, 36),
                     ),
-                    child: const Text(
+                    child: Text(
                       "Reject",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        fontSize: isSmallScreen ? 11 : 12,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isSmallScreen ? 6 : 8),
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => _showRequestDetails(request),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF2DD4BF),
                       side: const BorderSide(color: Color(0xFF2DD4BF)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 6 : 8,
+                      ),
                       minimumSize: const Size(0, 36),
                     ),
-                    child: const Text(
+                    child: Text(
                       "Details",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        fontSize: isSmallScreen ? 11 : 12,
                       ),
                     ),
                   ),
@@ -1605,18 +1737,18 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildAnalyticsTab() {
+  Widget _buildAnalyticsTab(bool isSmallScreen, bool isLargeScreen) {
     return RefreshIndicator(
       onRefresh: _loadAnalyticsData,
       color: const Color(0xFF2DD4BF),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           children: [
             Card(
               color: const Color(0xFF1F2937),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Row(
                   children: [
                     Container(
@@ -1627,7 +1759,7 @@ class _CEODashboardState extends State<CEODashboard> {
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: isSmallScreen ? 6 : 8),
                     const Expanded(
                       child: Text(
                         'Real-time Analytics',
@@ -1636,82 +1768,93 @@ class _CEODashboardState extends State<CEODashboard> {
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: isSmallScreen ? 6 : 8),
                     Text(
                       'Updated: ${DateFormat('HH:mm:ss').format(DateTime.now())}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Color(0xFF9CA3AF),
-                        fontSize: 12,
+                        fontSize: isSmallScreen ? 10 : 12,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
             GridView.count(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
+              crossAxisCount: isSmallScreen ? 2 : (isLargeScreen ? 3 : 2),
+              crossAxisSpacing: isSmallScreen ? 8 : 12,
+              mainAxisSpacing: isSmallScreen ? 8 : 12,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.5,
+              childAspectRatio: isSmallScreen ? 1.3 : 1.5,
               children: [
                 _buildAnalyticsCard(
                   "Monthly Approved",
                   "₹${(_analyticsData['monthly_spending'] ?? 0).toStringAsFixed(0)}",
+                  isSmallScreen,
                 ),
                 _buildAnalyticsCard(
                   "Approval Rate",
                   "${(_analyticsData['approval_rate']?.toStringAsFixed(1) ?? '0')}%",
+                  isSmallScreen,
                 ),
                 _buildAnalyticsCard(
                   "Avg. Request Amount",
                   "₹${(_analyticsData['average_request_amount'] ?? 0).toStringAsFixed(0)}",
+                  isSmallScreen,
                 ),
                 _buildAnalyticsCard(
                   "Monthly Approved Count",
                   (_analyticsData['monthly_approved_count'] ?? 0).toString(),
+                  isSmallScreen,
                 ),
                 _buildAnalyticsCard(
                   "Total Requests This Month",
                   (_analyticsData['total_requests_this_month'] ?? 0).toString(),
+                  isSmallScreen,
                 ),
                 _buildAnalyticsCard(
                   "Monthly Growth",
                   "${(_analyticsData['monthly_growth'] ?? 0).toStringAsFixed(1)}%",
+                  isSmallScreen,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildChartCard("Request Types Distribution", _buildTypeChart()),
-            const SizedBox(height: 16),
-            _buildChartCard("Department Distribution", _buildPieChart()),
-            const SizedBox(height: 16),
-            _buildChartCard("Approval Statistics", _buildApprovalStatsChart()),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+            _buildChartCard(
+                "Request Types Distribution", _buildTypeChart(), isSmallScreen),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+            _buildChartCard(
+                "Department Distribution", _buildPieChart(), isSmallScreen),
+            SizedBox(height: isSmallScreen ? 12 : 16),
+            _buildChartCard("Approval Statistics", _buildApprovalStatsChart(),
+                isSmallScreen),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHistoryTab() {
+  Widget _buildHistoryTab(bool isSmallScreen) {
     return Column(
       children: [
         Card(
           color: const Color(0xFF1F2937),
-          margin: const EdgeInsets.all(16),
+          margin: EdgeInsets.all(isSmallScreen ? 12 : 16),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
             child: Column(
               children: [
                 Row(
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        decoration: _buildDropdownDecoration("Time Period"),
+                        decoration: _buildDropdownDecoration(
+                            "Time Period", isSmallScreen),
                         value: 'Last 30 days',
                         items: ['Last 30 days', 'Last 7 days', 'Last 90 days']
                             .map((String value) {
@@ -1719,7 +1862,10 @@ class _CEODashboardState extends State<CEODashboard> {
                             value: value,
                             child: Text(
                               value,
-                              style: TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isSmallScreen ? 12 : 14,
+                              ),
                             ),
                           );
                         }).toList(),
@@ -1754,7 +1900,7 @@ class _CEODashboardState extends State<CEODashboard> {
                         dropdownColor: const Color(0xFF374151),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: isSmallScreen ? 8 : 12),
                   ],
                 ),
               ],
@@ -1769,13 +1915,16 @@ class _CEODashboardState extends State<CEODashboard> {
                 ? _buildEmptyState(
                     'No History',
                     'No CEO actions found for selected period',
+                    isSmallScreen,
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isSmallScreen ? 12 : 16,
+                    ),
                     itemCount: _historyData.length,
                     itemBuilder: (context, index) {
                       final request = _historyData[index];
-                      return _buildHistoryCard(request);
+                      return _buildHistoryCard(request, isSmallScreen);
                     },
                   ),
           ),
@@ -1784,573 +1933,114 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildReportsTab() {
+  Widget _buildReportsTab(bool isSmallScreen) {
     return RefreshIndicator(
       onRefresh: _loadData,
       color: const Color(0xFF2DD4BF),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           children: [
             // Employee ID Report
-            Card(
-              color: const Color(0xFF1F2937),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person, color: Color(0xFF2DD4BF)),
-                        SizedBox(width: 8),
-                        Text(
-                          "By Employee ID",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Employee ID:",
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          _reportIdentifier = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: "Enter Employee ID",
-                        hintStyle: TextStyle(color: Colors.grey[500]),
-                        border: OutlineInputBorder(),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFF2DD4BF)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.grey),
-                        ),
-                        filled: true,
-                        fillColor: Color(0xFF374151),
-                        prefixIcon: Icon(Icons.badge, color: Colors.grey),
-                      ),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Time Period:",
-                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _reportPeriod,
-                      dropdownColor: const Color(0xFF374151),
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                      decoration: _buildDropdownDecoration(""),
-                      items: [
-                        DropdownMenuItem(
-                          value: '1_month',
-                          child: Text('Last 1 Month'),
-                        ),
-                        DropdownMenuItem(
-                          value: '3_months',
-                          child: Text('Last 3 Months'),
-                        ),
-                        DropdownMenuItem(
-                          value: '6_months',
-                          child: Text('Last 6 Months'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'all_time',
-                          child: Text('All Time'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _reportPeriod = value!;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isGeneratingReport
-                            ? null
-                            : _generateEmployeeReport,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _isGeneratingReport
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text("Generating Employee Report..."),
-                                ],
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.people),
-                                  SizedBox(width: 8),
-                                  Text("Generate Employee Report"),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
+            _buildReportSection(
+              icon: Icons.person,
+              title: "By Employee ID",
+              color: Color(0xFF2DD4BF),
+              isSmallScreen: isSmallScreen,
+              fields: [
+                _buildReportTextField(
+                  label: "Employee ID:",
+                  hint: "Enter Employee ID",
+                  prefixIcon: Icons.badge,
+                  onChanged: (value) => _reportIdentifier = value,
+                  isSmallScreen: isSmallScreen,
                 ),
+                _buildReportDropdown(isSmallScreen),
+              ],
+              button: _buildReportButton(
+                text: "Generate Employee Report",
+                icon: Icons.people,
+                isLoading: _isGeneratingReport,
+                onPressed: _generateEmployeeReport,
+                isSmallScreen: isSmallScreen,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
 
             // Project ID/Code/Name Report
-            Card(
-              color: const Color(0xFF1F2937),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.business, color: Color(0xFF10B981)),
-                        SizedBox(width: 8),
-                        Text(
-                          "By Project ID/Code/Name",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Project ID/Code/Name:",
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          _reportIdentifier = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: "Enter Project ID, Code or Name",
-                        hintStyle: TextStyle(color: Colors.grey[500]),
-                        border: OutlineInputBorder(),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFF10B981)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.grey),
-                        ),
-                        filled: true,
-                        fillColor: Color(0xFF374151),
-                        prefixIcon: Icon(Icons.work, color: Colors.grey),
-                      ),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Time Period:",
-                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _reportPeriod,
-                      dropdownColor: const Color(0xFF374151),
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                      decoration: _buildDropdownDecoration(""),
-                      items: [
-                        DropdownMenuItem(
-                          value: '1_month',
-                          child: Text('Last 1 Month'),
-                        ),
-                        DropdownMenuItem(
-                          value: '3_months',
-                          child: Text('Last 3 Months'),
-                        ),
-                        DropdownMenuItem(
-                          value: '6_months',
-                          child: Text('Last 6 Months'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'all_time',
-                          child: Text('All Time'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _reportPeriod = value!;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed:
-                            _isGeneratingReport ? null : _generateProjectReport,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _isGeneratingReport
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text("Generating Project Report..."),
-                                ],
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.assignment),
-                                  SizedBox(width: 8),
-                                  Text("Generate Project Report"),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
+            _buildReportSection(
+              icon: Icons.business,
+              title: "By Project ID/Code/Name",
+              color: Color(0xFF10B981),
+              isSmallScreen: isSmallScreen,
+              fields: [
+                _buildReportTextField(
+                  label: "Project ID/Code/Name:",
+                  hint: "Enter Project ID, Code or Name",
+                  prefixIcon: Icons.work,
+                  onChanged: (value) => _reportIdentifier = value,
+                  isSmallScreen: isSmallScreen,
                 ),
+                _buildReportDropdown(isSmallScreen),
+              ],
+              button: _buildReportButton(
+                text: "Generate Project Report",
+                icon: Icons.assignment,
+                isLoading: _isGeneratingReport,
+                onPressed: _generateProjectReport,
+                isSmallScreen: isSmallScreen,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
 
             // Employee ID in Particular Project Report
-            Card(
-              color: const Color(0xFF1F2937),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person_search, color: Color(0xFF8B5CF6)),
-                        SizedBox(width: 8),
-                        Text(
-                          "Employee in Specific Project",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Employee ID:",
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          _employeeIdForProjectReport = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: "Enter Employee ID",
-                        hintStyle: TextStyle(color: Colors.grey[500]),
-                        border: OutlineInputBorder(),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFF8B5CF6)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.grey),
-                        ),
-                        filled: true,
-                        fillColor: Color(0xFF374151),
-                        prefixIcon: Icon(Icons.badge, color: Colors.grey),
-                      ),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Project ID/Code/Name:",
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      onChanged: (value) {
-                        setState(() {
-                          _projectIdForEmployeeReport = value;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: "Enter Project ID, Code or Name",
-                        hintStyle: TextStyle(color: Colors.grey[500]),
-                        border: OutlineInputBorder(),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFF8B5CF6)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.grey),
-                        ),
-                        filled: true,
-                        fillColor: Color(0xFF374151),
-                        prefixIcon: Icon(Icons.work, color: Colors.grey),
-                      ),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isGeneratingEmployeeProjectReport
-                            ? null
-                            : _generateEmployeeProjectReport,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 207, 205, 213),
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _isGeneratingEmployeeProjectReport
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text("Generating Combined Report..."),
-                                ],
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.insights),
-                                  SizedBox(width: 8),
-                                  Text("Generate Combined Report"),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
+            _buildReportSection(
+              icon: Icons.person_search,
+              title: "Employee in Specific Project",
+              color: Color(0xFF8B5CF6),
+              isSmallScreen: isSmallScreen,
+              fields: [
+                _buildReportTextField(
+                  label: "Employee ID:",
+                  hint: "Enter Employee ID",
+                  prefixIcon: Icons.badge,
+                  onChanged: (value) => _employeeIdForProjectReport = value,
+                  isSmallScreen: isSmallScreen,
                 ),
+                _buildReportTextField(
+                  label: "Project ID/Code/Name:",
+                  hint: "Enter Project ID, Code or Name",
+                  prefixIcon: Icons.work,
+                  onChanged: (value) => _projectIdForEmployeeReport = value,
+                  isSmallScreen: isSmallScreen,
+                ),
+              ],
+              button: _buildReportButton(
+                text: "Generate Combined Report",
+                icon: Icons.insights,
+                isLoading: _isGeneratingEmployeeProjectReport,
+                onPressed: _generateEmployeeProjectReport,
+                isSmallScreen: isSmallScreen,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
 
             // Custom Date Range Report
-            Card(
-              color: const Color(0xFF1F2937),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today, color: Color(0xFFF59E0B)),
-                        SizedBox(width: 8),
-                        Text(
-                          "Custom Date Range Report",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Select Date Range:",
-                      style: TextStyle(color: Color(0xFF9CA3AF)),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Start Date:",
-                                style: TextStyle(
-                                    color: Color(0xFF9CA3AF), fontSize: 12),
-                              ),
-                              const SizedBox(height: 4),
-                              ElevatedButton(
-                                onPressed: () => _selectStartDate(context),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF374151),
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 10),
-                                  minimumSize: Size(0, 40),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _customStartDate != null
-                                          ? DateFormat('MMM dd, yyyy')
-                                              .format(_customStartDate!)
-                                          : "Select Start Date",
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 12),
-                                    ),
-                                    Icon(Icons.calendar_today,
-                                        size: 16, color: Colors.grey),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "End Date:",
-                                style: TextStyle(
-                                    color: Color(0xFF9CA3AF), fontSize: 12),
-                              ),
-                              const SizedBox(height: 4),
-                              ElevatedButton(
-                                onPressed: () => _selectEndDate(context),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF374151),
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 10),
-                                  minimumSize: Size(0, 40),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _customEndDate != null
-                                          ? DateFormat('MMM dd, yyyy')
-                                              .format(_customEndDate!)
-                                          : "Select End Date",
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 12),
-                                    ),
-                                    Icon(Icons.calendar_today,
-                                        size: 16, color: Colors.grey),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_customStartDate != null && _customEndDate != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Color(0xFF374151),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.calendar_today,
-                                size: 16, color: Color(0xFFF59E0B)),
-                            SizedBox(width: 8),
-                            Text(
-                              "Selected: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isGeneratingCustomDateReport
-                            ? null
-                            : _generateCustomDateRangeReport,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFFF59E0B),
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _isGeneratingCustomDateReport
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text("Generating Date Range Report..."),
-                                ],
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.date_range, color: Colors.white),
-                                  SizedBox(width: 8),
-                                  Text("Generate Date Range Report",
-                                      style: TextStyle(color: Colors.white)),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
+            _buildReportSection(
+              icon: Icons.calendar_today,
+              title: "Custom Date Range Report",
+              color: Color(0xFFF59E0B),
+              isSmallScreen: isSmallScreen,
+              fields: [
+                _buildDateRangeSelector(isSmallScreen),
+              ],
+              button: _buildReportButton(
+                text: "Generate Date Range Report",
+                icon: Icons.date_range,
+                isLoading: _isGeneratingCustomDateReport,
+                onPressed: _generateCustomDateRangeReport,
+                isSmallScreen: isSmallScreen,
+                color: Color(0xFFF59E0B),
               ),
             ),
           ],
@@ -2359,60 +2049,395 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildStatCard(String title, String value) {
-    return Expanded(
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1F2937),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(12),
+  Widget _buildReportSection({
+    required IconData icon,
+    required String title,
+    required Color color,
+    required bool isSmallScreen,
+    required List<Widget> fields,
+    required Widget button,
+  }) {
+    return Card(
+      color: const Color(0xFF1F2937),
+      child: Padding(
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            Row(
+              children: [
+                Icon(icon, color: color),
+                SizedBox(width: isSmallScreen ? 6 : 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isSmallScreen ? 16 : 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2DD4BF),
-              ),
-            ),
+            SizedBox(height: isSmallScreen ? 8 : 12),
+            ...fields,
+            SizedBox(height: isSmallScreen ? 12 : 16),
+            button,
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAnalyticsCard(String title, String value) {
+  Widget _buildReportTextField({
+    required String label,
+    required String hint,
+    required IconData prefixIcon,
+    required Function(String) onChanged,
+    required bool isSmallScreen,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Color(0xFF9CA3AF),
+            fontSize: isSmallScreen ? 12 : 14,
+          ),
+        ),
+        SizedBox(height: isSmallScreen ? 4 : 8),
+        TextField(
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(
+              color: Colors.grey[500],
+              fontSize: isSmallScreen ? 12 : 14,
+            ),
+            border: OutlineInputBorder(),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF2DD4BF)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Colors.grey),
+            ),
+            filled: true,
+            fillColor: Color(0xFF374151),
+            prefixIcon: Icon(prefixIcon, color: Colors.grey),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: isSmallScreen ? 12 : 16,
+            ),
+          ),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: isSmallScreen ? 12 : 14,
+          ),
+        ),
+        SizedBox(height: isSmallScreen ? 8 : 12),
+      ],
+    );
+  }
+
+  Widget _buildReportDropdown(bool isSmallScreen) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Time Period:",
+          style: TextStyle(
+              color: Color(0xFF9CA3AF), fontSize: isSmallScreen ? 12 : 14),
+        ),
+        SizedBox(height: isSmallScreen ? 4 : 8),
+        DropdownButtonFormField<String>(
+          value: _reportPeriod,
+          dropdownColor: const Color(0xFF374151),
+          style:
+              TextStyle(color: Colors.white, fontSize: isSmallScreen ? 12 : 14),
+          decoration: _buildDropdownDecoration("", isSmallScreen),
+          items: [
+            DropdownMenuItem(
+              value: '1_month',
+              child: Text('Last 1 Month'),
+            ),
+            DropdownMenuItem(
+              value: '3_months',
+              child: Text('Last 3 Months'),
+            ),
+            DropdownMenuItem(
+              value: '6_months',
+              child: Text('Last 6 Months'),
+            ),
+            DropdownMenuItem(
+              value: 'all_time',
+              child: Text('All Time'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _reportPeriod = value!;
+            });
+          },
+        ),
+        SizedBox(height: isSmallScreen ? 8 : 12),
+      ],
+    );
+  }
+
+  Widget _buildReportButton({
+    required String text,
+    required IconData icon,
+    required bool isLoading,
+    required VoidCallback onPressed,
+    required bool isSmallScreen,
+    Color? color,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: isLoading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color ?? Color.fromARGB(255, 207, 205, 213),
+          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 12 : 14),
+        ),
+        child: isLoading
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.white,
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    "Generating...",
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 12 : 14,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: isSmallScreen ? 16 : 20),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 12 : 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildDateRangeSelector(bool isSmallScreen) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Select Date Range:",
+          style: TextStyle(
+            color: Color(0xFF9CA3AF),
+            fontSize: isSmallScreen ? 12 : 14,
+          ),
+        ),
+        SizedBox(height: isSmallScreen ? 6 : 8),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Start Date:",
+                    style: TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: isSmallScreen ? 10 : 12),
+                  ),
+                  SizedBox(height: isSmallScreen ? 2 : 4),
+                  ElevatedButton(
+                    onPressed: () => _selectStartDate(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF374151),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: isSmallScreen ? 8 : 10,
+                      ),
+                      minimumSize: Size(0, isSmallScreen ? 36 : 40),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _customStartDate != null
+                                ? DateFormat('MMM dd, yyyy')
+                                    .format(_customStartDate!)
+                                : "Select Start Date",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isSmallScreen ? 10 : 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(Icons.calendar_today,
+                            size: isSmallScreen ? 14 : 16, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: isSmallScreen ? 8 : 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "End Date:",
+                    style: TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: isSmallScreen ? 10 : 12),
+                  ),
+                  SizedBox(height: isSmallScreen ? 2 : 4),
+                  ElevatedButton(
+                    onPressed: () => _selectEndDate(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF374151),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: isSmallScreen ? 8 : 10,
+                      ),
+                      minimumSize: Size(0, isSmallScreen ? 36 : 40),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _customEndDate != null
+                                ? DateFormat('MMM dd, yyyy')
+                                    .format(_customEndDate!)
+                                : "Select End Date",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isSmallScreen ? 10 : 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(Icons.calendar_today,
+                            size: isSmallScreen ? 14 : 16, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (_customStartDate != null && _customEndDate != null) ...[
+          SizedBox(height: isSmallScreen ? 8 : 12),
+          Container(
+            padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+            decoration: BoxDecoration(
+              color: Color(0xFF374151),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.calendar_today,
+                    size: isSmallScreen ? 14 : 16, color: Color(0xFFF59E0B)),
+                SizedBox(width: isSmallScreen ? 6 : 8),
+                Expanded(
+                  child: Text(
+                    "Selected: ${DateFormat('MMM dd, yyyy').format(_customStartDate!)} - ${DateFormat('MMM dd, yyyy').format(_customEndDate!)}",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isSmallScreen ? 10 : 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, bool isSmallScreen) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1F2937),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+                color: Color(0xFF9CA3AF), fontSize: isSmallScreen ? 10 : 12),
+          ),
+          SizedBox(height: isSmallScreen ? 2 : 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isSmallScreen ? 14 : 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2DD4BF),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsCard(String title, String value, bool isSmallScreen) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2937),
+        borderRadius: BorderRadius.circular(isSmallScreen ? 8 : 12),
         border: Border.all(color: const Color(0xFF374151)),
       ),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             title,
-            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+            style: TextStyle(
+                color: Color(0xFF9CA3AF), fontSize: isSmallScreen ? 10 : 12),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: isSmallScreen ? 6 : 8),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 18,
+            style: TextStyle(
+              fontSize: isSmallScreen ? 16 : 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2DD4BF),
             ),
@@ -2424,11 +2449,11 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildChartCard(String title, Widget chart) {
+  Widget _buildChartCard(String title, Widget chart, bool isSmallScreen) {
     return Card(
       color: const Color(0xFF1F2937),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2437,8 +2462,8 @@ class _CEODashboardState extends State<CEODashboard> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 16,
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 14 : 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
@@ -2446,12 +2471,12 @@ class _CEODashboardState extends State<CEODashboard> {
                     maxLines: 2,
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isSmallScreen ? 6 : 8),
                 if (_activeTab == 1)
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.refresh,
-                      size: 18,
+                      size: isSmallScreen ? 16 : 18,
                       color: Color(0xFF2DD4BF),
                     ),
                     onPressed: _loadAnalyticsData,
@@ -2459,7 +2484,7 @@ class _CEODashboardState extends State<CEODashboard> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
             chart,
           ],
         ),
@@ -2472,7 +2497,7 @@ class _CEODashboardState extends State<CEODashboard> {
     final advanceCount = _analyticsData['advance_count'] ?? 0;
 
     if (reimbursementCount == 0 && advanceCount == 0) {
-      return const SizedBox(
+      return SizedBox(
         height: 150,
         child: Center(
           child: Text(
@@ -2501,10 +2526,10 @@ class _CEODashboardState extends State<CEODashboard> {
                 _buildChartLegend("Advances", Colors.purple, advanceCount),
               ],
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             Text(
               "Total: ${reimbursementCount + advanceCount} requests",
-              style: const TextStyle(color: Color(0xFF9CA3AF)),
+              style: TextStyle(color: Color(0xFF9CA3AF)),
               textAlign: TextAlign.center,
             ),
           ],
@@ -2622,10 +2647,10 @@ class _CEODashboardState extends State<CEODashboard> {
                 _buildChartLegend("Pending", Colors.blue, pending),
               ],
             ),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             Text(
               "Total: ${approved + rejected + pending} requests",
-              style: const TextStyle(color: Color(0xFF9CA3AF)),
+              style: TextStyle(color: Color(0xFF9CA3AF)),
               textAlign: TextAlign.center,
             ),
           ],
@@ -2638,72 +2663,84 @@ class _CEODashboardState extends State<CEODashboard> {
     return Column(
       children: [
         Container(width: 20, height: 20, color: color),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(color: Colors.white, fontSize: 12),
+          style: TextStyle(color: Colors.white, fontSize: 12),
           textAlign: TextAlign.center,
           overflow: TextOverflow.ellipsis,
         ),
         Text(
           count.toString(),
-          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 16),
+          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 16),
           textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
-  Widget _buildHistoryCard(Map<String, dynamic> request) {
+  Widget _buildHistoryCard(Map<String, dynamic> request, bool isSmallScreen) {
     return Card(
       color: const Color(0xFF1F2937),
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: EdgeInsets.only(bottom: isSmallScreen ? 6 : 8),
       child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
+        contentPadding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         leading: request['employee_avatar'] != null
             ? CircleAvatar(
+                radius: isSmallScreen ? 20 : 24,
                 backgroundImage: NetworkImage(request['employee_avatar']),
               )
             : CircleAvatar(
+                radius: isSmallScreen ? 20 : 24,
                 backgroundColor: Colors.grey.shade800,
                 child: Text(
                   (request['employee_name']?[0] ?? 'U').toUpperCase(),
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: isSmallScreen ? 12 : 14,
+                  ),
                 ),
               ),
         title: Text(
           request['employee_name'] ?? 'Unknown',
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w500,
+            fontSize: isSmallScreen ? 12 : 14,
           ),
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 4),
+            SizedBox(height: isSmallScreen ? 2 : 4),
             Text(
               request['type'] ?? 'Unknown type',
-              style: const TextStyle(color: Color(0xFF9CA3AF)),
+              style: TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontSize: isSmallScreen ? 10 : 12,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
             Text(
               request['date'] ?? 'Unknown date',
-              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+              style: TextStyle(
+                  color: Color(0xFF9CA3AF), fontSize: isSmallScreen ? 9 : 10),
               overflow: TextOverflow.ellipsis,
             ),
             if (request['ceo_action'] == 'rejected' &&
                 request['rejection_reason'] != null)
               Text(
                 'CEO Rejected: ${request['rejection_reason']}',
-                style: const TextStyle(color: Colors.orange, fontSize: 11),
+                style: TextStyle(
+                    color: Colors.orange, fontSize: isSmallScreen ? 9 : 10),
                 overflow: TextOverflow.ellipsis,
               ),
             if (request['ceo_action'] == 'approved')
               Text(
                 'CEO Approved',
-                style: const TextStyle(color: Colors.green, fontSize: 11),
+                style: TextStyle(
+                    color: Colors.green, fontSize: isSmallScreen ? 9 : 10),
               ),
           ],
         ),
@@ -2713,14 +2750,17 @@ class _CEODashboardState extends State<CEODashboard> {
           children: [
             Text(
               "₹${(request['amount'] ?? 0).toStringAsFixed(0)}",
-              style: const TextStyle(
+              style: TextStyle(
                 color: Color(0xFF2DD4BF),
                 fontWeight: FontWeight.bold,
+                fontSize: isSmallScreen ? 12 : 14,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: isSmallScreen ? 2 : 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: EdgeInsets.symmetric(
+                  horizontal: isSmallScreen ? 6 : 8,
+                  vertical: isSmallScreen ? 1 : 2),
               decoration: BoxDecoration(
                 color: _getStatusColor(request['status']),
                 borderRadius: BorderRadius.circular(4),
@@ -2729,7 +2769,7 @@ class _CEODashboardState extends State<CEODashboard> {
                 request['status'] ?? 'Unknown',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 10,
+                  fontSize: isSmallScreen ? 8 : 10,
                   fontWeight: FontWeight.w500,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -2741,7 +2781,7 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  Widget _buildEmptyState(String title, String message) {
+  Widget _buildEmptyState(String title, String message, bool isSmallScreen) {
     return SingleChildScrollView(
       child: Container(
         constraints: BoxConstraints(
@@ -2749,27 +2789,29 @@ class _CEODashboardState extends State<CEODashboard> {
         ),
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(32.0),
+            padding: EdgeInsets.all(isSmallScreen ? 24 : 32),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.inbox_outlined,
-                    size: 64, color: Colors.grey.shade600),
-                const SizedBox(height: 16),
+                    size: isSmallScreen ? 48 : 64, color: Colors.grey.shade600),
+                SizedBox(height: isSmallScreen ? 12 : 16),
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 18,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 16 : 18,
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: isSmallScreen ? 6 : 8),
                 Text(
                   message,
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: isSmallScreen ? 12 : 14),
                   textAlign: TextAlign.center,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -2782,14 +2824,20 @@ class _CEODashboardState extends State<CEODashboard> {
     );
   }
 
-  InputDecoration _buildDropdownDecoration(String label) {
+  InputDecoration _buildDropdownDecoration(String label, bool isSmallScreen) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-      border: const OutlineInputBorder(),
+      labelStyle: TextStyle(
+        color: Color(0xFF9CA3AF),
+        fontSize: isSmallScreen ? 12 : 14,
+      ),
+      border: OutlineInputBorder(),
       filled: true,
-      fillColor: const Color(0xFF374151),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      fillColor: Color(0xFF374151),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: isSmallScreen ? 12 : 16,
+      ),
     );
   }
 

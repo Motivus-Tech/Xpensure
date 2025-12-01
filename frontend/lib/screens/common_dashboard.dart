@@ -36,11 +36,13 @@ class Request {
 class CommonDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
   final String authToken;
+  final VoidCallback onLogout;
 
   const CommonDashboard({
     Key? key,
     required this.userData,
     required this.authToken,
+    required this.onLogout,
   }) : super(key: key);
 
   @override
@@ -59,7 +61,7 @@ class _CommonDashboardState extends State<CommonDashboard>
   String _currentReimbursementFilter = 'latest';
   String _currentAdvanceFilter = 'latest';
 
-  // Employee ID search - FIXED: Remove debouncing
+  // Employee ID search
   String _reimbursementEmployeeSearch = '';
   String _advanceEmployeeSearch = '';
 
@@ -545,6 +547,51 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
+  // Logout functionality
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Logout', style: TextStyle(color: Colors.white)),
+        content: const Text('Are you sure you want to logout?',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Colors.redAccent, Colors.deepOrange],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onLogout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child:
+                  const Text('Logout', style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // CSV Download function - APPROVER VERSION
   Future<void> _downloadCSV(String period) async {
     try {
@@ -721,13 +768,16 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
-  // FIXED: Compact stats card to prevent overflow
+  // Responsive stats card
   Widget _buildStatsCard(String title, String value, Color color) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+    final bool isTablet = MediaQuery.of(context).size.width < 900;
+
     return Expanded(
       child: Container(
-        height: 70, // Reduced height
-        margin: const EdgeInsets.all(4), // Reduced margin
-        padding: const EdgeInsets.all(8), // Reduced padding
+        height: isMobile ? 70 : 80,
+        margin: EdgeInsets.all(isMobile ? 4 : 6),
+        padding: EdgeInsets.all(isMobile ? 8 : 12),
         decoration: BoxDecoration(
           color: const Color(0xFF1F1F1F),
           borderRadius: BorderRadius.circular(12),
@@ -746,30 +796,30 @@ class _CommonDashboardState extends State<CommonDashboard>
             Row(
               children: [
                 Container(
-                  width: 4,
-                  height: 4,
+                  width: isMobile ? 4 : 6,
+                  height: isMobile ? 4 : 6,
                   decoration: BoxDecoration(
                     color: color,
                     shape: BoxShape.circle,
                   ),
                 ),
-                SizedBox(width: 4),
+                SizedBox(width: isMobile ? 4 : 6),
                 Expanded(
                   child: Text(title,
                       style: TextStyle(
                           color: Colors.white70,
-                          fontSize: 10, // Smaller font
+                          fontSize: isMobile ? 10 : 12,
                           fontWeight: FontWeight.w500)),
                 ),
               ],
             ),
-            const SizedBox(height: 2),
+            SizedBox(height: isMobile ? 2 : 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(value,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: Colors.white,
-                      fontSize: 14, // Smaller font
+                      fontSize: isMobile ? 14 : 16,
                       fontWeight: FontWeight.bold)),
             ),
           ],
@@ -778,22 +828,32 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
-  Widget _emptyListWidget(String message) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.inbox, size: 48, color: Colors.white54),
-            SizedBox(height: 12),
-            Text(message,
-                style: TextStyle(color: Colors.white54, fontSize: 14)),
-          ],
-        ),
-      );
+  Widget _emptyListWidget(String message) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inbox, size: isMobile ? 48 : 56, color: Colors.white54),
+          SizedBox(height: isMobile ? 12 : 16),
+          Text(message,
+              style: TextStyle(
+                  color: Colors.white54, fontSize: isMobile ? 14 : 16)),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+    final bool isTablet = MediaQuery.of(context).size.width < 900;
+    final double screenWidth = MediaQuery.of(context).size.width;
+
     final userRole = widget.userData['role'] ?? 'Approver';
-    final userName = widget.userData['name'] ?? 'Approver';
+    final userName =
+        widget.userData['fullName'] ?? widget.userData['name'] ?? 'Approver';
     final userAvatar = widget.userData['avatar'] ??
         widget.userData['profile_picture'] ??
         widget.userData['image_url'];
@@ -804,7 +864,7 @@ class _CommonDashboardState extends State<CommonDashboard>
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
         automaticallyImplyLeading: false,
-        titleSpacing: 16,
+        titleSpacing: isMobile ? 12 : 16,
         title: Row(
           children: [
             // Xpensure logo with welcome message below
@@ -813,8 +873,8 @@ class _CommonDashboardState extends State<CommonDashboard>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 120,
-                  height: 32,
+                  width: isMobile ? 100 : 120,
+                  height: isMobile ? 28 : 32,
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [Colors.deepPurple, Colors.purpleAccent],
@@ -823,34 +883,51 @@ class _CommonDashboardState extends State<CommonDashboard>
                     ),
                     borderRadius: BorderRadius.all(Radius.circular(6)),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
                       "Xpensure",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: isMobile ? 14 : 16,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: 2),
+                SizedBox(height: isMobile ? 1 : 2),
                 Text(
-                  "Welcome, $userName", // FIXED: Shows actual name instead of "Approver"
+                  "Welcome, $userName",
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: 10, // Small font size
+                    fontSize: isMobile ? 9 : 10,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
             const Spacer(),
+
+            // CSV Download Menu
             _buildCSVDownloadMenu(),
-            const SizedBox(width: 12),
-            // User Avatar - FIXED: Proper avatar display
+            SizedBox(width: isMobile ? 8 : 12),
+
+            // Logout Button
             Container(
-              width: 36,
-              height: 36,
+              child: IconButton(
+                icon: Icon(Icons.logout,
+                    color: Colors.white, size: isMobile ? 18 : 20),
+                onPressed: _showLogoutDialog,
+                tooltip: 'Logout',
+                padding: EdgeInsets.all(isMobile ? 6 : 8),
+              ),
+            ),
+            SizedBox(width: isMobile ? 8 : 12),
+
+            // User Avatar
+            Container(
+              width: isMobile ? 32 : 36,
+              height: isMobile ? 32 : 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
@@ -864,14 +941,14 @@ class _CommonDashboardState extends State<CommonDashboard>
                         userAvatar,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
-                          return _buildFallbackAvatar(userName);
+                          return _buildFallbackAvatar(userName, isMobile);
                         },
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
-                          return _buildFallbackAvatar(userName);
+                          return _buildFallbackAvatar(userName, isMobile);
                         },
                       )
-                    : _buildFallbackAvatar(userName),
+                    : _buildFallbackAvatar(userName, isMobile),
               ),
             ),
           ],
@@ -881,8 +958,8 @@ class _CommonDashboardState extends State<CommonDashboard>
           indicatorColor: Colors.deepPurpleAccent,
           labelColor: Colors.deepPurpleAccent,
           unselectedLabelColor: Colors.white54,
-          labelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          labelStyle: TextStyle(
+              fontSize: isMobile ? 12 : 14, fontWeight: FontWeight.w600),
           tabs: const [
             Tab(text: "Reimbursement"),
             Tab(text: "Advance"),
@@ -891,10 +968,11 @@ class _CommonDashboardState extends State<CommonDashboard>
       ),
       body: Column(
         children: [
-          // Stats Cards - FIXED: More compact container
+          // Stats Cards - Responsive container
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            height: 90, // Fixed height
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 8 : 12, vertical: isMobile ? 6 : 8),
+            height: isMobile ? 80 : 90,
             child: Row(
               children: [
                 _buildStatsCard(
@@ -926,7 +1004,7 @@ class _CommonDashboardState extends State<CommonDashboard>
     );
   }
 
-  Widget _buildFallbackAvatar(String userName) {
+  Widget _buildFallbackAvatar(String userName, bool isMobile) {
     return Container(
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
@@ -939,10 +1017,10 @@ class _CommonDashboardState extends State<CommonDashboard>
       child: Center(
         child: Text(
           userName.isNotEmpty ? userName[0].toUpperCase() : 'A',
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
-            fontSize: 14,
+            fontSize: isMobile ? 12 : 14,
           ),
         ),
       ),
@@ -950,6 +1028,8 @@ class _CommonDashboardState extends State<CommonDashboard>
   }
 
   Widget _buildRequestList(String type, List<Request> requests) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+
     final filteredRequests = type == 'Reimbursement'
         ? _getFilteredReimbursementRequests()
         : _getFilteredAdvanceRequests();
@@ -958,7 +1038,6 @@ class _CommonDashboardState extends State<CommonDashboard>
         ? _currentReimbursementFilter
         : _currentAdvanceFilter;
 
-    // Use local state for search to prevent rebuilds
     return _RequestListContent(
       type: type,
       filteredRequests: filteredRequests,
@@ -1000,6 +1079,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       emptyListWidget: _emptyListWidget,
       showFilterDialog: _showFilterDialog,
       getFilterText: _getFilterText,
+      isMobile: isMobile,
     );
   }
 }
@@ -1019,6 +1099,7 @@ class _RequestListContent extends StatefulWidget {
   final Widget Function(String) emptyListWidget;
   final Function(String) showFilterDialog;
   final Function(String) getFilterText;
+  final bool isMobile;
 
   const _RequestListContent({
     Key? key,
@@ -1035,6 +1116,7 @@ class _RequestListContent extends StatefulWidget {
     required this.emptyListWidget,
     required this.showFilterDialog,
     required this.getFilterText,
+    required this.isMobile,
   }) : super(key: key);
 
   @override
@@ -1059,7 +1141,6 @@ class _RequestListContentState extends State<_RequestListContent> {
   @override
   void didUpdateWidget(_RequestListContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Update controller text if search changed from parent
     final currentSearch = widget.type == 'Reimbursement'
         ? widget.reimbursementEmployeeSearch
         : widget.advanceEmployeeSearch;
@@ -1077,29 +1158,44 @@ class _RequestListContentState extends State<_RequestListContent> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = widget.isMobile;
+
     return Column(
       children: [
         // Filter header with search
         Container(
           color: const Color(0xFF1E1E1E),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 12),
           child: Column(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '${widget.filteredRequests.length} requests found',
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  Flexible(
+                    child: Text(
+                      '${widget.filteredRequests.length} requests found',
+                      style: TextStyle(
+                          color: Colors.white70, fontSize: isMobile ? 12 : 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  SizedBox(width: isMobile ? 8 : 12),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'Filter: ${widget.getFilterText(widget.currentFilter)}',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 14),
+                      Flexible(
+                        child: Text(
+                          'Filter: ${widget.getFilterText(widget.currentFilter)}',
+                          style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: isMobile ? 12 : 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: isMobile ? 6 : 8),
                       Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
@@ -1110,20 +1206,21 @@ class _RequestListContentState extends State<_RequestListContent> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.filter_list,
-                              color: Colors.white, size: 20),
+                          icon: Icon(Icons.filter_list,
+                              color: Colors.white, size: isMobile ? 18 : 20),
                           onPressed: () => widget.showFilterDialog(widget.type),
                           tooltip: 'Filter requests',
+                          padding: EdgeInsets.all(isMobile ? 6 : 8),
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              // Employee ID Search - FIXED: No debouncing, immediate update
+              SizedBox(height: isMobile ? 8 : 12),
+              // Employee ID Search
               Container(
-                height: 40,
+                height: isMobile ? 36 : 40,
                 decoration: BoxDecoration(
                   color: const Color(0xFF1F1F1F),
                   borderRadius: BorderRadius.circular(12),
@@ -1132,23 +1229,24 @@ class _RequestListContentState extends State<_RequestListContent> {
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   onChanged: (value) {
-                    // Immediate update without delay
                     widget.onSearchChanged(value);
                   },
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(
+                      color: Colors.white, fontSize: isMobile ? 13 : 14),
                   decoration: InputDecoration(
                     hintText: 'Search by Employee ID or Name...',
-                    hintStyle:
-                        const TextStyle(color: Colors.white54, fontSize: 14),
-                    prefixIcon: const Icon(Icons.search,
-                        color: Colors.white54, size: 20),
+                    hintStyle: TextStyle(
+                        color: Colors.white54, fontSize: isMobile ? 13 : 14),
+                    prefixIcon: Icon(Icons.search,
+                        color: Colors.white54, size: isMobile ? 18 : 20),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                    // Clear button
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: Icon(Icons.clear,
-                                color: Colors.white54, size: 18),
+                                color: Colors.white54,
+                                size: isMobile ? 16 : 18),
                             onPressed: () {
                               _searchController.clear();
                               widget.onSearchChanged('');
@@ -1171,7 +1269,7 @@ class _RequestListContentState extends State<_RequestListContent> {
             child: widget.filteredRequests.isEmpty
                 ? widget.emptyListWidget('No pending ${widget.type} requests')
                 : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(isMobile ? 12 : 16),
                     itemCount: widget.filteredRequests.length,
                     itemBuilder: (context, index) {
                       final request = widget.filteredRequests[index];
@@ -1181,6 +1279,7 @@ class _RequestListContentState extends State<_RequestListContent> {
                         onApprove: () => widget.onApprove(request, widget.type),
                         onReject: () => widget.onReject(request, widget.type),
                         onDetails: () => widget.onDetails(request),
+                        isMobile: isMobile,
                       );
                     },
                   ),
@@ -1197,6 +1296,7 @@ class _RequestTile extends StatelessWidget {
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final VoidCallback onDetails;
+  final bool isMobile;
 
   const _RequestTile({
     Key? key,
@@ -1205,25 +1305,26 @@ class _RequestTile extends StatelessWidget {
     required this.onApprove,
     required this.onReject,
     required this.onDetails,
+    required this.isMobile,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: isMobile ? 8 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFF1F1F1F),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1233,10 +1334,10 @@ class _RequestTile extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      // Employee Avatar - FIXED: Proper avatar display
+                      // Employee Avatar
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: isMobile ? 36 : 40,
+                        height: isMobile ? 36 : 40,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
@@ -1252,40 +1353,43 @@ class _RequestTile extends StatelessWidget {
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) {
                                     return _buildEmployeeFallbackAvatar(
-                                        request.employeeName);
+                                        request.employeeName, isMobile);
                                   },
                                   loadingBuilder:
                                       (context, child, loadingProgress) {
                                     if (loadingProgress == null) return child;
                                     return _buildEmployeeFallbackAvatar(
-                                        request.employeeName);
+                                        request.employeeName, isMobile);
                                   },
                                 )
                               : _buildEmployeeFallbackAvatar(
-                                  request.employeeName),
+                                  request.employeeName, isMobile),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: isMobile ? 8 : 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               request.employeeName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: isMobile ? 13 : 14,
                               ),
                               overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            const SizedBox(height: 2),
+                            SizedBox(height: isMobile ? 1 : 2),
                             Text(
                               'ID: ${request.employeeId}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white54,
-                                fontSize: 11,
+                                fontSize: isMobile ? 10 : 11,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ],
                         ),
@@ -1293,10 +1397,11 @@ class _RequestTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isMobile ? 6 : 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 8 : 10,
+                      vertical: isMobile ? 3 : 4),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: type == 'Reimbursement'
@@ -1305,53 +1410,58 @@ class _RequestTile extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(type,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: Colors.black87,
                           fontWeight: FontWeight.w600,
-                          fontSize: 10)),
+                          fontSize: isMobile ? 9 : 10)),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isMobile ? 6 : 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Flexible(
                   child: Text('Submitted: ${request.submissionDate}',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 12)),
+                      style: TextStyle(
+                          color: Colors.white70, fontSize: isMobile ? 11 : 12),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
                 ),
                 Text('₹${request.amount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: isMobile ? 14 : 16,
                         fontWeight: FontWeight.bold)),
               ],
             ),
             if (request.payments != null && request.payments.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: EdgeInsets.only(top: isMobile ? 2 : 4),
                 child: Text('${request.payments.length} payment(s)',
-                    style:
-                        const TextStyle(color: Colors.white60, fontSize: 11)),
+                    style: TextStyle(
+                        color: Colors.white60, fontSize: isMobile ? 10 : 11)),
               ),
-            const SizedBox(height: 12),
+            SizedBox(height: isMobile ? 8 : 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
                   onPressed: onDetails,
                   style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 10 : 12,
+                        vertical: isMobile ? 4 : 6),
                   ),
-                  child: const Text('Details',
-                      style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                  child: Text('Details',
+                      style: TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: isMobile ? 11 : 12)),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: isMobile ? 4 : 6),
                 Container(
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -1359,24 +1469,26 @@ class _RequestTile extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: ElevatedButton(
                     onPressed: onReject,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 10 : 12,
+                          vertical: isMobile ? 4 : 6),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                     ),
-                    child: const Text('Reject',
-                        style: TextStyle(color: Colors.white, fontSize: 12)),
+                    child: Text('Reject',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: isMobile ? 11 : 12)),
                   ),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: isMobile ? 4 : 6),
                 Container(
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -1384,21 +1496,24 @@ class _RequestTile extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: ElevatedButton(
                     onPressed: onApprove,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 10 : 12,
+                          vertical: isMobile ? 4 : 6),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                     ),
-                    child: const Text('Approve',
-                        style: TextStyle(color: Colors.black87, fontSize: 12)),
+                    child: Text('Approve',
+                        style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: isMobile ? 11 : 12)),
                   ),
                 ),
               ],
@@ -1409,7 +1524,7 @@ class _RequestTile extends StatelessWidget {
     );
   }
 
-  Widget _buildEmployeeFallbackAvatar(String employeeName) {
+  Widget _buildEmployeeFallbackAvatar(String employeeName, bool isMobile) {
     return Container(
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
@@ -1422,10 +1537,10 @@ class _RequestTile extends StatelessWidget {
       child: Center(
         child: Text(
           employeeName.isNotEmpty ? employeeName[0].toUpperCase() : '?',
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: 16,
+            fontSize: isMobile ? 14 : 16,
           ),
         ),
       ),

@@ -13,11 +13,13 @@ import 'package:permission_handler/permission_handler.dart';
 class FinancePaymentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
   final String authToken;
+  final VoidCallback onLogout;
 
   const FinancePaymentDashboard({
     Key? key,
     required this.userData,
     required this.authToken,
+    required this.onLogout,
   }) : super(key: key);
 
   @override
@@ -583,9 +585,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
             _isGeneratingEmployeeProjectReport = false;
           });
           return;
-        }
-
-        // Calculate totals from API response
+        } // Calculate totals from API response
         double totalSpending = (data['total_amount'] ?? 0).toDouble();
         int totalRequests = data['total_requests'] ?? 0;
         int reimbursementCount = data['reimbursement_count'] ?? 0;
@@ -1170,39 +1170,55 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
           SizedBox(height: 15),
 
           // Insight Cards
-          GridView.count(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 6,
-            childAspectRatio: 0.8,
-            children: [
-              _buildInsightCard(
-                "Ready for Payment",
-                _readyForPayment.length.toString(),
-                Icons.payment,
-                Colors.orange,
-              ),
-              _buildInsightCard(
-                "Paid Requests (Monthly)",
-                _getMonthlyPaidRequests().toString(),
-                Icons.check_circle,
-                Colors.green,
-              ),
-              _buildInsightCard(
-                "Total Amount Ready",
-                "₹${_calculateTotalAmount(_readyForPayment)}",
-                Icons.attach_money,
-                Colors.blue,
-              ),
-              _buildInsightCard(
-                "Total Amount Paid (Monthly)",
-                "₹${_getMonthlyPaidAmount().toStringAsFixed(2)}",
-                Icons.currency_rupee,
-                Colors.purple,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              double crossAxisCount = 2;
+              double childAspectRatio = 0.8;
+
+              // Responsive adjustments
+              if (constraints.maxWidth < 400) {
+                crossAxisCount = 2;
+                childAspectRatio = 0.7;
+              } else if (constraints.maxWidth > 600) {
+                crossAxisCount = 4;
+                childAspectRatio = 1.0;
+              }
+
+              return GridView.count(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                crossAxisCount: crossAxisCount.toInt(),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 6,
+                childAspectRatio: childAspectRatio,
+                children: [
+                  _buildInsightCard(
+                    "Ready for Payment",
+                    _readyForPayment.length.toString(),
+                    Icons.payment,
+                    Colors.orange,
+                  ),
+                  _buildInsightCard(
+                    "Paid Requests (Monthly)",
+                    _getMonthlyPaidRequests().toString(),
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                  _buildInsightCard(
+                    "Total Amount Ready",
+                    "₹${_calculateTotalAmount(_readyForPayment)}",
+                    Icons.attach_money,
+                    Colors.blue,
+                  ),
+                  _buildInsightCard(
+                    "Total Amount Paid (Monthly)",
+                    "₹${_getMonthlyPaidAmount().toStringAsFixed(2)}",
+                    Icons.currency_rupee,
+                    Colors.purple,
+                  ),
+                ],
+              );
+            },
           ),
 
           SizedBox(height: 24),
@@ -1275,43 +1291,88 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
                     style: TextStyle(color: Colors.grey[400]),
                   ),
                   SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            "By Employee",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                          value: 'employee',
-                          groupValue: _reportType,
-                          onChanged: (value) {
-                            setState(() {
-                              _reportType = value!;
-                              _reportIdentifier = '';
-                            });
-                          },
-                          activeColor: Colors.blue,
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            "By Project",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                          value: 'project',
-                          groupValue: _reportType,
-                          onChanged: (value) {
-                            setState(() {
-                              _reportType = value!;
-                              _reportIdentifier = '';
-                            });
-                          },
-                          activeColor: Colors.blue,
-                        ),
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 400) {
+                        return Column(
+                          children: [
+                            RadioListTile<String>(
+                              title: Text(
+                                "By Employee",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                              value: 'employee',
+                              groupValue: _reportType,
+                              onChanged: (value) {
+                                setState(() {
+                                  _reportType = value!;
+                                  _reportIdentifier = '';
+                                });
+                              },
+                              activeColor: Colors.blue,
+                            ),
+                            RadioListTile<String>(
+                              title: Text(
+                                "By Project",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                              value: 'project',
+                              groupValue: _reportType,
+                              onChanged: (value) {
+                                setState(() {
+                                  _reportType = value!;
+                                  _reportIdentifier = '';
+                                });
+                              },
+                              activeColor: Colors.blue,
+                            ),
+                          ],
+                        );
+                      } else {
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: Text(
+                                  "By Employee",
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14),
+                                ),
+                                value: 'employee',
+                                groupValue: _reportType,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _reportType = value!;
+                                    _reportIdentifier = '';
+                                  });
+                                },
+                                activeColor: Colors.blue,
+                              ),
+                            ),
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: Text(
+                                  "By Project",
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14),
+                                ),
+                                value: 'project',
+                                groupValue: _reportType,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _reportType = value!;
+                                    _reportIdentifier = '';
+                                  });
+                                },
+                                activeColor: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                    },
                   ),
 
                   // Time Period Selection
@@ -1821,28 +1882,72 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     return Scaffold(
       backgroundColor: Color(0xFF121212),
       appBar: AppBar(
-        title: Text("Finance Payment",
-            style: TextStyle(
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            return Text(
+              "Finance Payment",
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontSize: 20)),
+                fontSize: constraints.maxWidth < 400 ? 18 : 20,
+              ),
+            );
+          },
+        ),
         backgroundColor: Color.fromARGB(255, 12, 15, 49),
         foregroundColor: Colors.white,
         centerTitle: true,
         actions: [
+          // Logout Icon - Moved to first position
           IconButton(
-              icon: Icon(Icons.filter_list),
-              onPressed: () => showDialog(
-                  context: context, builder: (context) => _buildFilterDialog()),
-              tooltip: "Filter Requests"),
+            icon: Icon(Icons.logout, size: 22),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: Color(0xFF1E1E1E),
+                  title: Text("Logout", style: TextStyle(color: Colors.white)),
+                  content: Text("Are you sure you want to logout?",
+                      style: TextStyle(color: Colors.grey[400])),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text("Cancel",
+                          style: TextStyle(color: Colors.grey[400])),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        widget.onLogout();
+                      },
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[700]),
+                      child: Text("Logout"),
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: "Logout",
+          ),
+          // Filter Icon
           IconButton(
-              icon: Icon(Icons.refresh),
-              onPressed: _loadAllData,
-              tooltip: "Refresh Data"),
+            icon: Icon(Icons.filter_list, size: 22),
+            onPressed: () => showDialog(
+                context: context, builder: (context) => _buildFilterDialog()),
+            tooltip: "Filter Requests",
+          ),
+          // Refresh Icon
+          IconButton(
+            icon: Icon(Icons.refresh, size: 22),
+            onPressed: _loadAllData,
+            tooltip: "Refresh Data",
+          ),
+          // Avatar with proper spacing
           Padding(
-            padding: EdgeInsets.only(right: 16),
+            padding: EdgeInsets.only(right: 12),
             child: _buildAvatar(widget.userData['avatar'],
-                radius: 18, isAppBar: true), // ✅ IMPROVED: App bar avatar
+                radius: 18, isAppBar: true),
           ),
         ],
         bottom: PreferredSize(
@@ -1851,30 +1956,62 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
             color: Color.fromARGB(255, 12, 15, 49),
             child: Column(
               children: [
-                TabBar(
-                  controller: _tabController,
-                  indicatorColor: Colors.white,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.grey[400],
-                  labelStyle:
-                      TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle:
-                      TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  indicatorWeight: 3.0,
-                  indicatorPadding: EdgeInsets.symmetric(horizontal: 8),
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  isScrollable: false,
-                  tabs: [
-                    Tab(
-                        icon: Icon(Icons.receipt, size: 20),
-                        text: "Reimbursement"),
-                    Tab(icon: Icon(Icons.forward, size: 20), text: "Advance"),
-                    Tab(
-                        icon: Icon(Icons.analytics, size: 20),
-                        text: "Insights"),
-                    Tab(icon: Icon(Icons.history, size: 20), text: "History"),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return TabBar(
+                      controller: _tabController,
+                      indicatorColor: Colors.white,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.grey[400],
+                      labelStyle: TextStyle(
+                        fontSize: constraints.maxWidth < 400 ? 10 : 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      unselectedLabelStyle: TextStyle(
+                        fontSize: constraints.maxWidth < 400 ? 10 : 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorWeight: 3.0,
+                      indicatorPadding: EdgeInsets.symmetric(horizontal: 4),
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      isScrollable: constraints.maxWidth < 400,
+                      tabs: [
+                        Tab(
+                          icon: constraints.maxWidth < 400
+                              ? Icon(Icons.receipt, size: 16)
+                              : null,
+                          text: constraints.maxWidth < 400
+                              ? "Reimb."
+                              : "Reimbursement",
+                        ),
+                        Tab(
+                          icon: constraints.maxWidth < 400
+                              ? Icon(Icons.forward, size: 16)
+                              : null,
+                          text: constraints.maxWidth < 400
+                              ? "Advance"
+                              : "Advance",
+                        ),
+                        Tab(
+                          icon: constraints.maxWidth < 400
+                              ? Icon(Icons.analytics, size: 16)
+                              : null,
+                          text: constraints.maxWidth < 400
+                              ? "Insights"
+                              : "Insights",
+                        ),
+                        Tab(
+                          icon: constraints.maxWidth < 400
+                              ? Icon(Icons.history, size: 16)
+                              : null,
+                          text: constraints.maxWidth < 400
+                              ? "History"
+                              : "History",
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

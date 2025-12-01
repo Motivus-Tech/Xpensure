@@ -12,11 +12,13 @@ import 'package:share_plus/share_plus.dart';
 class FinanceVerificationDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
   final String authToken;
+  final VoidCallback onLogout;
 
   const FinanceVerificationDashboard({
     Key? key,
     required this.userData,
     required this.authToken,
+    required this.onLogout,
   }) : super(key: key);
 
   @override
@@ -476,6 +478,33 @@ class _FinanceVerificationDashboardState
     );
   }
 
+  // LOGOUT FUNCTIONALITY
+  void _handleLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Color(0xFF1E1E1E),
+        title: Text("Logout", style: TextStyle(color: Colors.white)),
+        content: Text("Are you sure you want to logout?",
+            style: TextStyle(color: Colors.grey[400])),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel", style: TextStyle(color: Colors.grey[400])),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onLogout();
+            },
+            child: Text("Logout"),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
+          ),
+        ],
+      ),
+    );
+  }
+
   // BETTER AVATAR DISPLAY WIDGET
   Widget _buildAvatar(String? avatarUrl,
       {double radius = 16, bool isAppBar = false}) {
@@ -726,7 +755,7 @@ class _FinanceVerificationDashboardState
     );
   }
 
-  // REQUEST CARD FOR PENDING REQUESTS
+// RESPONSIVE REQUEST CARD FOR PENDING REQUESTS
   Widget _buildRequestCard(dynamic request) {
     const Color pastelTeal = Color(0xFF80CBC4);
     const Color pastelOrange = Color(0xFFFFAB91);
@@ -751,238 +780,729 @@ class _FinanceVerificationDashboardState
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: 120,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Avatar row with better layout
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        _buildAvatar(request['employee_avatar'], radius: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                request['employee_name'] ?? 'Unknown Employee',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+        padding: const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            bool isSmallScreen = constraints.maxWidth < 400;
+            bool isVerySmallScreen = constraints.maxWidth < 350;
+            bool isTinyScreen = constraints.maxWidth < 320;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar row with responsive layout
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildAvatar(request['employee_avatar'],
+                              radius: isVerySmallScreen ? 14 : 18),
+                          SizedBox(width: isVerySmallScreen ? 8 : 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  request['employee_name'] ??
+                                      'Unknown Employee',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isVerySmallScreen ? 14 : 16,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                              Text(
-                                'ID: ${request['employee_id'] ?? 'Unknown'}',
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 12,
+                                SizedBox(height: 2),
+                                Text(
+                                  'ID: ${request['employee_id'] ?? 'Unknown'}',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: isVerySmallScreen ? 11 : 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isReimbursement ? pastelTeal : pastelOrange,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      request['request_type'] ?? 'Unknown',
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        ],
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
                     ),
-                  ),
-                ],
-              ),
+                    SizedBox(width: isVerySmallScreen ? 6 : 10),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isVerySmallScreen ? 8 : 12,
+                        vertical: isVerySmallScreen ? 5 : 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isReimbursement ? pastelTeal : pastelOrange,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        isTinyScreen
+                            ? (isReimbursement ? 'Rmb' : 'Adv')
+                            : (isVerySmallScreen
+                                ? (isReimbursement ? 'Reimb.' : 'Advance')
+                                : (request['request_type'] ?? 'Unknown')),
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          fontSize: isVerySmallScreen ? 10 : 12,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
 
-              const SizedBox(height: 10),
+                SizedBox(height: isVerySmallScreen ? 10 : 14),
 
-              // Dates and Amount row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Column(
+                // Main content row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Left side - Dates and info
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Submitted Date
+                          Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Submitted',
                                 style: TextStyle(
                                   color: Colors.green[300],
-                                  fontSize: 11,
+                                  fontSize: isVerySmallScreen ? 11 : 12,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
+                              SizedBox(height: 2),
                               Text(
                                 formattedSubmittedDate,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white54,
-                                  fontSize: 12,
+                                  fontSize: isVerySmallScreen ? 11 : 12,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
                               ),
                             ],
                           ),
-                        ),
-                        Text(
-                          'Pending Verification',
-                          style: TextStyle(
-                            color: Colors.orange[300],
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 1,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                          textAlign: TextAlign.end,
-                        ),
-                        Text(
-                          '$paymentCount payment${paymentCount != 1 ? 's' : ''}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                          textAlign: TextAlign.end,
-                        ),
-                        if (attachmentCount > 0)
+
+                          SizedBox(height: isVerySmallScreen ? 6 : 8),
+
+                          // Status
                           Text(
-                            '$attachmentCount attachment${attachmentCount != 1 ? 's' : ''}',
+                            'Pending',
                             style: TextStyle(
-                              color: Colors.blue[300],
-                              fontSize: 11,
+                              color: Colors.orange[300],
+                              fontSize: isVerySmallScreen ? 11 : 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+
+                          // Attachments count
+                          if (attachmentCount > 0) ...[
+                            SizedBox(height: 4),
+                            Text(
+                              '$attachmentCount attachment${attachmentCount != 1 ? 's' : ''}',
+                              style: TextStyle(
+                                color: Colors.blue[300],
+                                fontSize: isVerySmallScreen ? 10 : 11,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Right side - Amount and payment count
+                    Expanded(
+                      flex: 1,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // Amount
+                          Text(
+                            '₹${(request['amount'] ?? 0).toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: isVerySmallScreen ? 16 : 18,
                             ),
                             textAlign: TextAlign.end,
                           ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 12),
+                          SizedBox(height: 2),
 
-              // Description
-              if (request['description'] != null &&
-                  request['description'].toString().isNotEmpty)
-                Container(
-                  constraints: BoxConstraints(maxHeight: 40),
-                  child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: Text(
-                      request['description'].toString(),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
+                          // Payment count
+                          Text(
+                            '$paymentCount payment${paymentCount != 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: isVerySmallScreen ? 10 : 11,
+                            ),
+                            textAlign: TextAlign.end,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
 
-              const SizedBox(height: 12),
-
-              // Action buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FinanceRequestDetails(
-                            request: _convertToFinanceRequest(request),
-                            authToken: widget.authToken,
-                            isPaymentTab: false,
-                          ),
+                // Description
+                if (request['description'] != null &&
+                    request['description'].toString().isNotEmpty) ...[
+                  SizedBox(height: isVerySmallScreen ? 8 : 12),
+                  Container(
+                    constraints: BoxConstraints(maxHeight: 40),
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Text(
+                        request['description'].toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: isVerySmallScreen ? 11 : 12,
                         ),
-                      );
-                    },
-                    child: const Text(
-                      'Details',
-                      style: TextStyle(color: Color(0xFF80CBC4)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _approveRequest(
-                      request['id'],
-                      request['request_type'],
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: pastelTeal,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text('Approve'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _rejectRequest(
-                      request['id'],
-                      request['request_type'],
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: pastelOrange,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('Reject'),
                   ),
                 ],
-              ),
-            ],
-          ),
+
+                SizedBox(height: isVerySmallScreen ? 12 : 16),
+
+                // Action buttons - FIXED OVERFLOW LAYOUT
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    double availableWidth = constraints.maxWidth;
+                    bool useCompactLayout = availableWidth < 300;
+                    bool useTinyLayout = availableWidth < 280;
+                    bool useMicroLayout = availableWidth < 260;
+
+                    if (useMicroLayout) {
+                      // MICRO LAYOUT - Icons only for extremely small screens
+                      return Column(
+                        children: [
+                          // Details button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 34,
+                            child: TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FinanceRequestDetails(
+                                      request:
+                                          _convertToFinanceRequest(request),
+                                      authToken: widget.authToken,
+                                      isPaymentTab: false,
+                                    ),
+                                  ),
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                  side: BorderSide(
+                                      color: Color(0xFF80CBC4), width: 1),
+                                ),
+                              ),
+                              child: Text(
+                                'Details',
+                                style: TextStyle(
+                                  color: Color(0xFF80CBC4),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Row(
+                            children: [
+                              // Approve button - Icon only
+                              Expanded(
+                                child: SizedBox(
+                                  height: 34,
+                                  child: ElevatedButton(
+                                    onPressed: () => _approveRequest(
+                                      request['id'],
+                                      request['request_type'],
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: pastelTeal,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      elevation: 1,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              // Reject button - Icon only
+                              Expanded(
+                                child: SizedBox(
+                                  height: 34,
+                                  child: ElevatedButton(
+                                    onPressed: () => _rejectRequest(
+                                      request['id'],
+                                      request['request_type'],
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: pastelOrange,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      elevation: 1,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    } else if (useTinyLayout) {
+                      // VERTICAL LAYOUT for very small screens
+                      return Column(
+                        children: [
+                          // Details button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 36,
+                            child: TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FinanceRequestDetails(
+                                      request:
+                                          _convertToFinanceRequest(request),
+                                      authToken: widget.authToken,
+                                      isPaymentTab: false,
+                                    ),
+                                  ),
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                      color: Color(0xFF80CBC4), width: 1),
+                                ),
+                              ),
+                              child: Text(
+                                'View Details',
+                                style: TextStyle(
+                                  color: Color(0xFF80CBC4),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Row(
+                            children: [
+                              // Approve button
+                              Expanded(
+                                child: SizedBox(
+                                  height: 36,
+                                  child: ElevatedButton(
+                                    onPressed: () => _approveRequest(
+                                      request['id'],
+                                      request['request_type'],
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: pastelTeal,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      elevation: 2,
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 2),
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.black87,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Approve',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black87,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              // Reject button
+                              Expanded(
+                                child: SizedBox(
+                                  height: 36,
+                                  child: ElevatedButton(
+                                    onPressed: () => _rejectRequest(
+                                      request['id'],
+                                      request['request_type'],
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: pastelOrange,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      elevation: 2,
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 2),
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.close,
+                                            size: 14,
+                                            color: Colors.black87,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Reject',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black87,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    } else if (useCompactLayout) {
+                      // COMPACT HORIZONTAL LAYOUT
+                      return Row(
+                        children: [
+                          // Details button
+                          Expanded(
+                            flex: 3,
+                            child: SizedBox(
+                              height: 36,
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FinanceRequestDetails(
+                                        request:
+                                            _convertToFinanceRequest(request),
+                                        authToken: widget.authToken,
+                                        isPaymentTab: false,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                style: TextButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(
+                                        color: Color(0xFF80CBC4), width: 1),
+                                  ),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Details',
+                                    style: TextStyle(
+                                      color: Color(0xFF80CBC4),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          // Approve button
+                          Expanded(
+                            flex: 3,
+                            child: SizedBox(
+                              height: 36,
+                              child: ElevatedButton(
+                                onPressed: () => _approveRequest(
+                                  request['id'],
+                                  request['request_type'],
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pastelTeal,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 2,
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.check,
+                                        size: 14,
+                                        color: Colors.black87,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Approve',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          // Reject button
+                          Expanded(
+                            flex: 3,
+                            child: SizedBox(
+                              height: 36,
+                              child: ElevatedButton(
+                                onPressed: () => _rejectRequest(
+                                  request['id'],
+                                  request['request_type'],
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pastelOrange,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 2,
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.close,
+                                        size: 14,
+                                        color: Colors.black87,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Reject',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      // STANDARD HORIZONTAL LAYOUT for normal screens
+                      return Row(
+                        children: [
+                          // Details button
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: isVerySmallScreen ? 36 : 42,
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FinanceRequestDetails(
+                                        request:
+                                            _convertToFinanceRequest(request),
+                                        authToken: widget.authToken,
+                                        isPaymentTab: false,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                style: TextButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(
+                                        color: Color(0xFF80CBC4), width: 1),
+                                  ),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'View Details',
+                                    style: TextStyle(
+                                      color: Color(0xFF80CBC4),
+                                      fontSize: isVerySmallScreen ? 12 : 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: isVerySmallScreen ? 8 : 12),
+                          // Approve button
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: isVerySmallScreen ? 36 : 42,
+                              child: ElevatedButton(
+                                onPressed: () => _approveRequest(
+                                  request['id'],
+                                  request['request_type'],
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pastelTeal,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.check,
+                                        size: isVerySmallScreen ? 14 : 16,
+                                        color: Colors.black87,
+                                      ),
+                                      SizedBox(
+                                          width: isVerySmallScreen ? 4 : 6),
+                                      Text(
+                                        'Approve',
+                                        style: TextStyle(
+                                          fontSize: isVerySmallScreen ? 12 : 14,
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: isVerySmallScreen ? 8 : 12),
+                          // Reject button
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: isVerySmallScreen ? 36 : 42,
+                              child: ElevatedButton(
+                                onPressed: () => _rejectRequest(
+                                  request['id'],
+                                  request['request_type'],
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: pastelOrange,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.close,
+                                        size: isVerySmallScreen ? 14 : 16,
+                                        color: Colors.black87,
+                                      ),
+                                      SizedBox(
+                                          width: isVerySmallScreen ? 4 : 6),
+                                      Text(
+                                        'Reject',
+                                        style: TextStyle(
+                                          fontSize: isVerySmallScreen ? 12 : 14,
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1035,9 +1555,15 @@ class _FinanceVerificationDashboardState
                       Icon(_getTabIcon(tabType),
                           color: Colors.grey[600], size: 64),
                       SizedBox(height: 16),
-                      Text(_getEmptyStateText(tabType, tabName),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          _getEmptyStateText(tabType, tabName),
                           style:
-                              TextStyle(color: Colors.grey[400], fontSize: 16)),
+                              TextStyle(color: Colors.grey[400], fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     ],
                   ),
                 )
@@ -1085,7 +1611,7 @@ class _FinanceVerificationDashboardState
     }
   }
 
-  // INSIGHTS TAB WITH REAL-TIME DATA
+  // RESPONSIVE INSIGHTS TAB
   Widget _buildInsightsTab() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(14),
@@ -1102,40 +1628,47 @@ class _FinanceVerificationDashboardState
           ),
           SizedBox(height: 15),
 
-          // Real-time Insight Cards
-          GridView.count(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 6,
-            childAspectRatio: 0.8,
-            children: [
-              _buildInsightCard(
-                "Pending Verification",
-                _pendingRequests.length.toString(),
-                Icons.pending_actions,
-                Colors.orange,
-              ),
-              _buildInsightCard(
-                "Monthly Pending",
-                (_insightsData['monthly_pending']?.toString() ?? '0'),
-                Icons.calendar_today,
-                Colors.blue,
-              ),
-              _buildInsightCard(
-                "Monthly Verified",
-                (_insightsData['monthly_verified']?.toString() ?? '0'),
-                Icons.verified,
-                Colors.green,
-              ),
-              _buildInsightCard(
-                "Avg Processing Time",
-                "${(_insightsData['avg_processing_time']?.toStringAsFixed(1) ?? '0')}h",
-                Icons.timer,
-                Colors.purple,
-              ),
-            ],
+          // Responsive Insight Cards Grid
+          LayoutBuilder(
+            builder: (context, constraints) {
+              int crossAxisCount = constraints.maxWidth > 600 ? 3 : 2;
+              if (constraints.maxWidth < 350) crossAxisCount = 1;
+
+              return GridView.count(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 6,
+                childAspectRatio: constraints.maxWidth < 350 ? 1.2 : 0.8,
+                children: [
+                  _buildInsightCard(
+                    "Pending Verification",
+                    _pendingRequests.length.toString(),
+                    Icons.pending_actions,
+                    Colors.orange,
+                  ),
+                  _buildInsightCard(
+                    "Monthly Pending",
+                    (_insightsData['monthly_pending']?.toString() ?? '0'),
+                    Icons.calendar_today,
+                    Colors.blue,
+                  ),
+                  _buildInsightCard(
+                    "Monthly Verified",
+                    (_insightsData['monthly_verified']?.toString() ?? '0'),
+                    Icons.verified,
+                    Colors.green,
+                  ),
+                  _buildInsightCard(
+                    "Avg Processing Time",
+                    "${(_insightsData['avg_processing_time']?.toStringAsFixed(1) ?? '0')}h",
+                    Icons.timer,
+                    Colors.purple,
+                  ),
+                ],
+              );
+            },
           ),
 
           SizedBox(height: 24),
@@ -1238,49 +1771,100 @@ class _FinanceVerificationDashboardState
                   ),
                   SizedBox(height: 16),
 
-                  // Report Type Selection
-                  Text(
-                    "Report Type:",
-                    style: TextStyle(color: Colors.grey[400]),
-                  ),
-                  SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            "By Employee",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
+                  // Report Type Selection - Responsive
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      bool isSmall = constraints.maxWidth < 400;
+
+                      return Column(
+                        children: [
+                          Text(
+                            "Report Type:",
+                            style: TextStyle(color: Colors.grey[400]),
                           ),
-                          value: 'employee',
-                          groupValue: _reportType,
-                          onChanged: (value) {
-                            setState(() {
-                              _reportType = value!;
-                              _reportIdentifier = '';
-                            });
-                          },
-                          activeColor: Colors.blue,
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            "By Project",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                          value: 'project',
-                          groupValue: _reportType,
-                          onChanged: (value) {
-                            setState(() {
-                              _reportType = value!;
-                              _reportIdentifier = '';
-                            });
-                          },
-                          activeColor: Colors.blue,
-                        ),
-                      ),
-                    ],
+                          SizedBox(height: 8),
+                          isSmall
+                              ? Column(
+                                  children: [
+                                    RadioListTile<String>(
+                                      title: Text(
+                                        "By Employee",
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 14),
+                                      ),
+                                      value: 'employee',
+                                      groupValue: _reportType,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _reportType = value!;
+                                          _reportIdentifier = '';
+                                        });
+                                      },
+                                      activeColor: Colors.blue,
+                                    ),
+                                    RadioListTile<String>(
+                                      title: Text(
+                                        "By Project",
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 14),
+                                      ),
+                                      value: 'project',
+                                      groupValue: _reportType,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _reportType = value!;
+                                          _reportIdentifier = '';
+                                        });
+                                      },
+                                      activeColor: Colors.blue,
+                                    ),
+                                  ],
+                                )
+                              : Row(
+                                  children: [
+                                    Expanded(
+                                      child: RadioListTile<String>(
+                                        title: Text(
+                                          "By Employee",
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14),
+                                        ),
+                                        value: 'employee',
+                                        groupValue: _reportType,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _reportType = value!;
+                                            _reportIdentifier = '';
+                                          });
+                                        },
+                                        activeColor: Colors.blue,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: RadioListTile<String>(
+                                        title: Text(
+                                          "By Project",
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14),
+                                        ),
+                                        value: 'project',
+                                        groupValue: _reportType,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _reportType = value!;
+                                            _reportIdentifier = '';
+                                          });
+                                        },
+                                        activeColor: Colors.blue,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ],
+                      );
+                    },
                   ),
 
                   // Time Period Selection
@@ -1375,7 +1959,12 @@ class _FinanceVerificationDashboardState
                                   ),
                                 ),
                                 SizedBox(width: 8),
-                                Text("Generating Report..."),
+                                Flexible(
+                                  child: Text(
+                                    "Generating Report...",
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             )
                           : Row(
@@ -1383,7 +1972,12 @@ class _FinanceVerificationDashboardState
                               children: [
                                 Icon(Icons.download),
                                 SizedBox(width: 8),
-                                Text("Generate CSV Report"),
+                                Flexible(
+                                  child: Text(
+                                    "Generate CSV Report",
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                     ),
@@ -1397,12 +1991,15 @@ class _FinanceVerificationDashboardState
                     children: [
                       Icon(Icons.people, color: Colors.green),
                       SizedBox(width: 8),
-                      Text(
-                        "Employee-Project Verification Report",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Text(
+                          "Employee-Project Verification Report",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -1525,7 +2122,12 @@ class _FinanceVerificationDashboardState
                                   ),
                                 ),
                                 SizedBox(width: 8),
-                                Text("Generating Report..."),
+                                Flexible(
+                                  child: Text(
+                                    "Generating Report...",
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             )
                           : Row(
@@ -1533,7 +2135,12 @@ class _FinanceVerificationDashboardState
                               children: [
                                 Icon(Icons.analytics),
                                 SizedBox(width: 8),
-                                Text("Generate Verification Report"),
+                                Flexible(
+                                  child: Text(
+                                    "Generate Verification Report",
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                     ),
@@ -1598,10 +2205,14 @@ class _FinanceVerificationDashboardState
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(color: Colors.grey[400]),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(color: Colors.grey[400]),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
+          SizedBox(width: 8),
           Text(
             value,
             style: TextStyle(
@@ -2241,6 +2852,11 @@ class _FinanceVerificationDashboardState
               icon: Icon(Icons.refresh),
               onPressed: _loadAllData,
               tooltip: "Refresh Data"),
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: _handleLogout,
+            tooltip: "Logout",
+          ),
           Padding(
             padding: EdgeInsets.only(right: 16),
             child: _buildAvatar(widget.userData['avatar'],
@@ -2294,8 +2910,12 @@ class _FinanceVerificationDashboardState
                     children: [
                       Icon(Icons.error, color: Colors.red, size: 64),
                       SizedBox(height: 16),
-                      Text(_errorMessage,
-                          style: TextStyle(color: Colors.white, fontSize: 16)),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(_errorMessage,
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                            textAlign: TextAlign.center),
+                      ),
                       SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadAllData,

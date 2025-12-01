@@ -12,6 +12,7 @@ import 'advance_form.dart';
 import 'change_password.dart';
 import 'edit_profile.dart';
 import '../services/api_service.dart'; // ApiService
+import 'employee_signin.dart';
 
 class Request {
   final int id; // ✅ ADD THIS
@@ -90,6 +91,50 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+// ✅ FIXED: Logout function
+  Future<void> _logout() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F222B),
+        title: const Text(
+          "Logout",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "Are you sure you want to logout?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog first
+
+              // Clear shared preferences
+              SharedPreferences prefs = await SharedPreferences.getInstance();
+              await prefs.remove('authToken');
+
+              // Use Navigator.pushReplacement instead of pushNamedAndRemoveUntil
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EmployeeSignInPage(),
+                  ),
+                );
+              }
+            },
+            child: const Text("Logout", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadAuthTokenAndRequests() async {
@@ -318,7 +363,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     }
   }
 
-// ✅ ADD HELPER METHODS FOR PROJECT DATA EXTRACTION
+  // ✅ ADD HELPER METHODS FOR PROJECT DATA EXTRACTION
   String _getProjectId(Map<String, dynamic> data) {
     // Try multiple possible field names
     if (data['projectId'] != null &&
@@ -702,10 +747,12 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     required String title,
     required VoidCallback onTap,
   }) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+
     return InkWell(
       onTap: onTap,
       child: Container(
-        height: 140,
+        height: isMobile ? 120 : 140,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(
@@ -727,14 +774,20 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: Colors.white),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+            Icon(icon, size: isMobile ? 32 : 40, color: Colors.white),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: isMobile ? 14 : 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -744,6 +797,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
   }
 
   Widget _requestCard(Request request, int index) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+
     Gradient gradient;
     String statusLower = request.status.toLowerCase();
 
@@ -780,8 +835,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.symmetric(vertical: 8, horizontal: isMobile ? 12 : 16),
+      padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: gradient,
@@ -794,40 +849,59 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
         ],
       ),
       child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(
+          request.type == "Reimbursement" ? Icons.request_page : Icons.payments,
+          color: Colors.white,
+          size: isMobile ? 24 : 28,
+        ),
         title: Text(
           "${request.type} Request",
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
+            fontSize: isMobile ? 16 : 18,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Total Amount: ₹${totalAmount.toStringAsFixed(2)}",
-              style: const TextStyle(color: Colors.white70),
-              overflow: TextOverflow.ellipsis, // ✅ ADD THIS
+              "Amount: ₹${totalAmount.toStringAsFixed(2)}",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: isMobile ? 12 : 14,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
               "Date: ${_formatDate(request.requestDate)}",
-              style: const TextStyle(color: Colors.white70),
-              overflow: TextOverflow.ellipsis, // ✅ ADD THIS
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: isMobile ? 12 : 14,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
               "Status: ${request.status}",
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
+                fontSize: isMobile ? 12 : 14,
               ),
-              overflow: TextOverflow.ellipsis, // ✅ ADD THIS
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.arrow_forward_ios,
           color: Colors.white70,
-          size: 18,
+          size: isMobile ? 16 : 18,
         ),
         onTap: () {
           print("=== NAVIGATING TO HISTORY SCREEN ===");
@@ -979,6 +1053,9 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
 
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+    final double screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       backgroundColor: const Color(0xFF181A20),
       appBar: AppBar(
@@ -990,20 +1067,32 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
           style: TextStyle(
             color: Colors.grey[300],
             fontWeight: FontWeight.bold,
+            fontSize: isMobile ? 18 : 20,
           ),
         ),
         actions: [
+          // ✅ ADDED: Logout Icon
+          IconButton(
+            icon: Icon(
+              Icons.logout,
+              color: Colors.grey[300],
+              size: isMobile ? 20 : 24,
+            ),
+            onPressed: _logout,
+            tooltip: 'Logout',
+          ),
           _buildCSVDownloadMenu(),
           IconButton(
-            icon: Icon(Icons.filter_list, color: Colors.grey[300]),
+            icon: Icon(
+              Icons.filter_list,
+              color: Colors.grey[300],
+              size: isMobile ? 20 : 24,
+            ),
             onPressed: _showFilterDialog,
           ),
-          // IconButton(
-          // icon: Icon(Icons.notifications_outlined, color: Colors.grey[300]),
-          // onPressed: () {},
-          // ),
           IconButton(
             icon: CircleAvatar(
+              radius: isMobile ? 14 : 16,
               backgroundColor: const Color(0xFF849CFC),
               backgroundImage: currentAvatarUrl != null
                   ? NetworkImage(currentAvatarUrl!)
@@ -1014,7 +1103,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                               ? widget.employeeName[0]
                               : '?')
                           .toUpperCase(),
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isMobile ? 12 : 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     )
                   : null,
             ),
@@ -1024,8 +1117,10 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                 backgroundColor: Colors.transparent,
                 builder: (context) {
                   return Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    margin: EdgeInsets.all(isMobile ? 12 : 16),
+                    padding: EdgeInsets.symmetric(
+                      vertical: isMobile ? 16 : 20,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1F222B),
                       borderRadius: BorderRadius.circular(20),
@@ -1034,10 +1129,17 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
-                          leading: const Icon(Icons.edit, color: Colors.white),
-                          title: const Text(
+                          leading: Icon(
+                            Icons.edit,
+                            color: Colors.white,
+                            size: isMobile ? 20 : 24,
+                          ),
+                          title: Text(
                             "Profile",
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isMobile ? 16 : 18,
+                            ),
                           ),
                           onTap: () async {
                             Navigator.pop(context);
@@ -1060,10 +1162,17 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                         ),
                         const Divider(color: Colors.grey),
                         ListTile(
-                          leading: const Icon(Icons.lock, color: Colors.white),
-                          title: const Text(
+                          leading: Icon(
+                            Icons.lock,
+                            color: Colors.white,
+                            size: isMobile ? 20 : 24,
+                          ),
+                          title: Text(
                             "Change Password",
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isMobile ? 16 : 18,
+                            ),
                           ),
                           onTap: () {
                             Navigator.pop(context);
@@ -1078,7 +1187,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
                             );
                           },
                         ),
-                        const SizedBox(height: 10),
+                        SizedBox(height: isMobile ? 10 : 16),
                       ],
                     ),
                   );
@@ -1086,74 +1195,107 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
               );
             },
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: isMobile ? 8 : 12),
         ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              "Welcome, ${widget.employeeName}",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[200],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
+          // Fixed height header section
+          Container(
+            padding: EdgeInsets.all(isMobile ? 16.0 : 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _quickActionCard(
-                    icon: Icons.request_page,
-                    title: "Reimbursement",
-                    onTap: () => _createRequest("Reimbursement"),
+                Text(
+                  "Welcome, ${widget.employeeName}",
+                  style: TextStyle(
+                    fontSize: isMobile ? 20 : 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[200],
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _quickActionCard(
-                    icon: Icons.payments,
-                    title: "Advance Request",
-                    onTap: () => _createRequest("Advance"),
-                  ),
+                SizedBox(height: isMobile ? 16 : 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _quickActionCard(
+                        icon: Icons.request_page,
+                        title: "Reimbursement",
+                        onTap: () => _createRequest("Reimbursement"),
+                      ),
+                    ),
+                    SizedBox(width: isMobile ? 12 : 16),
+                    Expanded(
+                      child: _quickActionCard(
+                        icon: Icons.payments,
+                        title: "Advance Request",
+                        onTap: () => _createRequest("Advance"),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          TabBar(
-            controller: _tabController,
-            indicatorColor: const Color.fromARGB(255, 136, 122, 139),
-            labelColor: const Color.fromARGB(255, 133, 130, 134),
-            unselectedLabelColor: Colors.grey[400],
-            tabs: const [
-              Tab(text: "Pending"),
-              Tab(text: "Approved"),
-              Tab(text: "Rejected"),
-            ],
+
+          // Tab section with fixed height
+          Container(
+            width: double.infinity,
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: const Color.fromARGB(255, 136, 122, 139),
+              labelColor: const Color.fromARGB(255, 133, 130, 134),
+              unselectedLabelColor: Colors.grey[400],
+              labelStyle: TextStyle(
+                fontSize: isMobile ? 14 : 16,
+                fontWeight: FontWeight.bold,
+              ),
+              unselectedLabelStyle: TextStyle(
+                fontSize: isMobile ? 14 : 16,
+              ),
+              tabs: const [
+                Tab(text: "Pending"),
+                Tab(text: "Approved"),
+                Tab(text: "Rejected"),
+              ],
+            ),
           ),
+
+          // Flexible content area for the tab views
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: ["Pending", "Approved", "Rejected"].map((status) {
                 if (_isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  );
                 }
                 var filtered = _filterRequests(status);
                 return filtered.isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No requests",
-                          style: TextStyle(color: Colors.white70),
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Text(
+                            "No $status requests",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: EdgeInsets.only(
+                          top: 8,
+                          bottom: isMobile ? 80 : 100,
+                        ),
                         itemCount: filtered.length,
                         itemBuilder: (context, index) =>
                             _requestCard(filtered[index], index),

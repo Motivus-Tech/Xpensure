@@ -39,6 +39,11 @@ from .views import (
     CEOEmployeeProjectReportView,  # ADD THIS
     CEOCSVReportView,
     ApproverCSVDownloadView,
+    HRPendingApprovalsView,
+    HRApproveRequestView,
+    HRRejectRequestView,
+    get_request_details,
+
     
     health_check
 )
@@ -113,7 +118,16 @@ api_patterns = [
     path('ceo/employee-project-report/', CEOEmployeeProjectReportView.as_view(), name='ceo-employee-project-report'),
     path('ceo/csv-report/', CEOCSVReportView.as_view(), name='ceo-csv-report'),
 
+     # HR Approval URLs
+    path('requests/hr-pending/', HRPendingApprovalsView.as_view(), name='hr-pending-approvals'),
+    path('requests/<int:request_id>/hr-approve/', HRApproveRequestView.as_view(), name='hr-approve-request'),
+    path('requests/<int:request_id>/hr-reject/', HRRejectRequestView.as_view(), name='hr-reject-request'),
+    # Add this to your Django urlpatterns
+    path('requests/<int:request_id>/details/', get_request_details, name='request-details'),
 ]
+
+
+
 
 urlpatterns = [
     path('', include(api_patterns)),

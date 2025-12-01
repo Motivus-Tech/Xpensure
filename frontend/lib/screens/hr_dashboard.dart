@@ -6,21 +6,21 @@ import 'package:image_picker/image_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
-//import 'package:share_plus/share_plus';
 import 'package:share_plus/share_plus.dart';
+import 'hr_request_details.dart';
+import 'common_dashboard.dart';
 
-// Activity Service for Permanent Storage
+// Activity Service
 class ActivityService {
   static const String _activityKey = 'hr_activities';
 
-  // Activities save karein
   static Future<void> saveActivities(List<ActivityItem> activities) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final List<String> activityStrings = activities.map((activity) {
         return json.encode({
           'description': activity.description,
-          'iconCode': activity.icon.codePoint,
+          'iconCode': Icons.history.codePoint,
           'colorValue': activity.color.value,
           'timestamp': activity.timestamp.toIso8601String(),
         });
@@ -32,7 +32,6 @@ class ActivityService {
     }
   }
 
-  // Activities load karein
   static Future<List<ActivityItem>> loadActivities() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -44,7 +43,7 @@ class ActivityService {
         final Map<String, dynamic> activityMap = json.decode(activityString);
         return ActivityItem(
           description: activityMap['description'],
-          icon: IconData(activityMap['iconCode'], fontFamily: 'MaterialIcons'),
+          icon: Icons.history,
           color: Color(activityMap['colorValue']),
           timestamp: DateTime.parse(activityMap['timestamp']),
         );
@@ -55,12 +54,10 @@ class ActivityService {
     }
   }
 
-  // Single activity add karein
   static Future<void> addActivity(ActivityItem activity) async {
     final List<ActivityItem> existingActivities = await loadActivities();
     existingActivities.insert(0, activity);
 
-    // Keep only last 100 activities
     if (existingActivities.length > 100) {
       existingActivities.removeRange(100, existingActivities.length);
     }
@@ -68,7 +65,6 @@ class ActivityService {
     await saveActivities(existingActivities);
   }
 
-  // Clear all activities
   static Future<void> clearActivities() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_activityKey);
@@ -79,7 +75,6 @@ class ActivityService {
 class NotificationService {
   static const String _notificationKey = 'hr_notifications';
 
-  // Notifications save karein
   static Future<void> saveNotifications(
       List<NotificationItem> notifications) async {
     try {
@@ -101,7 +96,6 @@ class NotificationService {
     }
   }
 
-  // Notifications load karein
   static Future<List<NotificationItem>> loadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -127,13 +121,11 @@ class NotificationService {
     }
   }
 
-  // Add new notification
   static Future<void> addNotification(NotificationItem notification) async {
     final List<NotificationItem> existingNotifications =
         await loadNotifications();
     existingNotifications.insert(0, notification);
 
-    // Keep only last 50 notifications
     if (existingNotifications.length > 50) {
       existingNotifications.removeRange(50, existingNotifications.length);
     }
@@ -141,7 +133,6 @@ class NotificationService {
     await saveNotifications(existingNotifications);
   }
 
-  // Mark notification as read
   static Future<void> markAsRead(int index) async {
     final List<NotificationItem> notifications = await loadNotifications();
     if (index >= 0 && index < notifications.length) {
@@ -150,7 +141,6 @@ class NotificationService {
     }
   }
 
-  // Mark all as read
   static Future<void> markAllAsRead() async {
     final List<NotificationItem> notifications = await loadNotifications();
     for (var notification in notifications) {
@@ -159,29 +149,25 @@ class NotificationService {
     await saveNotifications(notifications);
   }
 
-  // Clear all notifications
   static Future<void> clearAllNotifications() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_notificationKey);
   }
 
-  // Get unread count
   static Future<int> getUnreadCount() async {
     final List<NotificationItem> notifications = await loadNotifications();
     return notifications.where((notification) => !notification.isRead).length;
   }
 }
 
-// CSV Service for generating and sharing reports
+// CSV Service
 class CSVService {
-  // Generate CSV file from employee data
   static Future<File> generateEmployeeCSV(List<Map<String, dynamic>> employees,
       {String period = 'All Time'}) async {
     final directory = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${directory.path}/employee_report_$timestamp.csv');
 
-    // CSV header
     final csvHeader = [
       'Employee ID',
       'Full Name',
@@ -196,7 +182,6 @@ class CSVService {
       'Last Updated'
     ].join(',');
 
-    // CSV rows
     final csvRows = employees.map((employee) {
       return [
         _escapeCSV(employee['employee_id']?.toString() ?? ''),
@@ -213,7 +198,6 @@ class CSVService {
       ].join(',');
     }).toList();
 
-    // Add report header with period info
     final reportHeader = [
       'Xpensure HR Employee Report',
       'Generated on: ${DateTime.now().toString()}',
@@ -221,7 +205,7 @@ class CSVService {
       'Total Employees: ${employees.length}',
       'Active Employees: ${employees.where((e) => e['is_active'] == true).length}',
       'Inactive Employees: ${employees.where((e) => e['is_active'] == false).length}',
-      '', // Empty line for separation
+      '',
     ].join('\n');
 
     final csvContent = '$reportHeader\n$csvHeader\n${csvRows.join('\n')}';
@@ -230,7 +214,6 @@ class CSVService {
     return file;
   }
 
-  // Escape CSV fields to handle commas and quotes
   static String _escapeCSV(String field) {
     if (field.contains(',') || field.contains('"') || field.contains('\n')) {
       return '"${field.replaceAll('"', '""')}"';
@@ -238,7 +221,6 @@ class CSVService {
     return field;
   }
 
-  // Format date for CSV
   static String _formatDate(String? dateString) {
     if (dateString == null || dateString.isEmpty) return 'Not Available';
     try {
@@ -249,7 +231,6 @@ class CSVService {
     }
   }
 
-  // Filter employees by time period
   static List<Map<String, dynamic>> filterEmployeesByPeriod(
       List<Map<String, dynamic>> employees, String period) {
     final now = DateTime.now();
@@ -285,10 +266,9 @@ class CSVService {
   }
 }
 
-// Backend service fully connected to your Django API
+// Backend Service
 class EmployeeService {
-  static const String baseUrl =
-      "http://10.0.2.2:8000/api"; // Replace with your actual Django API URL
+  static const String baseUrl = "http://10.0.2.2:8000/api";
 
   static Map<String, String> getHeaders(String? token) {
     return {
@@ -298,7 +278,6 @@ class EmployeeService {
     };
   }
 
-  // Employee Login
   static Future<Map<String, dynamic>> login(
       String employeeId, String password) async {
     final response = await http.post(
@@ -318,7 +297,6 @@ class EmployeeService {
     }
   }
 
-  // Fetch all employees (Admin only)
   static Future<List<Map<String, dynamic>>> getEmployees(String token) async {
     final response = await http.get(
       Uri.parse('$baseUrl/employees/'),
@@ -333,7 +311,6 @@ class EmployeeService {
     }
   }
 
-  // Add a new employee (Admin only)
   static Future<Map<String, dynamic>> addEmployee(
       Map<String, dynamic> employee, String token) async {
     final response = await http.post(
@@ -350,7 +327,6 @@ class EmployeeService {
     }
   }
 
-  // Delete an employee (Admin only)
   static Future<bool> deleteEmployee(String employeeId, String token) async {
     final response = await http.delete(
       Uri.parse('$baseUrl/employees/$employeeId/'),
@@ -364,7 +340,6 @@ class EmployeeService {
     }
   }
 
-  // Update employee status (Admin only)
   static Future<bool> updateEmployeeStatus(
       String employeeId, bool isActive, String token) async {
     final response = await http.patch(
@@ -381,7 +356,6 @@ class EmployeeService {
     }
   }
 
-  // Update an employee (Admin only)
   static Future<bool> updateEmployee(String employeeId,
       Map<String, dynamic> employeeData, String token) async {
     final response = await http.put(
@@ -397,7 +371,6 @@ class EmployeeService {
     }
   }
 
-  // Upload employee avatar
   static Future<Map<String, dynamic>> uploadEmployeeAvatar(
     String employeeId,
     File imageFile,
@@ -431,7 +404,6 @@ class EmployeeService {
     }
   }
 
-  // Update employee with avatar
   static Future<Map<String, dynamic>> updateEmployeeWithAvatar(
     String employeeId,
     Map<String, dynamic> employeeData,
@@ -445,8 +417,6 @@ class EmployeeService {
       );
 
       request.headers['Authorization'] = 'Token $token';
-
-      // Process and convert field names
       final Map<String, String> processedData = {};
 
       if (employeeData['email'] != null) {
@@ -477,13 +447,10 @@ class EmployeeService {
         processedData['employee_id'] = employeeData['employee_id'].toString();
       }
 
-      // Add processed fields
       processedData.forEach((key, value) {
         request.fields[key] = value;
-        debugPrint("Update Employee Field: $key = $value");
       });
 
-      // Add avatar file if provided
       if (avatarFile != null) {
         request.files.add(
           await http.MultipartFile.fromPath(
@@ -492,14 +459,10 @@ class EmployeeService {
             filename: 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
           ),
         );
-        debugPrint("Avatar file added for update: ${avatarFile.path}");
       }
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
-
-      debugPrint(
-          "Update Employee Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -508,12 +471,10 @@ class EmployeeService {
             'Failed to update employee: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      debugPrint('Update employee error: $e');
       throw Exception('Update employee error: $e');
     }
   }
 
-  // Add employee with avatar
   static Future<Map<String, dynamic>> addEmployeeWithAvatar(
     Map<String, dynamic> employeeData,
     File? avatarFile,
@@ -526,11 +487,8 @@ class EmployeeService {
       );
 
       request.headers['Authorization'] = 'Token $token';
-
-      // Convert field names to snake_case and ensure all required fields
       final Map<String, String> processedData = {};
 
-      // Map field names from camelCase to snake_case
       if (employeeData['employee_id'] != null) {
         processedData['employee_id'] = employeeData['employee_id'].toString();
       }
@@ -546,35 +504,31 @@ class EmployeeService {
       if (employeeData['phone_number'] != null) {
         processedData['phone_number'] = employeeData['phone_number'].toString();
       } else {
-        processedData['phone_number'] = ''; // Provide default if null
+        processedData['phone_number'] = '';
       }
       if (employeeData['aadhar_card'] != null) {
         processedData['aadhar_card'] = employeeData['aadhar_card'].toString();
       } else {
-        processedData['aadhar_card'] = ''; // Provide default if null
+        processedData['aadhar_card'] = '';
       }
       if (employeeData['report_to'] != null) {
         processedData['report_to'] = employeeData['report_to'].toString();
       } else {
-        processedData['report_to'] = ''; // Provide default if null
+        processedData['report_to'] = '';
       }
       if (employeeData['role'] != null) {
         processedData['role'] = employeeData['role'].toString();
       } else {
-        processedData['role'] = 'Common'; // Default role
+        processedData['role'] = 'Common';
       }
 
-      // Add default password for new employees
       processedData['password'] = 'DefaultPassword123!';
       processedData['confirm_password'] = 'DefaultPassword123!';
 
-      // Add all processed fields to request
       processedData.forEach((key, value) {
         request.fields[key] = value;
-        debugPrint("Add Employee Field: $key = $value");
       });
 
-      // Add avatar file if provided
       if (avatarFile != null) {
         request.files.add(
           await http.MultipartFile.fromPath(
@@ -583,14 +537,10 @@ class EmployeeService {
             filename: 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
           ),
         );
-        debugPrint("Avatar file added: ${avatarFile.path}");
       }
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
-
-      debugPrint(
-          "Add Employee Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         return json.decode(response.body);
@@ -599,8 +549,115 @@ class EmployeeService {
             'Failed to add employee: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      debugPrint('Add employee error: $e');
       throw Exception('Add employee error: $e');
+    }
+  }
+}
+
+// HR Approval Service
+class HRApprovalService {
+  static const String baseUrl = "http://10.0.2.2:8000/api";
+
+  static Map<String, String> getHeaders(String? token) {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Token $token',
+    };
+  }
+
+  static Future<Map<String, dynamic>> getRequestDetails(
+      String requestId, String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/requests/$requestId/details/'),
+        headers: getHeaders(token),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        return data;
+      } else {
+        throw Exception(
+            'Failed to fetch request details: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Request details fetch error: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getHRPendingApprovals(
+      String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/requests/hr-pending/'),
+        headers: getHeaders(token),
+      );
+
+      if (response.statusCode == 200) {
+        final dynamic data = json.decode(response.body);
+
+        if (data is List) {
+          return data.map((e) => e as Map<String, dynamic>).toList();
+        } else if (data is Map<String, dynamic>) {
+          if (data.containsKey('results')) {
+            final List<dynamic> results = data['results'];
+            return results.map((e) => e as Map<String, dynamic>).toList();
+          } else {
+            return [];
+          }
+        } else {
+          return [];
+        }
+      } else {
+        throw Exception(
+            'Failed to fetch HR pending approvals: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('HR approval fetch error: $e');
+    }
+  }
+
+  static Future<bool> approveRequest(String requestId, String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/requests/$requestId/hr-approve/'),
+        headers: getHeaders(token),
+        body: json.encode({
+          'comments': 'Approved by HR',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw Exception(
+            'Failed to approve request: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('HR approval error: $e');
+    }
+  }
+
+  static Future<bool> rejectRequest(String requestId, String token,
+      {required String rejectionReason}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/requests/$requestId/hr-reject/'),
+        headers: getHeaders(token),
+        body: json.encode({
+          'rejection_reason': rejectionReason,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw Exception(
+            'Failed to reject request: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('HR rejection error: $e');
     }
   }
 }
@@ -608,9 +665,14 @@ class EmployeeService {
 class HRDashboard extends StatefulWidget {
   final String authToken;
   final Map<String, dynamic> userData;
+  final VoidCallback onLogout;
 
-  const HRDashboard(
-      {super.key, required this.authToken, required this.userData});
+  const HRDashboard({
+    super.key,
+    required this.authToken,
+    required this.userData,
+    required this.onLogout,
+  });
 
   @override
   State<HRDashboard> createState() => _HRDashboardState();
@@ -620,30 +682,26 @@ class _HRDashboardState extends State<HRDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String searchQuery = "";
-  String employeeFilter = "All"; // "All", "Active", "Inactive"
+  String employeeFilter = "All";
   List<Map<String, dynamic>> employees = [];
+  List<Map<String, dynamic>> hrPendingApprovals = [];
   bool isLoading = true;
   Map<String, dynamic>? selectedEmployee;
-
-  // Add these variables for image handling
   final ImagePicker _imagePicker = ImagePicker();
   File? _selectedImage;
   String? _selectedImagePath;
-
-  // Activity tracking
   List<ActivityItem> activityLog = [];
-
-  // Notification tracking
   List<NotificationItem> notifications = [];
   int unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadData();
-    _loadActivities(); // Load activities from storage
-    _loadNotifications(); // Load notifications from storage
+    _loadHRApprovals();
+    _loadActivities();
+    _loadNotifications();
   }
 
   Future<void> _loadData() async {
@@ -651,7 +709,6 @@ class _HRDashboardState extends State<HRDashboard>
     try {
       final employeesData =
           await EmployeeService.getEmployees(widget.authToken);
-
       setState(() {
         employees = employeesData;
         isLoading = false;
@@ -666,7 +723,20 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Load activities from permanent storage
+  Future<void> _loadHRApprovals() async {
+    try {
+      if (widget.userData['role'] == 'HR') {
+        final approvals =
+            await HRApprovalService.getHRPendingApprovals(widget.authToken);
+        setState(() {
+          hrPendingApprovals = approvals;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load HR approvals: $e');
+    }
+  }
+
   Future<void> _loadActivities() async {
     try {
       final List<ActivityItem> savedActivities =
@@ -679,13 +749,11 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Load notifications from storage
   Future<void> _loadNotifications() async {
     try {
       final List<NotificationItem> savedNotifications =
           await NotificationService.loadNotifications();
       final int unread = await NotificationService.getUnreadCount();
-
       setState(() {
         notifications = savedNotifications;
         unreadCount = unread;
@@ -695,43 +763,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Add sample notifications (you can replace this with real notifications)
-  Future<void> _addSampleNotifications() async {
-    final sampleNotifications = [
-      NotificationItem(
-        title: "Welcome to Xpensure HR",
-        message: "Your HR dashboard has been set up successfully.",
-        type: "info",
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      ),
-      NotificationItem(
-        title: "New Employee Added",
-        message: "John Doe has been added to the system.",
-        type: "success",
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-      ),
-      NotificationItem(
-        title: "Report Generated",
-        message: "Monthly employee report is ready for download.",
-        type: "warning",
-        timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-      NotificationItem(
-        title: "System Update",
-        message: "HR system will be updated tonight at 2 AM.",
-        type: "info",
-        timestamp: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-    ];
-
-    for (var notification in sampleNotifications) {
-      await NotificationService.addNotification(notification);
-    }
-
-    await _loadNotifications();
-  }
-
-  // Add this method for image selection
   Future<void> _pickImage() async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -757,7 +788,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Update the add employee method
   void _addEmployee(Map<String, dynamic> newEmployee, File? avatarFile) async {
     setState(() => isLoading = true);
     try {
@@ -765,25 +795,23 @@ class _HRDashboardState extends State<HRDashboard>
           newEmployee, avatarFile, widget.authToken);
       await _loadData();
 
-      // Add activity log
       _addActivity(
         "Added new employee: ${newEmployee['fullName']}",
         Icons.person_add,
         Colors.green,
       );
 
-      // Add notification
       _addNotification(
         "New Employee Added",
         "${newEmployee['fullName']} has been added to the system.",
         "success",
       );
 
-      // Reset image selection
       setState(() {
         _selectedImage = null;
         _selectedImagePath = null;
       });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${newEmployee['fullName']} added successfully'),
@@ -802,7 +830,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Update the edit employee method
   void _updateEmployee(String employeeId, Map<String, dynamic> employeeData,
       File? avatarFile) async {
     setState(() => isLoading = true);
@@ -815,7 +842,6 @@ class _HRDashboardState extends State<HRDashboard>
       );
       await _loadData();
 
-      // Add activity log
       _addActivity(
         "Updated employee: ${employeeData['fullName']}",
         Icons.edit,
@@ -847,14 +873,12 @@ class _HRDashboardState extends State<HRDashboard>
           employeeId, !currentStatus, widget.authToken);
       await _loadData();
 
-      // Add activity log
       _addActivity(
         "${!currentStatus ? 'Activated' : 'Deactivated'} employee: $name",
         !currentStatus ? Icons.check_circle : Icons.remove_circle,
         !currentStatus ? Colors.green : Colors.orange,
       );
 
-      // Add notification
       _addNotification(
         "Employee Status Updated",
         "$name has been ${!currentStatus ? 'activated' : 'deactivated'}.",
@@ -882,14 +906,12 @@ class _HRDashboardState extends State<HRDashboard>
       await EmployeeService.deleteEmployee(employeeId, widget.authToken);
       await _loadData();
 
-      // Add activity log
       _addActivity(
         "Deleted employee: $name",
         Icons.delete,
         Colors.red,
       );
 
-      // Add notification
       _addNotification(
         "Employee Deleted",
         "$name has been removed from the system.",
@@ -911,12 +933,175 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // CSV Download and Share Functionality
+  void _approveHRRequest(String requestId, String employeeName) async {
+    setState(() => isLoading = true);
+    try {
+      await HRApprovalService.approveRequest(requestId, widget.authToken);
+      await _loadHRApprovals();
+
+      _addActivity(
+        "Approved advance request for: $employeeName",
+        Icons.check_circle,
+        Colors.green,
+      );
+
+      _addNotification(
+        "Advance Request Approved",
+        "Advance request for $employeeName has been approved by HR.",
+        "success",
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Advance request for $employeeName approved'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to approve request: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _rejectHRRequest(
+      String requestId, String employeeName, String reason) async {
+    setState(() => isLoading = true);
+    try {
+      await HRApprovalService.rejectRequest(requestId, widget.authToken,
+          rejectionReason: reason);
+      await _loadHRApprovals();
+
+      _addActivity(
+        "Rejected advance request for: $employeeName",
+        Icons.cancel,
+        Colors.red,
+      );
+
+      _addNotification(
+        "Advance Request Rejected",
+        "Advance request for $employeeName has been rejected by HR.",
+        "error",
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Advance request for $employeeName rejected'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to reject request: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showRejectDialog(String requestId, String employeeName) {
+    final TextEditingController reasonController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Reject Advance Request",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  "Please provide reason for rejecting $employeeName's advance request:",
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Enter rejection reason...",
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1F1F1F),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () {
+                        if (reasonController.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please provide rejection reason'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        Navigator.of(context).pop();
+                        _rejectHRRequest(
+                            requestId, employeeName, reasonController.text);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        "Reject",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _downloadAndShareReport(String period) async {
     try {
       setState(() => isLoading = true);
-
-      // Filter employees based on selected period
       final filteredEmployees =
           CSVService.filterEmployeesByPeriod(employees, period);
 
@@ -932,31 +1117,28 @@ class _HRDashboardState extends State<HRDashboard>
         return;
       }
 
-      // Generate CSV file
       final csvFile = await CSVService.generateEmployeeCSV(filteredEmployees,
           period: period);
 
-      // Add activity log
       _addActivity(
         "Generated $period employee report (${filteredEmployees.length} employees)",
         Icons.download,
         Colors.purple,
       );
 
-      // Add notification
       _addNotification(
         "Report Generated",
         "$period employee report has been generated successfully.",
         "info",
       );
 
-      // Share the file
       await Share.shareXFiles(
         [XFile(csvFile.path, mimeType: 'text/csv')],
         text:
             'Xpensure HR Employee Report - $period\n\nTotal Employees: ${filteredEmployees.length}\nGenerated on: ${DateTime.now().toString()}',
         subject: 'Xpensure Employee Report - $period',
       );
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$period report generated and shared successfully!'),
@@ -975,7 +1157,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Show report options dialog
   void _showReportOptions() {
     showDialog(
       context: context,
@@ -1031,7 +1212,6 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
-  // Add activity to log (Updated for permanent storage)
   void _addActivity(String description, IconData icon, Color color) async {
     final ActivityItem newActivity = ActivityItem(
       description: description,
@@ -1040,17 +1220,13 @@ class _HRDashboardState extends State<HRDashboard>
       timestamp: DateTime.now(),
     );
 
-    // Local state update
     setState(() {
       activityLog.insert(0, newActivity);
-
-      // Keep only last 50 activities in memory
       if (activityLog.length > 50) {
         activityLog.removeLast();
       }
     });
 
-    // Permanent storage mein save karein
     try {
       await ActivityService.addActivity(newActivity);
     } catch (e) {
@@ -1058,7 +1234,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Add notification
   void _addNotification(String title, String message, String type) async {
     final NotificationItem newNotification = NotificationItem(
       title: title,
@@ -1069,13 +1244,12 @@ class _HRDashboardState extends State<HRDashboard>
 
     try {
       await NotificationService.addNotification(newNotification);
-      await _loadNotifications(); // Reload notifications to update unread count
+      await _loadNotifications();
     } catch (e) {
       debugPrint('Failed to save notification: $e');
     }
   }
 
-  // Clear all activities
   Future<void> _clearAllActivities() async {
     try {
       await ActivityService.clearActivities();
@@ -1098,7 +1272,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Clear all notifications
   Future<void> _clearAllNotifications() async {
     try {
       await NotificationService.clearAllNotifications();
@@ -1119,7 +1292,6 @@ class _HRDashboardState extends State<HRDashboard>
     }
   }
 
-  // Mark all notifications as read
   Future<void> _markAllNotificationsAsRead() async {
     try {
       await NotificationService.markAllAsRead();
@@ -1171,7 +1343,6 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
-  // Show notifications dialog
   void _showNotificationsDialog() {
     showDialog(
       context: context,
@@ -1188,7 +1359,6 @@ class _HRDashboardState extends State<HRDashboard>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: const BoxDecoration(
@@ -1236,8 +1406,6 @@ class _HRDashboardState extends State<HRDashboard>
                     ],
                   ),
                 ),
-
-                // Notifications List
                 Expanded(
                   child: notifications.isEmpty
                       ? const Center(
@@ -1292,7 +1460,6 @@ class _HRDashboardState extends State<HRDashboard>
           return Colors.orange;
         case "error":
           return Colors.red;
-        case "info":
         default:
           return Colors.blue;
       }
@@ -1306,7 +1473,6 @@ class _HRDashboardState extends State<HRDashboard>
           return Icons.warning;
         case "error":
           return Icons.error;
-        case "info":
         default:
           return Icons.info;
       }
@@ -1494,10 +1660,10 @@ class _HRDashboardState extends State<HRDashboard>
         TextEditingController(text: employee["report_to"] ?? "");
     String selectedRole = employee["role"] ?? "Common";
 
-    // Variables for image handling in edit dialog - make them mutable
     ValueNotifier<File?> editSelectedImage = ValueNotifier<File?>(null);
     ValueNotifier<String?> editSelectedImagePath = ValueNotifier<String?>(null);
     String? currentAvatarUrl = employee['avatar_url'] ?? employee['avatar'];
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1524,8 +1690,6 @@ class _HRDashboardState extends State<HRDashboard>
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Avatar Selection Section for Edit
                   Center(
                     child: Column(
                       children: [
@@ -1645,15 +1809,12 @@ class _HRDashboardState extends State<HRDashboard>
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  // All fields in a single column
                   _buildTextField(
                     employeeIdController,
                     "Employee ID",
                     Icons.badge,
-                    enabled: false, // Employee ID should not be editable
+                    enabled: false,
                   ),
                   const SizedBox(height: 12),
                   _buildTextField(
@@ -1692,7 +1853,6 @@ class _HRDashboardState extends State<HRDashboard>
                     Icons.supervisor_account,
                   ),
                   const SizedBox(height: 12),
-                  // Role dropdown - UPDATED WITH FINANCE ROLES
                   DropdownButtonFormField<String>(
                     dropdownColor: const Color(0xFF1E1E1E),
                     value: selectedRole,
@@ -1700,8 +1860,8 @@ class _HRDashboardState extends State<HRDashboard>
                       "Common",
                       "HR",
                       "CEO",
-                      "Finance Verification", // ✅ ADDED
-                      "Finance Payment" // ✅ ADDED
+                      "Finance Verification",
+                      "Finance Payment"
                     ].map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
@@ -1774,8 +1934,7 @@ class _HRDashboardState extends State<HRDashboard>
                               "aadhar_card": aadharController.text,
                               "report_to": reportingIdController.text,
                               "role": selectedRole,
-                              "is_active":
-                                  employee["is_active"], // Preserve status
+                              "is_active": employee["is_active"],
                             };
 
                             _updateEmployee(
@@ -1850,15 +2009,18 @@ class _HRDashboardState extends State<HRDashboard>
           ],
         ),
         actions: [
-          // Refresh Button
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadData,
             tooltip: "Refresh Data",
           ),
           const SizedBox(width: 8),
-
-          // User Role Badge
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _showLogoutConfirmation,
+            tooltip: "Logout",
+          ),
+          const SizedBox(width: 8),
           Container(
             width: 36,
             height: 36,
@@ -1886,11 +2048,16 @@ class _HRDashboardState extends State<HRDashboard>
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.deepPurpleAccent,
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: "Overview"),
-            Tab(icon: Icon(Icons.bar_chart), text: "Charts"),
-            Tab(icon: Icon(Icons.group), text: "Employees"),
-            Tab(icon: Icon(Icons.history), text: "Activity"),
+          labelStyle: TextStyle(
+            fontSize: MediaQuery.of(context).size.width < 360 ? 12 : 14,
+          ),
+          tabs: [
+            const Tab(icon: Icon(Icons.dashboard), text: "Overview"),
+            const Tab(icon: Icon(Icons.bar_chart), text: "Charts"),
+            const Tab(icon: Icon(Icons.group), text: "Employees"),
+            if (widget.userData['role'] == 'HR')
+              const Tab(icon: Icon(Icons.approval), text: "Review"),
+            const Tab(icon: Icon(Icons.history), text: "Activity"),
           ],
         ),
       ),
@@ -1902,9 +2069,48 @@ class _HRDashboardState extends State<HRDashboard>
                 _buildOverviewTab(),
                 _buildChartsTab(),
                 _buildEmployeesTab(),
+                if (widget.userData['role'] == 'HR') _buildHRApprovalTab(),
                 _buildActivityTab(),
               ],
             ),
+    );
+  }
+
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text(
+            "Logout",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            "Are you sure you want to logout?",
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                "Cancel",
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onLogout();
+              },
+              child: const Text(
+                "Logout",
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1957,59 +2163,67 @@ class _HRDashboardState extends State<HRDashboard>
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: GridView.builder(
-              itemCount: stats.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 1.0,
-              ),
-              itemBuilder: (context, index) {
-                final stat = stats[index];
-                return GestureDetector(
-                  onTap: stat['onTap'] as void Function()?,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1F1F1F),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final crossAxisCount = constraints.maxWidth < 600 ? 2 : 4;
+                return GridView.builder(
+                  itemCount: stats.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 1.0,
+                  ),
+                  itemBuilder: (context, index) {
+                    final stat = stats[index];
+                    return GestureDetector(
+                      onTap: stat['onTap'] as void Function()?,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1F1F1F),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: stat["color"] as Color,
-                              child: Icon(
-                                stat["icon"] as IconData,
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: constraints.maxWidth < 400 ? 16 : 20,
+                                  backgroundColor: stat["color"] as Color,
+                                  child: Icon(
+                                    stat["icon"] as IconData,
+                                    color: Colors.white,
+                                    size: constraints.maxWidth < 400 ? 16 : 20,
+                                  ),
+                                ),
+                                const Spacer(),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              (stat["value"] as dynamic).toString(),
+                              style: TextStyle(
                                 color: Colors.white,
-                                size: 20,
+                                fontSize: constraints.maxWidth < 400 ? 20 : 24,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const Spacer(),
+                            const SizedBox(height: 4),
+                            Text(
+                              stat["title"] as String,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: constraints.maxWidth < 400 ? 12 : 14,
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          (stat["value"] as dynamic).toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          stat["title"] as String,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2020,7 +2234,6 @@ class _HRDashboardState extends State<HRDashboard>
   }
 
   Widget _buildChartsTab() {
-    // Generate department-wise employee count data
     final departmentData = _getDepartmentData();
 
     return Padding(
@@ -2030,16 +2243,16 @@ class _HRDashboardState extends State<HRDashboard>
         children: [
           Row(
             children: [
-              const Text(
-                "Department Distribution",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  "Department Distribution",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: MediaQuery.of(context).size.width < 400 ? 18 : 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const Spacer(),
-              // Refresh button for charts
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 onPressed: _loadData,
@@ -2048,11 +2261,11 @@ class _HRDashboardState extends State<HRDashboard>
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             "Real-time employee count by department",
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 14,
+              fontSize: MediaQuery.of(context).size.width < 400 ? 12 : 14,
             ),
           ),
           const SizedBox(height: 20),
@@ -2066,7 +2279,8 @@ class _HRDashboardState extends State<HRDashboard>
               child: PieChart(
                 PieChartData(
                   sections: _buildPieChartSections(departmentData),
-                  centerSpaceRadius: 40,
+                  centerSpaceRadius:
+                      MediaQuery.of(context).size.width < 400 ? 30 : 40,
                   sectionsSpace: 4,
                   startDegreeOffset: 180,
                 ),
@@ -2074,7 +2288,6 @@ class _HRDashboardState extends State<HRDashboard>
             ),
           ),
           const SizedBox(height: 20),
-          // Department statistics
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1F1F1F),
@@ -2084,11 +2297,11 @@ class _HRDashboardState extends State<HRDashboard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   "Department Statistics",
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: MediaQuery.of(context).size.width < 400 ? 14 : 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -2110,6 +2323,7 @@ class _HRDashboardState extends State<HRDashboard>
                             child: Text(
                               dept.department,
                               style: const TextStyle(color: Colors.white70),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Text(
@@ -2130,7 +2344,6 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
-  // Build pie chart sections
   List<PieChartSectionData> _buildPieChartSections(List<DepartmentData> data) {
     final totalEmployees = data.fold(0, (sum, item) => sum + item.count);
 
@@ -2141,9 +2354,9 @@ class _HRDashboardState extends State<HRDashboard>
         color: _getDepartmentColor(dept.department),
         value: dept.count.toDouble(),
         title: '${dept.count}',
-        radius: 60,
-        titleStyle: const TextStyle(
-          fontSize: 14,
+        radius: MediaQuery.of(context).size.width < 400 ? 50 : 60,
+        titleStyle: TextStyle(
+          fontSize: MediaQuery.of(context).size.width < 400 ? 12 : 14,
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
@@ -2155,8 +2368,8 @@ class _HRDashboardState extends State<HRDashboard>
           ),
           child: Text(
             '$percentage%',
-            style: const TextStyle(
-              fontSize: 10,
+            style: TextStyle(
+              fontSize: MediaQuery.of(context).size.width < 400 ? 8 : 10,
               color: Colors.white,
             ),
           ),
@@ -2166,7 +2379,6 @@ class _HRDashboardState extends State<HRDashboard>
     }).toList();
   }
 
-  // Helper method to get department data
   List<DepartmentData> _getDepartmentData() {
     final departmentCount = <String, int>{};
 
@@ -2180,7 +2392,6 @@ class _HRDashboardState extends State<HRDashboard>
         .toList();
   }
 
-  // Helper method to get consistent colors for departments
   Color _getDepartmentColor(String department) {
     final colors = {
       "MIPL": const Color.fromARGB(255, 132, 222, 122),
@@ -2208,7 +2419,6 @@ class _HRDashboardState extends State<HRDashboard>
         )
         .toList();
 
-    // Apply status filter
     if (employeeFilter != "All") {
       if (["Active", "Inactive"].contains(employeeFilter)) {
         filteredEmployees = filteredEmployees
@@ -2217,166 +2427,347 @@ class _HRDashboardState extends State<HRDashboard>
                 : e["is_active"] == false)
             .toList();
       } else {
-        // Department filter
         filteredEmployees = filteredEmployees
             .where(
                 (e) => (e["department"] ?? "").toUpperCase() == employeeFilter)
             .toList();
       }
     }
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (val) => setState(() => searchQuery = val),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: "Search employees...",
-                    hintStyle: const TextStyle(color: Colors.white54),
-                    filled: true,
-                    fillColor: const Color(0xFF1F1F1F),
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 0,
-                      horizontal: 16,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1F1F1F),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: PopupMenuButton<String>(
-                    onSelected: (value) {
-                      setState(() {
-                        employeeFilter = value;
-                      });
-                    },
-                    color: const Color(0xFF2A2A2A), // Dark popup background
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 4), // internal padding
-                    itemBuilder: (BuildContext context) => [
-                      const PopupMenuItem<String>(
-                        value: "All",
-                        height: 36,
-                        child: Text(
-                          "All Employees",
-                          style: TextStyle(color: Colors.white, fontSize: 14),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isSmallScreen = constraints.maxWidth < 600;
+
+              if (isSmallScreen) {
+                return Column(
+                  children: [
+                    TextField(
+                      onChanged: (val) => setState(() => searchQuery = val),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Search employees...",
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        filled: true,
+                        fillColor: const Color(0xFF1F1F1F),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 0,
+                          horizontal: 16,
                         ),
-                      ), // white text)),
-                      const PopupMenuItem<String>(
-                        value: "Active",
-                        height: 36,
-                        child: Text(
-                          "Active Only",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
                         ),
-                      ), // white text)),
-                      const PopupMenuItem<String>(
-                        value: "Inactive",
-                        height: 36,
-                        child: Text(
-                          "Inactive Only",
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                      ), // )),
-                      const PopupMenuItem<String>(
-                        value: "MIPL",
-                        height: 36,
-                        child: Text(
-                          "MIPL",
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                      ), // )),
-                      const PopupMenuItem<String>(
-                          value: "MIPPL",
-                          height: 36,
-                          child: Text(
-                            "MIPPL",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          )),
-                      const PopupMenuItem<String>(
-                        value: "MINPL",
-                        height: 36,
-                        child: Text(
-                          "MINPL",
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                      ), // )),
-                      const PopupMenuItem<String>(
-                        value: "MTIPL",
-                        height: 36,
-                        child: Text(
-                          "MTIPL",
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                      ), // )),
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          Text(employeeFilter,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              )),
-                          const Icon(Icons.arrow_drop_down,
-                              color: Colors.white),
-                        ],
+                        prefixIcon:
+                            const Icon(Icons.search, color: Colors.white54),
                       ),
                     ),
-                  )),
-              const SizedBox(width: 12),
-              // Refresh button
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F1F1F),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: _loadData,
-                  tooltip: "Refresh Employees",
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.deepPurple, Colors.purpleAccent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.person_add, color: Colors.white),
-                  onPressed: () {
-                    _showAddEmployeeDialog(context);
-                  },
-                ),
-              ),
-            ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1F1F1F),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: PopupMenuButton<String>(
+                              onSelected: (value) {
+                                setState(() {
+                                  employeeFilter = value;
+                                });
+                              },
+                              color: const Color(0xFF2A2A2A),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              itemBuilder: (BuildContext context) => [
+                                const PopupMenuItem<String>(
+                                  value: "All",
+                                  height: 36,
+                                  child: Text(
+                                    "All Employees",
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: "Active",
+                                  height: 36,
+                                  child: Text(
+                                    "Active Only",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: "Inactive",
+                                  height: 36,
+                                  child: Text(
+                                    "Inactive Only",
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: "MIPL",
+                                  height: 36,
+                                  child: Text(
+                                    "MIPL",
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                                const PopupMenuItem<String>(
+                                    value: "MIPPL",
+                                    height: 36,
+                                    child: Text(
+                                      "MIPPL",
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 14),
+                                    )),
+                                const PopupMenuItem<String>(
+                                  value: "MINPL",
+                                  height: 36,
+                                  child: Text(
+                                    "MINPL",
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: "MTIPL",
+                                  height: 36,
+                                  child: Text(
+                                    "MTIPL",
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                  ),
+                                ),
+                              ],
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        employeeFilter,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down,
+                                        color: Colors.white),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1F1F1F),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            icon:
+                                const Icon(Icons.refresh, color: Colors.white),
+                            onPressed: _loadData,
+                            tooltip: "Refresh Employees",
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.deepPurple, Colors.purpleAccent],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.person_add,
+                                color: Colors.white),
+                            onPressed: () {
+                              _showAddEmployeeDialog(context);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              } else {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (val) => setState(() => searchQuery = val),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: "Search employees...",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          filled: true,
+                          fillColor: const Color(0xFF1F1F1F),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 0,
+                            horizontal: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixIcon:
+                              const Icon(Icons.search, color: Colors.white54),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1F1F1F),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            setState(() {
+                              employeeFilter = value;
+                            });
+                          },
+                          color: const Color(0xFF2A2A2A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemBuilder: (BuildContext context) => [
+                            const PopupMenuItem<String>(
+                              value: "All",
+                              height: 36,
+                              child: Text(
+                                "All Employees",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: "Active",
+                              height: 36,
+                              child: Text(
+                                "Active Only",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: "Inactive",
+                              height: 36,
+                              child: Text(
+                                "Inactive Only",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: "MIPL",
+                              height: 36,
+                              child: Text(
+                                "MIPL",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                                value: "MIPPL",
+                                height: 36,
+                                child: Text(
+                                  "MIPPL",
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14),
+                                )),
+                            const PopupMenuItem<String>(
+                              value: "MINPL",
+                              height: 36,
+                              child: Text(
+                                "MINPL",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: "MTIPL",
+                              height: 36,
+                              child: Text(
+                                "MTIPL",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14),
+                              ),
+                            ),
+                          ],
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                Text(employeeFilter,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    )),
+                                const Icon(Icons.arrow_drop_down,
+                                    color: Colors.white),
+                              ],
+                            ),
+                          ),
+                        )),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1F1F1F),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        onPressed: _loadData,
+                        tooltip: "Refresh Employees",
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.deepPurple, Colors.purpleAccent],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.person_add, color: Colors.white),
+                        onPressed: () {
+                          _showAddEmployeeDialog(context);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              }
+            },
           ),
         ),
         Expanded(
@@ -2396,6 +2787,7 @@ class _HRDashboardState extends State<HRDashboard>
                   title: Text(
                     e["fullName"],
                     style: const TextStyle(color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2403,6 +2795,7 @@ class _HRDashboardState extends State<HRDashboard>
                       Text(
                         "${e["role"] ?? "Employee"} - ${e["department"] ?? "No Department"}",
                         style: const TextStyle(color: Colors.white70),
+                        overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         "ID: ${e["employee_id"]}",
@@ -2436,7 +2829,6 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
-  // Build employee avatar widget
   Widget _buildEmployeeAvatar(Map<String, dynamic> employee) {
     final String? avatarUrl = employee['avatar_url'] ?? employee['avatar'];
     final String fullName = employee['fullName'] ?? 'Employee';
@@ -2464,10 +2856,6 @@ class _HRDashboardState extends State<HRDashboard>
                     errorBuilder: (context, error, stackTrace) {
                       return _buildFallbackAvatar(fullName, isActive);
                     },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return _buildFallbackAvatar(fullName, isActive);
-                    },
                   ),
                 )
               : _buildFallbackAvatar(fullName, isActive),
@@ -2492,7 +2880,6 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
-  // Fallback avatar when no image is available
   Widget _buildFallbackAvatar(String fullName, bool isActive) {
     return Container(
       width: 46,
@@ -2516,6 +2903,498 @@ class _HRDashboardState extends State<HRDashboard>
     );
   }
 
+  Widget _buildHRApprovalTab() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Advance Requests Pending HR Approval",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: MediaQuery.of(context).size.width < 400 ? 18 : 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                onPressed: _loadHRApprovals,
+                tooltip: "Refresh HR Approvals",
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Review and approve/reject advance requests",
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: MediaQuery.of(context).size.width < 400 ? 12 : 14,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: hrPendingApprovals.isEmpty
+                ? Center(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1F1F1F),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF2D2D2D),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.orange.withOpacity(0.1),
+                              border: Border.all(
+                                color: Colors.orange.withOpacity(0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.check_circle_outline,
+                              size: 40,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            "All Caught Up!",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            "No pending advance requests for approval",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _loadHRApprovals,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange.withOpacity(0.2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.refresh,
+                              size: 16,
+                              color: Colors.orange,
+                            ),
+                            label: const Text(
+                              "Check Again",
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: hrPendingApprovals.length,
+                    itemBuilder: (context, index) {
+                      final request = hrPendingApprovals[index];
+                      return _buildHRApprovalItem(request);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(dynamic date) {
+    if (date == null) return 'Unknown date';
+    try {
+      if (date is String) {
+        final dateTime = DateTime.parse(date);
+        return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+      } else if (date is DateTime) {
+        return '${date.day}/${date.month}/${date.year}';
+      }
+      return 'Invalid date format';
+    } catch (e) {
+      return 'Invalid date';
+    }
+  }
+
+  void _viewRequestDetails(Map<String, dynamic> requestData) async {
+    try {
+      setState(() => isLoading = true);
+      final detailedRequest = await HRApprovalService.getRequestDetails(
+        requestData['id'].toString(),
+        widget.authToken,
+      );
+
+      setState(() => isLoading = false);
+      final request = detailedRequest['request'] as Map<String, dynamic>? ??
+          detailedRequest;
+
+      double parseAmount(dynamic amount) {
+        if (amount == null) return 0.0;
+        if (amount is double) return amount;
+        if (amount is int) return amount.toDouble();
+        if (amount is String) {
+          try {
+            return double.parse(amount);
+          } catch (e) {
+            return 0.0;
+          }
+        }
+        return 0.0;
+      }
+
+      final amount = parseAmount(request['amount']);
+      final purpose =
+          request['purpose'] ?? request['description'] ?? 'Not specified';
+      final paymentData = _createPaymentDataFromRequest(detailedRequest);
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => HrRequestDetails(
+            request: Request(
+              id: int.tryParse(request['id']?.toString() ?? '0') ?? 0,
+              employeeId: request['employee_id']?.toString() ?? '',
+              employeeName: request['employee_name']?.toString() ?? '',
+              submissionDate: _formatDate(request['created_at']),
+              amount: amount,
+              description: purpose,
+              payments: paymentData,
+              requestType: 'Advance',
+              avatarUrl: requestData['employee_avatar'],
+            ),
+            authToken: widget.authToken,
+          ),
+        ),
+      );
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading request details: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  List<Map<String, dynamic>> _createPaymentDataFromRequest(
+      dynamic requestData) {
+    Map<String, dynamic> data;
+    if (requestData is Map<String, dynamic>) {
+      data = requestData;
+    } else {
+      data = requestData as Map<String, dynamic>;
+    }
+
+    final request = data['request'] as Map<String, dynamic>? ?? {};
+
+    return [
+      {
+        'amount': request['amount']?.toString() ?? '0',
+        'particulars': request['purpose'] ?? request['description'] ?? '',
+        'purpose': request['purpose'] ?? '',
+        'description': request['purpose'] ?? '',
+        'project_id': request['project_id'] ?? '',
+        'project_name': request['project_name'] ?? '',
+        'project_date': request['project_date'] ?? '',
+        'request_date': request['request_date'] ?? request['created_at'] ?? '',
+        'projectId': request['project_id'] ?? '',
+        'projectName': request['project_name'] ?? '',
+        'projectDate': request['project_date'] ?? '',
+        'requestDate': request['request_date'] ?? request['created_at'] ?? '',
+        'attachmentPaths': _getAttachmentPathsFromRequest(data),
+      }
+    ];
+  }
+
+  List<String> _getAttachmentPathsFromRequest(dynamic requestData) {
+    final attachments = <String>[];
+    Map<String, dynamic> data;
+    if (requestData is Map<String, dynamic>) {
+      data = requestData;
+    } else {
+      data = requestData as Map<String, dynamic>;
+    }
+
+    if (data.containsKey('attachments') && data['attachments'] is List) {
+      for (var attachment in data['attachments'] as List) {
+        if (attachment != null && attachment.toString().isNotEmpty) {
+          attachments.add(attachment.toString());
+        }
+      }
+    }
+
+    return attachments;
+  }
+
+  Widget _buildHRApprovalItem(Map<String, dynamic> request) {
+    final employeeName = request['employee_name'] ??
+        request['employeeName'] ??
+        'Unknown Employee';
+    final requestId = request['id']?.toString() ?? '';
+    final amount = request['amount']?.toString() ?? '0';
+    final purpose =
+        request['purpose'] ?? request['description'] ?? 'Not specified';
+    final double amountValue = double.tryParse(amount) ?? 0.0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1F1F),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF2D2D2D),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    employeeName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Colors.orange, Colors.deepOrange],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    "₹${amountValue.toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const SizedBox(width: 8),
+                _buildInfoChip(
+                  icon: Icons.calendar_today,
+                  text: _formatDate(request['created_at']),
+                  color: Colors.teal,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.description,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      purpose,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _viewRequestDetails(request);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2D2D2D),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    icon: const Icon(
+                      Icons.visibility_outlined,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      "View Details",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _approveHRRequest(requestId, employeeName);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[900],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    icon: const Icon(
+                      Icons.check_circle_outline,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      "Approve",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _showRejectDialog(requestId, employeeName);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[900],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    icon: const Icon(
+                      Icons.cancel_outlined,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      "Reject",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(
+      {required IconData icon, required String text, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddEmployeeDialog(BuildContext context) {
     final employeeIdController = TextEditingController();
     final emailController = TextEditingController();
@@ -2526,10 +3405,10 @@ class _HRDashboardState extends State<HRDashboard>
     final reportingIdController = TextEditingController();
     String selectedRole = "Common";
 
-    // Local state variables for the dialog - YEH CHANGE HAI
     ValueNotifier<File?> dialogSelectedImage = ValueNotifier<File?>(null);
     ValueNotifier<String?> dialogSelectedImagePath =
         ValueNotifier<String?>(null);
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -2540,283 +3419,281 @@ class _HRDashboardState extends State<HRDashboard>
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Center(
-                        child: Text(
-                          "Add New Employee",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Center(
+                          child: Text(
+                            "Add New Employee",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Avatar Selection Section for Add - YEH FIX HAI
-                      Center(
-                        child: Column(
-                          children: [
-                            ValueListenableBuilder<String?>(
-                              valueListenable: dialogSelectedImagePath,
-                              builder: (context, imagePath, child) {
-                                return Stack(
-                                  children: [
-                                    Container(
-                                      width: 100,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.deepPurple,
-                                          width: 3,
-                                        ),
-                                      ),
-                                      child: imagePath != null
-                                          ? ClipOval(
-                                              child: Image.file(
-                                                File(imagePath),
-                                                fit: BoxFit.cover,
-                                                width: 94,
-                                                height: 94,
-                                              ),
-                                            )
-                                          : Container(
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey[800],
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.person,
-                                                size: 50,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                    ),
-                                    Positioned(
-                                      bottom: 0,
-                                      right: 0,
-                                      child: Container(
-                                        width: 36,
-                                        height: 36,
+                        const SizedBox(height: 20),
+                        Center(
+                          child: Column(
+                            children: [
+                              ValueListenableBuilder<String?>(
+                                valueListenable: dialogSelectedImagePath,
+                                builder: (context, imagePath, child) {
+                                  return Stack(
+                                    children: [
+                                      Container(
+                                        width: 100,
+                                        height: 100,
                                         decoration: BoxDecoration(
-                                          color: Colors.deepPurple,
                                           shape: BoxShape.circle,
                                           border: Border.all(
-                                            color: const Color(0xFF1E1E1E),
+                                            color: Colors.deepPurple,
                                             width: 3,
                                           ),
                                         ),
-                                        child: IconButton(
-                                          icon: const Icon(
-                                            Icons.camera_alt,
-                                            size: 18,
-                                            color: Colors.white,
+                                        child: imagePath != null
+                                            ? ClipOval(
+                                                child: Image.file(
+                                                  File(imagePath),
+                                                  fit: BoxFit.cover,
+                                                  width: 94,
+                                                  height: 94,
+                                                ),
+                                              )
+                                            : Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[800],
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.person,
+                                                  size: 50,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        right: 0,
+                                        child: Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: Colors.deepPurple,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: const Color(0xFF1E1E1E),
+                                              width: 3,
+                                            ),
                                           ),
-                                          onPressed: () async {
-                                            final XFile? pickedFile =
-                                                await _imagePicker.pickImage(
-                                              source: ImageSource.gallery,
-                                              maxWidth: 800,
-                                              maxHeight: 800,
-                                              imageQuality: 80,
-                                            );
+                                          child: IconButton(
+                                            icon: const Icon(
+                                              Icons.camera_alt,
+                                              size: 18,
+                                              color: Colors.white,
+                                            ),
+                                            onPressed: () async {
+                                              final XFile? pickedFile =
+                                                  await _imagePicker.pickImage(
+                                                source: ImageSource.gallery,
+                                                maxWidth: 800,
+                                                maxHeight: 800,
+                                                imageQuality: 80,
+                                              );
 
-                                            if (pickedFile != null) {
-                                              // YEH IMPORTANT CHANGE HAI
-                                              dialogSelectedImage.value =
-                                                  File(pickedFile.path);
-                                              dialogSelectedImagePath.value =
-                                                  pickedFile.path;
-                                            }
-                                          },
+                                              if (pickedFile != null) {
+                                                dialogSelectedImage.value =
+                                                    File(pickedFile.path);
+                                                dialogSelectedImagePath.value =
+                                                    pickedFile.path;
+                                              }
+                                            },
+                                          ),
                                         ),
                                       ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              ValueListenableBuilder<String?>(
+                                valueListenable: dialogSelectedImagePath,
+                                builder: (context, imagePath, child) {
+                                  return Text(
+                                    imagePath != null
+                                        ? "Photo selected"
+                                        : "Add profile photo",
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
                                     ),
-                                  ],
-                                );
-                              },
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildTextField(
+                          employeeIdController,
+                          "Employee ID",
+                          Icons.badge,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          fullNameController,
+                          "Full Name",
+                          Icons.person,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          emailController,
+                          "Email ID",
+                          Icons.email,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          phoneController,
+                          "Phone No",
+                          Icons.phone,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          departmentController,
+                          "Department",
+                          Icons.business,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          aadharController,
+                          "Aadhar No",
+                          Icons.credit_card,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          reportingIdController,
+                          "Reporting ID",
+                          Icons.supervisor_account,
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          dropdownColor: const Color(0xFF1E1E1E),
+                          value: selectedRole,
+                          items: [
+                            "Common",
+                            "HR",
+                            "CEO",
+                            "Finance Verification",
+                            "Finance Payment"
+                          ].map((String value) {
+                            return DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(
+                                value,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) {
+                            setDialogState(() {
+                              selectedRole = newValue!;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            labelText: "Role",
+                            labelStyle: const TextStyle(color: Colors.white70),
+                            prefixIcon: const Icon(
+                              Icons.work,
+                              color: Colors.white54,
                             ),
-                            const SizedBox(height: 8),
-                            ValueListenableBuilder<String?>(
-                              valueListenable: dialogSelectedImagePath,
-                              builder: (context, imagePath, child) {
-                                return Text(
-                                  imagePath != null
-                                      ? "Photo selected"
-                                      : "Add profile photo",
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFF1F1F1F),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text(
+                                "Cancel",
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Colors.deepPurple,
+                                    Colors.purpleAccent
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  if (employeeIdController.text.isEmpty ||
+                                      fullNameController.text.isEmpty ||
+                                      emailController.text.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Employee ID, Full Name, and Email are required',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  final newEmployee = {
+                                    "employee_id": employeeIdController.text,
+                                    "email": emailController.text,
+                                    "fullName": fullNameController.text,
+                                    "department": departmentController.text,
+                                    "phone_number": phoneController.text,
+                                    "aadhar_card": aadharController.text,
+                                    "report_to": reportingIdController.text,
+                                    "role": selectedRole,
+                                  };
+
+                                  _addEmployee(
+                                      newEmployee, dialogSelectedImage.value);
+                                  Navigator.of(context).pop();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                );
-                              },
+                                ),
+                                child: const Text(
+                                  "Add Employee",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // All fields in a single column
-                      _buildTextField(
-                        employeeIdController,
-                        "Employee ID",
-                        Icons.badge,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        fullNameController,
-                        "Full Name",
-                        Icons.person,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        emailController,
-                        "Email ID",
-                        Icons.email,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        phoneController,
-                        "Phone No",
-                        Icons.phone,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        departmentController,
-                        "Department",
-                        Icons.business,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        aadharController,
-                        "Aadhar No",
-                        Icons.credit_card,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        reportingIdController,
-                        "Reporting ID",
-                        Icons.supervisor_account,
-                      ),
-                      const SizedBox(height: 12),
-                      // Role dropdown - UPDATED WITH FINANCE ROLES
-                      DropdownButtonFormField<String>(
-                        dropdownColor: const Color(0xFF1E1E1E),
-                        value: selectedRole,
-                        items: [
-                          "Common",
-                          "HR",
-                          "CEO",
-                          "Finance Verification", // ✅ ADDED
-                          "Finance Payment" // ✅ ADDED
-                        ].map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(
-                              value,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (newValue) {
-                          setDialogState(() {
-                            selectedRole = newValue!;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          labelText: "Role",
-                          labelStyle: const TextStyle(color: Colors.white70),
-                          prefixIcon: const Icon(
-                            Icons.work,
-                            color: Colors.white54,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF1F1F1F),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text(
-                              "Cancel",
-                              style: TextStyle(color: Colors.white54),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Colors.deepPurple,
-                                  Colors.purpleAccent
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: ElevatedButton(
-                              onPressed: () {
-                                if (employeeIdController.text.isEmpty ||
-                                    fullNameController.text.isEmpty ||
-                                    emailController.text.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Employee ID, Full Name, and Email are required',
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                final newEmployee = {
-                                  "employee_id": employeeIdController.text,
-                                  "email": emailController.text,
-                                  "fullName": fullNameController.text,
-                                  "department": departmentController.text,
-                                  "phone_number": phoneController.text,
-                                  "aadhar_card": aadharController.text,
-                                  "report_to": reportingIdController.text,
-                                  "role": selectedRole,
-                                };
-
-                                _addEmployee(
-                                    newEmployee, dialogSelectedImage.value);
-                                Navigator.of(context).pop();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text(
-                                "Add Employee",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2861,16 +3738,16 @@ class _HRDashboardState extends State<HRDashboard>
         children: [
           Row(
             children: [
-              const Text(
-                "Recent Activities",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  "Recent Activities",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: MediaQuery.of(context).size.width < 400 ? 18 : 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const Spacer(),
-              // Refresh button in activity tab
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 onPressed: _loadData,
@@ -2888,11 +3765,11 @@ class _HRDashboardState extends State<HRDashboard>
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             "Real-time updates of HR actions",
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 14,
+              fontSize: MediaQuery.of(context).size.width < 400 ? 12 : 14,
             ),
           ),
           const SizedBox(height: 20),
@@ -2955,6 +3832,7 @@ class _HRDashboardState extends State<HRDashboard>
                               color: Colors.white,
                               fontSize: 14,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
                             _formatTimeAgo(activity.timestamp),
@@ -3059,6 +3937,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           "${employee["role"] ?? "Employee"} - ${employee["department"] ?? "No Department"}",
@@ -3066,6 +3945,7 @@ class EmployeeDetailsSheet extends StatelessWidget {
                             color: Colors.white70,
                             fontSize: 14,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Container(
@@ -3116,7 +3996,6 @@ class EmployeeDetailsSheet extends StatelessWidget {
               _buildDetailRow(
                   "Reporting ID", employee["report_to"] ?? "Not assigned"),
               const SizedBox(height: 24),
-              // EDIT BUTTON
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -3181,7 +4060,6 @@ class EmployeeDetailsSheet extends StatelessWidget {
     );
   }
 
-  // Avatar for employee details
   Widget _buildEmployeeDetailAvatar(Map<String, dynamic> employee) {
     final String? avatarUrl = employee['avatar_url'] ?? employee['avatar'];
     final String fullName = employee['fullName'] ?? 'Employee';
@@ -3209,10 +4087,6 @@ class EmployeeDetailsSheet extends StatelessWidget {
                     errorBuilder: (context, error, stackTrace) {
                       return _buildFallbackDetailAvatar(fullName, isActive);
                     },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return _buildFallbackDetailAvatar(fullName, isActive);
-                    },
                   ),
                 )
               : _buildFallbackDetailAvatar(fullName, isActive),
@@ -3221,7 +4095,6 @@ class EmployeeDetailsSheet extends StatelessWidget {
     );
   }
 
-  // Fallback avatar for details view
   Widget _buildFallbackDetailAvatar(String fullName, bool isActive) {
     return Container(
       width: 54,
@@ -3263,7 +4136,11 @@ class EmployeeDetailsSheet extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(value, style: const TextStyle(color: Colors.white)),
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -3271,7 +4148,6 @@ class EmployeeDetailsSheet extends StatelessWidget {
   }
 }
 
-// Data model for department chart
 class DepartmentData {
   final String department;
   final int count;
@@ -3279,7 +4155,6 @@ class DepartmentData {
   DepartmentData(this.department, this.count);
 }
 
-// Data model for activity log
 class ActivityItem {
   final String description;
   final IconData icon;
@@ -3294,11 +4169,10 @@ class ActivityItem {
   });
 }
 
-// Data model for notifications
 class NotificationItem {
   final String title;
   final String message;
-  final String type; // "info", "success", "warning", "error"
+  final String type;
   final DateTime timestamp;
   bool isRead;
 

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:open_file/open_file.dart';
 import 'dart:convert';
 import '../models/finance_request.dart';
 import '../utils/date_formatter.dart';
@@ -42,7 +44,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     return parsedAmount.toStringAsFixed(2);
   }
 
-  // Helper methods for attachments
+  // Enhanced file handling methods
   String _getFileName(String path) {
     try {
       return path.split('/').last;
@@ -51,16 +53,57 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     }
   }
 
+  String _getFileExtension(String path) {
+    try {
+      return path.toLowerCase().split('.').last;
+    } catch (e) {
+      return '';
+    }
+  }
+
   bool _isImageFile(String path) {
-    final ext = path.toLowerCase().split('.').last;
+    final ext = _getFileExtension(path);
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
   }
 
   bool _isPdfFile(String path) {
-    return path.toLowerCase().endsWith('.pdf');
+    return _getFileExtension(path) == 'pdf';
   }
 
-  // ENHANCED ATTACHMENT EXTRACTION
+  bool _isDocumentFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['doc', 'docx', 'ppt', 'pptx'].contains(ext);
+  }
+
+  bool _isExcelFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['xls', 'xlsx', 'csv'].contains(ext);
+  }
+
+  bool _isTextFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['txt', 'rtf'].contains(ext);
+  }
+
+  IconData _getFileIcon(String path) {
+    if (_isImageFile(path)) return Icons.image;
+    if (_isPdfFile(path)) return Icons.picture_as_pdf;
+    if (_isDocumentFile(path)) return Icons.description;
+    if (_isExcelFile(path)) return Icons.table_chart;
+    if (_isTextFile(path)) return Icons.text_snippet;
+    return Icons.insert_drive_file;
+  }
+
+  Color _getFileIconColor(String path) {
+    if (_isImageFile(path)) return Colors.amber;
+    if (_isPdfFile(path)) return Colors.red;
+    if (_isDocumentFile(path)) return Colors.blue;
+    if (_isExcelFile(path)) return Colors.green;
+    if (_isTextFile(path)) return Colors.orange;
+    return Colors.grey;
+  }
+
+  // Enhanced attachment extraction
   List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
     List<String> attachmentPaths = [];
 
@@ -97,7 +140,11 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
               value.startsWith('/') ||
               value.contains('.jpg') ||
               value.contains('.png') ||
-              value.contains('.pdf')) {
+              value.contains('.pdf') ||
+              value.contains('.doc') ||
+              value.contains('.docx') ||
+              value.contains('.xls') ||
+              value.contains('.xlsx')) {
             attachmentPaths.add(value);
           }
         }
@@ -107,12 +154,12 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     return attachmentPaths;
   }
 
-  // ATTACHMENT DIALOG
+  // Enhanced file dialog for images
   void _showImageDialog(String imagePath) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color.fromARGB(255, 28, 28, 28),
         insetPadding: const EdgeInsets.all(20),
         child: Stack(
           children: [
@@ -138,7 +185,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
               bottom: 10,
               right: 10,
               child: ElevatedButton.icon(
-                onPressed: () => _downloadFile(imagePath),
+                onPressed: () => _downloadOnly(imagePath),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
@@ -153,148 +200,541 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  Future<void> _openPdf(String pdfPath) async {
+  // Enhanced file opening with "Open With" dialog
+  Future<void> _openFileWithDialog(String filePath) async {
     try {
-      final url = pdfPath.startsWith('http') ? pdfPath : 'file://$pdfPath';
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
+      // First download the file if it's from network
+      String localPath;
+      if (filePath.startsWith('http')) {
+        localPath = await _downloadFile(filePath);
       } else {
+        localPath = filePath;
+      }
+
+      // Use open_file to show the "Open With" dialog
+      final result = await OpenFile.open(localPath);
+
+      // Handle the result
+      _handleOpenFileResult(result, filePath);
+    } catch (e) {
+      print('Error opening file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _handleOpenFileResult(OpenResult result, String originalPath) {
+    switch (result.type) {
+      case ResultType.done:
+        print("File opened successfully");
+        break;
+      case ResultType.noAppToOpen:
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cannot open PDF file'),
+            content: Text('No app found to open this file'),
             backgroundColor: Colors.orange,
           ),
         );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+        break;
+      case ResultType.fileNotFound:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.permissionDenied:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permission denied to open file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.error:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
     }
   }
 
-  Future<void> _downloadFile(String filePath) async {
+  Future<String> _downloadFile(String filePath) async {
     try {
       if (filePath.startsWith('http')) {
         final response = await http.get(Uri.parse(filePath));
-        final documentsDir = await getApplicationDocumentsDirectory();
+        final tempDir = await getTemporaryDirectory();
         final fileName = _getFileName(filePath);
-        final file = File('${documentsDir.path}/$fileName');
+        final file = File('${tempDir.path}/$fileName');
 
         await file.writeAsBytes(response.bodyBytes);
+        return file.path;
+      } else {
+        return filePath;
+      }
+    } catch (e) {
+      throw Exception('Download failed: $e');
+    }
+  }
 
+  Future<void> _downloadAndOpenFile(String filePath) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File downloaded to: ${file.path}'),
-            backgroundColor: Colors.green,
+            content: Text('File downloaded successfully!'),
+            backgroundColor: const Color(0xFF1E8C3E),
+            duration: const Duration(seconds: 2),
           ),
         );
-      } else {
-        // For local files, show a message instead of trying to download
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('File is already available locally'),
-            backgroundColor: Colors.blue,
-          ),
-        );
+
+        // Auto-open the file with "Open With" dialog
+        await _openFileWithDialog(downloadedPath);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error accessing file: $e'),
-          backgroundColor: Colors.red,
+          content: Text('Error downloading file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
         ),
       );
     }
   }
 
-  // Helper methods for file handling
-  Future<bool> _checkFileExists(String path) async {
+  Future<void> _downloadOnly(String filePath) async {
     try {
-      final file = File(path);
-      return await file.exists();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      String downloadedPath;
+
+      if (filePath.startsWith('http')) {
+        // Download from network
+        final response = await http.get(Uri.parse(filePath));
+
+        // Use Downloads directory for user-accessible storage
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final file = File('${downloadsDir.path}/$fileName');
+
+        await file.writeAsBytes(response.bodyBytes);
+        downloadedPath = file.path;
+      } else {
+        // For local files, copy to downloads directory
+        final originalFile = File(filePath);
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final newFile = File('${downloadsDir.path}/$fileName');
+
+        await originalFile.copy(newFile.path);
+        downloadedPath = newFile.path;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('File downloaded successfully!'),
+              Text(
+                'Location: ${downloadedPath.split('/').last}',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E8C3E),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OPEN',
+            textColor: Colors.white,
+            onPressed: () => _openFileWithDialog(downloadedPath),
+          ),
+        ),
+      );
+
+      print('File downloaded to: $downloadedPath');
     } catch (e) {
-      return false;
+      print('Error downloading file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error downloading file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
-  Widget _buildErrorContainer(String message) {
-    return Container(
-      color: Colors.grey[800],
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.grey, size: 40),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 12,
-            ),
+  Future<void> _shareFile(String filePath) async {
+    try {
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
+        await Share.shareXFiles(
+          [XFile(downloadedPath)],
+          text: 'Check out this file: ${_getFileName(filePath)}',
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sharing file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+        ),
+      );
+    }
+  }
+
+  // Enhanced responsive file actions widget
+  Widget _buildFileActions(String filePath) {
+    final isImage = _isImageFile(filePath);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+
+        if (isImage) {
+          if (maxWidth < 400) {
+            // Vertical layout for small screens - Images
+            return Column(
+              children: [
+                _buildCompactButton(
+                  'View',
+                  Icons.visibility,
+                  const Color(0xFF7B1FA2),
+                  () => _showImageDialog(filePath),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildCompactButton(
+                        'Open',
+                        Icons.open_in_new,
+                        const Color(0xFF1976D2),
+                        () => _openFileWithDialog(filePath),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompactButton(
+                        'Download',
+                        Icons.download,
+                        const Color(0xFF388E3C),
+                        () => _downloadOnly(filePath),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          } else if (maxWidth < 500) {
+            // Medium layout for images
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildCompactButton(
+                    'View',
+                    Icons.visibility,
+                    const Color(0xFF7B1FA2),
+                    () => _showImageDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactButton(
+                    'Open',
+                    Icons.open_in_new,
+                    const Color(0xFF1976D2),
+                    () => _openFileWithDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactButton(
+                    'Download',
+                    Icons.download,
+                    const Color(0xFF388E3C),
+                    () => _downloadOnly(filePath),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            // Horizontal layout for larger screens - Images
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    'View Image',
+                    Icons.visibility,
+                    const Color(0xFF7B1FA2),
+                    () => _showImageDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    'Open File',
+                    Icons.open_in_new,
+                    const Color(0xFF1976D2),
+                    () => _openFileWithDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    'Download',
+                    Icons.download,
+                    const Color(0xFF388E3C),
+                    () => _downloadOnly(filePath),
+                  ),
+                ),
+              ],
+            );
+          }
+        } else {
+          // Non-image files
+          if (maxWidth < 400) {
+            // Vertical layout for small screens - Documents
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildCompactButton(
+                        'Open With',
+                        Icons.open_in_new,
+                        const Color(0xFFC62828),
+                        () => _openFileWithDialog(filePath),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildCompactButton(
+                        'Download',
+                        Icons.download,
+                        const Color(0xFF1976D2),
+                        () => _downloadOnly(filePath),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildCompactButton(
+                  'Share File',
+                  Icons.share,
+                  const Color(0xFF388E3C),
+                  () => _shareFile(filePath),
+                ),
+              ],
+            );
+          } else if (maxWidth < 500) {
+            // Medium layout for documents
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildCompactButton(
+                    'Open With',
+                    Icons.open_in_new,
+                    const Color(0xFFC62828),
+                    () => _openFileWithDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactButton(
+                    'Download',
+                    Icons.download,
+                    const Color(0xFF1976D2),
+                    () => _downloadOnly(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactButton(
+                    'Share',
+                    Icons.share,
+                    const Color(0xFF388E3C),
+                    () => _shareFile(filePath),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            // Horizontal layout for larger screens - Documents
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    'Open With',
+                    Icons.open_in_new,
+                    const Color(0xFFC62828),
+                    () => _openFileWithDialog(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    'Download',
+                    Icons.download,
+                    const Color(0xFF1976D2),
+                    () => _downloadOnly(filePath),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildActionButton(
+                    'Share File',
+                    Icons.share,
+                    const Color(0xFF388E3C),
+                    () => _shareFile(filePath),
+                  ),
+                ),
+              ],
+            );
+          }
+        }
+      },
+    );
+  }
+
+  // Compact button for small screens
+  Widget _buildCompactButton(
+      String text, IconData icon, Color color, VoidCallback onPressed) {
+    return SizedBox(
+      height: 42,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
           ),
-        ],
+          minimumSize: const Size(0, 40),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLoadingContainer() {
-    return Container(
-      color: Colors.grey[800],
-      child: const Center(
-        child: CircularProgressIndicator(color: Colors.tealAccent),
+  // Standard button for larger screens
+  Widget _buildActionButton(
+      String text, IconData icon, Color color, VoidCallback onPressed) {
+    return SizedBox(
+      height: 44,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ENHANCED ATTACHMENT PREVIEW WIDGET
+  // Enhanced responsive single attachment preview
   Widget _buildSingleAttachmentPreview(String attachmentPath) {
     final isImage = _isImageFile(attachmentPath);
-    final isPdf = _isPdfFile(attachmentPath);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      color: const Color(0xFF0D0D0D),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[700]!, width: 1),
+        side: BorderSide(color: Colors.grey[800]!, width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // File info row
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: isImage
-                        ? Colors.amber.withOpacity(0.2)
-                        : isPdf
-                            ? Colors.red.withOpacity(0.2)
-                            : Colors.blue.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    isImage
-                        ? Icons.image
-                        : isPdf
-                            ? Icons.picture_as_pdf
-                            : Icons.insert_drive_file,
-                    color: isImage
-                        ? Colors.amber
-                        : isPdf
-                            ? Colors.red
-                            : Colors.blue,
-                    size: 20,
-                  ),
+                Icon(
+                  _getFileIcon(attachmentPath),
+                  color: _getFileIconColor(attachmentPath),
+                  size: 24,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,21 +743,18 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                         _getFileName(attachmentPath),
                         style: const TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
-                        isImage
-                            ? 'Image File'
-                            : isPdf
-                                ? 'PDF Document'
-                                : 'Document',
+                        _getFileExtension(attachmentPath).toUpperCase(),
                         style: TextStyle(
                           color: Colors.grey[400],
-                          fontSize: 12,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -325,112 +762,93 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Image preview for images - with error handling
+            // Image preview for image files
             if (isImage)
-              GestureDetector(
-                onTap: () => _showImageDialog(attachmentPath),
-                child: Container(
-                  height: 120,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[600]!),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: attachmentPath.startsWith('http')
-                        ? Image.network(
-                            attachmentPath,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return _buildErrorContainer(
-                                  'Failed to load image');
-                            },
-                          )
-                        : FutureBuilder<bool>(
-                            future: _checkFileExists(attachmentPath),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return _buildLoadingContainer();
-                              }
-                              if (snapshot.hasData && snapshot.data!) {
-                                return Image.file(File(attachmentPath),
-                                    fit: BoxFit.cover);
-                              } else {
-                                return _buildErrorContainer('Image not found');
-                              }
-                            },
-                          ),
-                  ),
+              Container(
+                height: 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[700]!),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: attachmentPath.startsWith('http')
+                      ? Image.network(
+                          attachmentPath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: 40,
+                              ),
+                            );
+                          },
+                        )
+                      : Image.file(
+                          File(attachmentPath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: 40,
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
-
-            if (isImage) const SizedBox(height: 16),
+            if (isImage) const SizedBox(height: 12),
 
             // Action buttons
-            Row(
-              children: [
-                if (isImage)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showImageDialog(attachmentPath),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.amber,
-                        side: const BorderSide(color: Colors.amber),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.fullscreen, size: 16),
-                      label: const Text('Full Screen'),
-                    ),
-                  ),
-                if (isImage) const SizedBox(width: 8),
-                if (isPdf)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openPdf(attachmentPath),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('Open PDF'),
-                    ),
-                  ),
-                if (isPdf) const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _downloadFile(attachmentPath),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1976D2),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: const Text('Download'),
-                  ),
-                ),
-              ],
-            ),
+            _buildFileActions(attachmentPath),
           ],
         ),
       ),
     );
   }
 
-  // ENHANCED DETAIL CARD
+  // Enhanced attachments section
+  Widget _buildAttachmentsSection(List<String> attachmentPaths) {
+    if (attachmentPaths.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'No attachments',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Text(
+          'Attachments:',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...attachmentPaths
+            .map((path) => _buildSingleAttachmentPreview(path))
+            .toList(),
+      ],
+    );
+  }
+
+  // Enhanced responsive detail card
   Widget _buildDetailCard(String title, IconData icon, List<Widget> children) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -471,12 +889,14 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                     child: Icon(icon, size: 18, color: Colors.blue),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -496,46 +916,81 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // ENHANCED DETAIL ITEM
+  // Enhanced responsive detail item
   Widget _detailItem(String label, String value, {bool isImportant = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[800]!, width: 0.5),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 400;
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Colors.grey[800]!, width: 0.5),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: isImportant ? const Color(0xFF00E5FF) : Colors.white,
-                fontWeight: isImportant ? FontWeight.w600 : FontWeight.normal,
-                fontSize: 14,
-              ),
-            ),
-          ),
-        ],
-      ),
+          child: isSmallScreen
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        color: isImportant
+                            ? const Color(0xFF00E5FF)
+                            : Colors.white,
+                        fontWeight:
+                            isImportant ? FontWeight.w600 : FontWeight.normal,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 140,
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          color: isImportant
+                              ? const Color(0xFF00E5FF)
+                              : Colors.white,
+                          fontWeight:
+                              isImportant ? FontWeight.w600 : FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
-  // DATE FIELD HANDLING
+  // Date field handling
   Widget _detailItemWithDate(String label, String? backendDate,
       {bool isImportant = false}) {
     String displayDate = 'Not specified';
@@ -547,11 +1002,10 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     return _detailItem(label, displayDate, isImportant: isImportant);
   }
 
-  // ✅ FIXED: DYNAMIC STATUS BADGE BASED ON CONTEXT
+  // Dynamic status badge
   Widget _buildStatusBadge() {
     final request = widget.request;
 
-    // ✅ DIFFERENT LOGIC FOR PAYMENT DASHBOARD
     if (widget.isPaymentTab) {
       // For Finance Payment Dashboard
       if (request.isPaid) {
@@ -630,7 +1084,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
@@ -646,14 +1100,14 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: statusColor.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: Icon(statusIcon, color: statusColor, size: 28),
+            child: Icon(statusIcon, color: statusColor, size: 24),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,7 +1117,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                   style: TextStyle(
                     color: statusColor,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -671,7 +1125,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                   description,
                   style: TextStyle(
                     color: statusColor.withOpacity(0.8),
-                    fontSize: 13,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -682,7 +1136,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // UPDATED QUICK SUMMARY CARD - REMOVED PRIORITY
+  // Quick summary card
   Widget _buildQuickSummary() {
     final request = widget.request;
     final isReimbursement =
@@ -727,12 +1181,15 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
               ),
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -740,7 +1197,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // ENHANCED PAYMENT BREAKDOWN CARD WITH ATTACHMENTS
+  // Enhanced payment breakdown with attachments
   Widget _buildPaymentBreakdown() {
     final request = widget.request;
 
@@ -768,7 +1225,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // UPDATED PAYMENT ITEM WITH ATTACHMENTS INCLUDED
+  // Enhanced payment item with attachments
   Widget _buildPaymentItemWithAttachments(dynamic payment, int index) {
     Map<String, dynamic> paymentData = {};
     if (payment is Map<String, dynamic>) {
@@ -916,11 +1373,11 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // ENHANCED ACTION BUTTONS
+  // Enhanced responsive action buttons
   Widget _buildActionButtons() {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
@@ -943,7 +1400,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           const Text(
             'Verify this request:',
             style: TextStyle(
@@ -952,26 +1409,54 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'Approve',
-                  Icons.check_circle,
-                  Colors.green,
-                  _isProcessing ? null : _financeApproveRequest,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildActionButton(
-                  'Reject',
-                  Icons.cancel,
-                  Colors.redAccent,
-                  _isProcessing ? null : _showRejectDialog,
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = constraints.maxWidth;
+
+              if (maxWidth < 400) {
+                // Vertical layout for small screens
+                return Column(
+                  children: [
+                    _buildActionButtonPrimary(
+                      'Approve Request',
+                      Icons.check_circle,
+                      Colors.green,
+                      _isProcessing ? () {} : _financeApproveRequest,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActionButtonPrimary(
+                      'Reject Request',
+                      Icons.cancel,
+                      Colors.redAccent,
+                      _isProcessing ? () {} : _showRejectDialog,
+                    ),
+                  ],
+                );
+              } else {
+                // Horizontal layout for larger screens
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _buildActionButtonPrimary(
+                        'Approve Request',
+                        Icons.check_circle,
+                        Colors.green,
+                        _isProcessing ? () {} : _financeApproveRequest,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildActionButtonPrimary(
+                        'Reject Request',
+                        Icons.cancel,
+                        Colors.redAccent,
+                        _isProcessing ? () {} : _showRejectDialog,
+                      ),
+                    ),
+                  ],
+                );
+              }
+            },
           ),
           if (_isProcessing) ...[
             const SizedBox(height: 16),
@@ -993,268 +1478,53 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  Widget _buildActionButton(
-      String text, IconData icon, Color color, VoidCallback? onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.9),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 2,
-      ),
-      icon: Icon(icon, size: 20),
-      label: Text(
-        text,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-
-// MAIN BUILD METHOD
-  @override
-  Widget build(BuildContext context) {
-    final request = widget.request;
-
-    final isReimbursement =
-        request.requestType.toLowerCase().contains('reimbursement');
-    final isAdvance = request.requestType.toLowerCase().contains('advance');
-
-    // ✅ FIXED: PROPERLY CAPITALIZED TITLE FUNCTION
-    String getCapitalizedTitle() {
-      String requestType = request.requestType.toLowerCase();
-      if (requestType.contains('reimbursement')) {
-        return 'Reimbursement Details';
-      } else if (requestType.contains('advance')) {
-        return 'Advance Details';
-      } else {
-        // Fallback: Capitalize first letter of each word
-        List<String> words = requestType.split(' ');
-        for (int i = 0; i < words.length; i++) {
-          if (words[i].isNotEmpty) {
-            words[i] = words[i][0].toUpperCase() + words[i].substring(1);
-          }
-        }
-        return words.join(' ') + ' Details';
-      }
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: Text(
-          getCapitalizedTitle(), // ✅ USE THE FIXED FUNCTION INSTEAD OF DIRECT requestType
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+  // Primary action button for approve/reject
+  Widget _buildActionButtonPrimary(
+      String text, IconData icon, Color color, VoidCallback onPressed) {
+    return SizedBox(
+      height: 50,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-        backgroundColor: const Color(0xFF1A1A1A),
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline,
-                color: Colors.white), // ✅ ADD WHITE COLOR TO ICON
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E1E1E),
-                  title: const Text('Request Information',
-                      style: TextStyle(color: Colors.white)),
-                  content: Text(
-                    'Request ID: ${request.id}\n'
-                    'Type: ${getCapitalizedTitle().replaceAll(' Details', '')}\n' // ✅ FIXED TYPE DISPLAY
-                    'Status: ${request.displayStatus}\n'
-                    'Total Amount: ₹${_formatAmount(request.amount)}',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Close',
-                          style:
-                              TextStyle(color: Colors.white)), // ✅ WHITE TEXT
-                    ),
-                  ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: _isProcessing
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.tealAccent),
-                  SizedBox(height: 16),
-                  Text(
-                    'Processing...',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ✅ FIXED: Dynamic Status Badge based on context
-                  _buildStatusBadge(),
-
-                  // Quick Summary (without priority)
-                  _buildQuickSummary(),
-
-                  // 1. BASIC INFORMATION
-                  _buildDetailCard(
-                    'Basic Information',
-                    Icons.person,
-                    [
-                      _detailItem('Employee Name', request.employeeName,
-                          isImportant: true),
-                      _detailItem('Employee ID', request.employeeId),
-                      _detailItemWithDate(
-                          'Submission Date', request.submissionDate),
-                      _detailItem(
-                          'Request Type', request.requestType.toUpperCase(),
-                          isImportant: true),
-                      _detailItem(
-                          'Total Amount', '₹${_formatAmount(request.amount)}',
-                          isImportant: true),
-                    ],
-                  ),
-
-                  // 2. PROJECT INFORMATION
-                  if ((request.projectId != null &&
-                          request.projectId!.isNotEmpty) ||
-                      (request.projectName != null &&
-                          request.projectName!.isNotEmpty))
-                    _buildDetailCard(
-                      'Project Information',
-                      Icons.business_center,
-                      [
-                        if (request.projectId != null &&
-                            request.projectId!.isNotEmpty)
-                          _detailItem('Project Code', request.projectId!),
-                        if (request.projectName != null &&
-                            request.projectName!.isNotEmpty)
-                          _detailItem('Project Name', request.projectName!),
-                      ],
-                    ),
-
-                  // 3. TYPE-SPECIFIC DATES - FIXED VERSION
-                  if (isReimbursement)
-                    _buildDetailCard(
-                      'Reimbursement Details',
-                      Icons.calendar_today,
-                      [
-                        if (request.reimbursementDate != null)
-                          _detailItemWithDate(
-                              'Reimbursement Date', request.reimbursementDate),
-                        if (request.paymentDate !=
-                            null) // ✅ SHOW PAYMENT DATE FOR REIMBURSEMENT
-                          _detailItemWithDate(
-                              'Payment Date', request.paymentDate,
-                              isImportant: true),
-                      ],
-                    ),
-
-                  if (isAdvance)
-                    _buildDetailCard(
-                      'Advance Details',
-                      Icons.date_range,
-                      [
-                        if (request.requestDate != null)
-                          _detailItemWithDate(
-                              'Request Date', request.requestDate),
-                        if (request.projectDate != null)
-                          _detailItemWithDate(
-                              'Project Date', request.projectDate,
-                              isImportant: true),
-                        if (request.paymentDate !=
-                            null) // ✅ SHOW PAYMENT DATE FOR ADVANCE
-                          _detailItemWithDate(
-                              'Payment Date', request.paymentDate,
-                              isImportant: true),
-                      ],
-                    ),
-
-                  // 4. PAYMENT BREAKDOWN WITH ATTACHMENTS
-                  _buildPaymentBreakdown(),
-
-                  // 5. APPROVAL INFORMATION
-                  if (request.approvedBy != null ||
-                      request.approvalDate != null)
-                    _buildDetailCard(
-                      'Approval History',
-                      Icons.verified_user,
-                      [
-                        if (request.approvedBy != null)
-                          _detailItem('Approved By', request.approvedBy!),
-                        if (request.approvalDate != null)
-                          _detailItemWithDate(
-                              'Approval Date', request.approvalDate),
-                      ],
-                    ),
-
-                  // 6. REJECTION INFORMATION
-                  if (request.rejectionReason != null &&
-                      request.rejectionReason!.isNotEmpty)
-                    _buildDetailCard(
-                      'Rejection Details',
-                      Icons.warning,
-                      [
-                        _detailItem(
-                            'Rejection Reason', request.rejectionReason!,
-                            isImportant: true),
-                      ],
-                    ),
-
-                  // 7. PAYMENT INFORMATION - SHOW FOR ALL TYPES
-                  if (request.paymentDate != null)
-                    _buildDetailCard(
-                      'Payment Details',
-                      Icons.payment,
-                      [
-                        _detailItemWithDate('Payment Date', request.paymentDate,
-                            isImportant: true),
-                        if (request.isPaid)
-                          _detailItem('Payment Status', 'COMPLETED',
-                              isImportant: true),
-                      ],
-                    ),
-
-                  // ✅ FIXED: ACTION BUTTONS - Only show for finance verification tab
-                  if (!widget.isPaymentTab) _buildActionButtons(),
-
-                  const SizedBox(height: 20),
-                ],
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
-  // REST OF YOUR EXISTING METHODS (APPROVE/REJECT ETC.)
+  // API methods
   Future<void> _financeApproveRequest() async {
     setState(() => _isProcessing = true);
 
     try {
       final response = await http.post(
-        Uri.parse(
-            '$baseUrl/api/finance-verification/approve/'), // ✅ CORRECTED ENDPOINT
+        Uri.parse('$baseUrl/api/finance-verification/approve/'),
         headers: {
-          'Authorization':
-              'Token ${widget.authToken}', // ✅ CORRECTED TOKEN FORMAT
+          'Authorization': 'Token ${widget.authToken}',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
@@ -1372,11 +1642,9 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-            '$baseUrl/api/finance-verification/reject/'), // ✅ CORRECTED ENDPOINT
+        Uri.parse('$baseUrl/api/finance-verification/reject/'),
         headers: {
-          'Authorization':
-              'Token ${widget.authToken}', // ✅ CORRECTED TOKEN FORMAT
+          'Authorization': 'Token ${widget.authToken}',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
@@ -1415,5 +1683,225 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
         ),
       );
     }
+  }
+
+  // Main build method
+  @override
+  Widget build(BuildContext context) {
+    final request = widget.request;
+    final isReimbursement =
+        request.requestType.toLowerCase().contains('reimbursement');
+    final isAdvance = request.requestType.toLowerCase().contains('advance');
+
+    String getCapitalizedTitle() {
+      String requestType = request.requestType.toLowerCase();
+      if (requestType.contains('reimbursement')) {
+        return 'Reimbursement Details';
+      } else if (requestType.contains('advance')) {
+        return 'Advance Details';
+      } else {
+        List<String> words = requestType.split(' ');
+        for (int i = 0; i < words.length; i++) {
+          if (words[i].isNotEmpty) {
+            words[i] = words[i][0].toUpperCase() + words[i].substring(1);
+          }
+        }
+        return words.join(' ') + ' Details';
+      }
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: Text(
+          getCapitalizedTitle(),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: const Color(0xFF1A1A1A),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.white),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  title: const Text('Request Information',
+                      style: TextStyle(color: Colors.white)),
+                  content: Text(
+                    'Request ID: ${request.id}\n'
+                    'Type: ${getCapitalizedTitle().replaceAll(' Details', '')}\n'
+                    'Status: ${request.displayStatus}\n'
+                    'Total Amount: ₹${_formatAmount(request.amount)}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close',
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: _isProcessing
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.tealAccent),
+                  SizedBox(height: 16),
+                  Text(
+                    'Processing...',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Dynamic Status Badge
+                  _buildStatusBadge(),
+
+                  // Quick Summary
+                  _buildQuickSummary(),
+
+                  // 1. BASIC INFORMATION
+                  _buildDetailCard(
+                    'Basic Information',
+                    Icons.person,
+                    [
+                      _detailItem('Employee Name', request.employeeName,
+                          isImportant: true),
+                      _detailItem('Employee ID', request.employeeId),
+                      _detailItemWithDate(
+                          'Submission Date', request.submissionDate),
+                      _detailItem(
+                          'Request Type', request.requestType.toUpperCase(),
+                          isImportant: true),
+                      _detailItem(
+                          'Total Amount', '₹${_formatAmount(request.amount)}',
+                          isImportant: true),
+                    ],
+                  ),
+
+                  // 2. PROJECT INFORMATION
+                  if ((request.projectId != null &&
+                          request.projectId!.isNotEmpty) ||
+                      (request.projectName != null &&
+                          request.projectName!.isNotEmpty))
+                    _buildDetailCard(
+                      'Project Information',
+                      Icons.business_center,
+                      [
+                        if (request.projectId != null &&
+                            request.projectId!.isNotEmpty)
+                          _detailItem('Project Code', request.projectId!),
+                        if (request.projectName != null &&
+                            request.projectName!.isNotEmpty)
+                          _detailItem('Project Name', request.projectName!),
+                      ],
+                    ),
+
+                  // 3. TYPE-SPECIFIC DATES
+                  if (isReimbursement)
+                    _buildDetailCard(
+                      'Reimbursement Details',
+                      Icons.calendar_today,
+                      [
+                        if (request.reimbursementDate != null)
+                          _detailItemWithDate(
+                              'Reimbursement Date', request.reimbursementDate),
+                        if (request.paymentDate != null)
+                          _detailItemWithDate(
+                              'Payment Date', request.paymentDate,
+                              isImportant: true),
+                      ],
+                    ),
+
+                  if (isAdvance)
+                    _buildDetailCard(
+                      'Advance Details',
+                      Icons.date_range,
+                      [
+                        if (request.requestDate != null)
+                          _detailItemWithDate(
+                              'Request Date', request.requestDate),
+                        if (request.projectDate != null)
+                          _detailItemWithDate(
+                              'Project Date', request.projectDate,
+                              isImportant: true),
+                        if (request.paymentDate != null)
+                          _detailItemWithDate(
+                              'Payment Date', request.paymentDate,
+                              isImportant: true),
+                      ],
+                    ),
+
+                  // 4. PAYMENT BREAKDOWN WITH ATTACHMENTS
+                  _buildPaymentBreakdown(),
+
+                  // 5. APPROVAL INFORMATION
+                  if (request.approvedBy != null ||
+                      request.approvalDate != null)
+                    _buildDetailCard(
+                      'Approval History',
+                      Icons.verified_user,
+                      [
+                        if (request.approvedBy != null)
+                          _detailItem('Approved By', request.approvedBy!),
+                        if (request.approvalDate != null)
+                          _detailItemWithDate(
+                              'Approval Date', request.approvalDate),
+                      ],
+                    ),
+
+                  // 6. REJECTION INFORMATION
+                  if (request.rejectionReason != null &&
+                      request.rejectionReason!.isNotEmpty)
+                    _buildDetailCard(
+                      'Rejection Details',
+                      Icons.warning,
+                      [
+                        _detailItem(
+                            'Rejection Reason', request.rejectionReason!,
+                            isImportant: true),
+                      ],
+                    ),
+
+                  // 7. PAYMENT INFORMATION
+                  if (request.paymentDate != null)
+                    _buildDetailCard(
+                      'Payment Details',
+                      Icons.payment,
+                      [
+                        _detailItemWithDate('Payment Date', request.paymentDate,
+                            isImportant: true),
+                        if (request.isPaid)
+                          _detailItem('Payment Status', 'COMPLETED',
+                              isImportant: true),
+                      ],
+                    ),
+
+                  // Action buttons - Only show for finance verification tab
+                  if (!widget.isPaymentTab) _buildActionButtons(),
+
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+    );
   }
 }

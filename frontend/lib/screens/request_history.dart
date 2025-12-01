@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_file/open_file.dart';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
@@ -279,13 +280,13 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1F222B),
         title: Text(
-          widget.requestTitle, // YEH LINE CHANGE KARO
+          widget.requestTitle,
           style: TextStyle(
-            color: Colors.white, // ✅ EXPLICITLY WHITE COLOR SET KARO
+            color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: IconThemeData(color: Colors.white), // ✅ BACK ARROW BHI WHITE
+        iconTheme: IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -897,9 +898,95 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
   }
 
   Widget _buildSingleAttachment(BuildContext context, String path) {
-    final ext = path.split('.').last.toLowerCase();
-    final file = File(path);
+    final fileName = path.split('/').last;
+    final ext = fileName.split('.').last.toLowerCase();
 
+    // Helper functions for styling
+    Color getFileColor(String ext) {
+      switch (ext) {
+        case 'pdf':
+          return Colors.red.withOpacity(0.3);
+        case 'doc':
+        case 'docx':
+          return Colors.blue.withOpacity(0.3);
+        case 'xls':
+        case 'xlsx':
+          return Colors.green.withOpacity(0.3);
+        default:
+          return Colors.purple.withOpacity(0.3);
+      }
+    }
+
+    Color getFileBorderColor(String ext) {
+      switch (ext) {
+        case 'pdf':
+          return Colors.red;
+        case 'doc':
+        case 'docx':
+          return Colors.blue;
+        case 'xls':
+        case 'xlsx':
+          return Colors.green;
+        default:
+          return Colors.purple;
+      }
+    }
+
+    IconData getFileIcon(String ext) {
+      switch (ext) {
+        case 'pdf':
+          return Icons.picture_as_pdf;
+        case 'doc':
+        case 'docx':
+          return Icons.description;
+        case 'xls':
+        case 'xlsx':
+          return Icons.table_chart;
+        default:
+          return Icons.insert_drive_file;
+      }
+    }
+
+    // Function to handle file opening
+    Future<void> openAttachment() async {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          await OpenFile.open(file.path);
+        } else if (path.startsWith('http')) {
+          // If it's a URL, download first
+          try {
+            final response = await http.get(Uri.parse(path));
+            final appDocDir = await getApplicationDocumentsDirectory();
+            final localFile = File('${appDocDir.path}/$fileName');
+            await localFile.writeAsBytes(response.bodyBytes);
+            await OpenFile.open(localFile.path);
+          } catch (e) {
+            print('Error downloading file: $e');
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Error downloading file")),
+              );
+            }
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("File not found: $fileName")),
+            );
+          }
+        }
+      } catch (e) {
+        print('Error opening file: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Error opening file")),
+          );
+        }
+      }
+    }
+
+    // For image files
     if (["jpg", "jpeg", "png", "gif"].contains(ext)) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,7 +996,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => FullImageViewer(file: file),
+                  builder: (_) => FullImageViewer(file: File(path)),
                 ),
               );
             },
@@ -923,12 +1010,12 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.file(
-                  file,
+                  File(path),
                   width: 100,
                   height: 80,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(Icons.error, color: Colors.red),
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Icon(Icons.insert_drive_file, color: Colors.white70),
                   ),
                 ),
               ),
@@ -938,7 +1025,7 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
           SizedBox(
             width: 100,
             child: Text(
-              path.split('/').last,
+              fileName,
               style: const TextStyle(
                 color: Colors.white54,
                 fontSize: 10,
@@ -949,70 +1036,33 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
           ),
         ],
       );
-    } else if (ext == "pdf") {
-      return InkWell(
-        onTap: () async {
-          if (await file.exists()) {
-            await launchUrl(Uri.file(file.path));
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("File not found")),
-            );
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.redAccent),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.picture_as_pdf,
-                  color: Colors.redAccent, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                "PDF",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
     } else {
+      // For other file types
       return InkWell(
-        onTap: () async {
-          if (await file.exists()) {
-            await launchUrl(Uri.file(file.path));
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("File not found")),
-            );
-          }
-        },
+        onTap: openAttachment,
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.2),
+            color: getFileColor(ext),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blueAccent),
+            border: Border.all(color: getFileBorderColor(ext)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.insert_drive_file,
-                  color: Colors.blueAccent, size: 16),
+              Icon(getFileIcon(ext), color: Colors.white, size: 16),
               const SizedBox(width: 4),
-              Text(
-                ext.toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 80),
+                child: Text(
+                  fileName.length > 10
+                      ? '${fileName.substring(0, 10)}...'
+                      : fileName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

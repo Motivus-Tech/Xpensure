@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:open_file/open_file.dart';
 import '../services/api_service.dart';
 import '../utils/date_formatter.dart';
 
@@ -123,6 +125,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return parsedAmount.toStringAsFixed(2);
   }
 
+  // ENHANCED ATTACHMENT HANDLING METHODS
   String _getFileName(String path) {
     try {
       return path.split('/').last;
@@ -131,13 +134,54 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     }
   }
 
+  String _getFileExtension(String path) {
+    try {
+      return path.toLowerCase().split('.').last;
+    } catch (e) {
+      return '';
+    }
+  }
+
   bool _isImageFile(String path) {
-    final ext = path.toLowerCase().split('.').last;
+    final ext = _getFileExtension(path);
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
   }
 
   bool _isPdfFile(String path) {
-    return path.toLowerCase().endsWith('.pdf');
+    return _getFileExtension(path) == 'pdf';
+  }
+
+  bool _isDocumentFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['doc', 'docx'].contains(ext);
+  }
+
+  bool _isExcelFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['xls', 'xlsx'].contains(ext);
+  }
+
+  bool _isTextFile(String path) {
+    final ext = _getFileExtension(path);
+    return ['txt', 'rtf'].contains(ext);
+  }
+
+  IconData _getFileIcon(String path) {
+    if (_isImageFile(path)) return Icons.image;
+    if (_isPdfFile(path)) return Icons.picture_as_pdf;
+    if (_isDocumentFile(path)) return Icons.description;
+    if (_isExcelFile(path)) return Icons.table_chart;
+    if (_isTextFile(path)) return Icons.text_snippet;
+    return Icons.insert_drive_file;
+  }
+
+  Color _getFileIconColor(String path) {
+    if (_isImageFile(path)) return Colors.amber;
+    if (_isPdfFile(path)) return Colors.red;
+    if (_isDocumentFile(path)) return Colors.blue;
+    if (_isExcelFile(path)) return Colors.green;
+    if (_isTextFile(path)) return Colors.orange;
+    return Colors.grey;
   }
 
   // ENHANCED PROJECT INFORMATION EXTRACTION - FIXED FOR REIMBURSEMENT AND ADVANCE
@@ -281,11 +325,12 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return attachmentPaths;
   }
 
+  // ENHANCED FILE VIEWING AND DOWNLOADING METHODS
   void _showImageDialog(String imagePath) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color.fromARGB(255, 28, 28, 28),
         insetPadding: const EdgeInsets.all(20),
         child: Stack(
           children: [
@@ -311,7 +356,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               bottom: 10,
               right: 10,
               child: ElevatedButton.icon(
-                onPressed: () => _downloadFile(imagePath),
+                onPressed: () => _downloadAndOpenFile(imagePath),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
@@ -326,131 +371,267 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  Future<void> _openPdf(String pdfPath) async {
+  Future<void> _openFileWithDialog(String filePath) async {
     try {
-      final url = pdfPath.startsWith('http') ? pdfPath : 'file://$pdfPath';
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url));
+      // First download the file if it's from network
+      String localPath;
+      if (filePath.startsWith('http')) {
+        localPath = await _downloadFile(filePath);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cannot open PDF file'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        localPath = filePath;
       }
+
+      // Use open_file to show the "Open With" dialog
+      final result = await OpenFile.open(localPath);
+
+      // Handle the result
+      _handleOpenFileResult(result, filePath);
     } catch (e) {
+      print('Error opening file: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error opening PDF: $e'),
+          content: Text('Error opening file: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  Future<void> _downloadFile(String filePath) async {
+  void _handleOpenFileResult(OpenResult result, String originalPath) {
+    switch (result.type) {
+      case ResultType.done:
+        print("File opened successfully");
+        break;
+      case ResultType.noAppToOpen:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No app found to open this file'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        break;
+      case ResultType.fileNotFound:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.permissionDenied:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permission denied to open file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+      case ResultType.error:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        break;
+    }
+  }
+
+  Future<String> _downloadFile(String filePath) async {
     try {
       if (filePath.startsWith('http')) {
         final response = await http.get(Uri.parse(filePath));
-        final documentsDir = await getApplicationDocumentsDirectory();
+        final tempDir = await getTemporaryDirectory();
         final fileName = _getFileName(filePath);
-        final file = File('${documentsDir.path}/$fileName');
+        final file = File('${tempDir.path}/$fileName');
 
         await file.writeAsBytes(response.bodyBytes);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('File downloaded to: ${file.path}'),
-            backgroundColor: const Color.fromARGB(255, 136, 218, 138),
-          ),
-        );
+        return file.path;
       } else {
+        return filePath;
+      }
+    } catch (e) {
+      throw Exception('Download failed: $e');
+    }
+  }
+
+  Future<void> _downloadAndOpenFile(String filePath) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('File location: $filePath'),
-            backgroundColor: Colors.blue,
+            content: Text('File downloaded successfully!'),
+            backgroundColor: const Color(0xFF1E8C3E),
+            duration: const Duration(seconds: 2),
           ),
         );
+
+        // Auto-open the file with "Open With" dialog
+        await _openFileWithDialog(downloadedPath);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error downloading file: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFFB71C1C),
         ),
       );
     }
   }
 
-  // ENHANCED ATTACHMENT PREVIEW WIDGET
-  Widget _buildSingleAttachmentPreview(String attachmentPath) {
-    final isImage = _isImageFile(attachmentPath);
-    final isPdf = _isPdfFile(attachmentPath);
+  Future<void> _downloadOnly(String filePath) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading ${_getFileName(filePath)}...'),
+          backgroundColor: const Color(0xFF1A237E),
+          duration: const Duration(seconds: 2),
+        ),
+      );
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+      String downloadedPath;
+
+      if (filePath.startsWith('http')) {
+        // Download from network
+        final response = await http.get(Uri.parse(filePath));
+
+        // Use Downloads directory for user-accessible storage
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final file = File('${downloadsDir.path}/$fileName');
+
+        await file.writeAsBytes(response.bodyBytes);
+        downloadedPath = file.path;
+      } else {
+        // For local files, copy to downloads directory
+        final originalFile = File(filePath);
+        final downloadsDir = await getDownloadsDirectory();
+        if (downloadsDir == null) {
+          throw Exception('Could not access downloads directory');
+        }
+
+        final fileName = _getFileName(filePath);
+        final newFile = File('${downloadsDir.path}/$fileName');
+
+        await originalFile.copy(newFile.path);
+        downloadedPath = newFile.path;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('File downloaded successfully!'),
+              Text(
+                'Location: ${downloadedPath.split('/').last}',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E8C3E),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OPEN',
+            textColor: Colors.white,
+            onPressed: () => _openFileWithDialog(downloadedPath),
+          ),
+        ),
+      );
+
+      print('File downloaded to: $downloadedPath');
+    } catch (e) {
+      print('Error downloading file: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error downloading file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareFile(String filePath) async {
+    try {
+      final downloadedPath = await _downloadFile(filePath);
+      final file = File(downloadedPath);
+
+      if (await file.exists()) {
+        await Share.shareXFiles(
+          [XFile(downloadedPath)],
+          text: 'Check out this file: ${_getFileName(filePath)}',
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sharing file: $e'),
+          backgroundColor: const Color(0xFFB71C1C),
+        ),
+      );
+    }
+  }
+
+  // ENHANCED ATTACHMENT PREVIEW WIDGET WITH RESPONSIVE DESIGN
+  Widget _buildSingleAttachmentPreview(String attachmentPath, bool isMobile) {
+    final isImage = _isImageFile(attachmentPath);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      color: const Color(0xFF0D0D0D),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[700]!, width: 1),
+        side: BorderSide(color: Colors.grey[800]!, width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // File info row
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: isImage
-                        ? Colors.amber.withOpacity(0.2)
-                        : isPdf
-                            ? Colors.red.withOpacity(0.2)
-                            : Colors.blue.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    isImage
-                        ? Icons.image
-                        : isPdf
-                            ? Icons.picture_as_pdf
-                            : Icons.insert_drive_file,
-                    color: isImage
-                        ? Colors.amber
-                        : isPdf
-                            ? Colors.red
-                            : Colors.blue,
-                    size: 20,
-                  ),
+                Icon(
+                  _getFileIcon(attachmentPath),
+                  color: _getFileIconColor(attachmentPath),
+                  size: isMobile ? 20 : 24,
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: isMobile ? 8 : 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         _getFileName(attachmentPath),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          fontSize: isMobile ? 13 : 14,
                         ),
                         overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
-                      const SizedBox(height: 4),
                       Text(
-                        isImage
-                            ? 'Image File'
-                            : isPdf
-                                ? 'PDF Document'
-                                : 'Document',
+                        _getFileExtension(attachmentPath).toUpperCase(),
                         style: TextStyle(
                           color: Colors.grey[400],
-                          fontSize: 12,
+                          fontSize: isMobile ? 10 : 12,
                         ),
                       ),
                     ],
@@ -458,97 +639,164 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-
-            // Image preview for images
+            const SizedBox(height: 12),
             if (isImage)
-              GestureDetector(
-                onTap: () => _showImageDialog(attachmentPath),
-                child: Container(
-                  height: 120,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[600]!),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: attachmentPath.startsWith('http')
-                        ? Image.network(
-                            attachmentPath,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[800],
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.error_outline,
-                                        color: Colors.grey, size: 40),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Failed to load image',
-                                      style: TextStyle(
-                                        color: Colors.grey[400],
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          )
-                        : Image.file(File(attachmentPath), fit: BoxFit.cover),
-                  ),
+              Container(
+                height: isMobile ? 120 : 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[700]!),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: attachmentPath.startsWith('http')
+                      ? Image.network(
+                          attachmentPath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: isMobile ? 30 : 40,
+                              ),
+                            );
+                          },
+                        )
+                      : Image.file(
+                          File(attachmentPath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                                size: isMobile ? 30 : 40,
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
+            if (isImage) const SizedBox(height: 12),
+            _buildFileActions(attachmentPath, isMobile),
+          ],
+        ),
+      ),
+    );
+  }
 
-            if (isImage) const SizedBox(height: 16),
+  Widget _buildFileActions(String filePath, bool isMobile) {
+    final isImage = _isImageFile(filePath);
 
-            // Action buttons
+    if (isMobile) {
+      if (isImage) {
+        return Column(
+          children: [
             Row(
               children: [
-                if (isImage)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showImageDialog(attachmentPath),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.amber,
-                        side: const BorderSide(color: Colors.amber),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.fullscreen, size: 16),
-                      label: const Text('Full Screen'),
-                    ),
-                  ),
-                if (isImage) const SizedBox(width: 8),
-                if (isPdf)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openPdf(attachmentPath),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('Open PDF'),
-                    ),
-                  ),
-                if (isPdf) const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _downloadFile(attachmentPath),
+                    onPressed: () => _showImageDialog(filePath),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1976D2),
+                      backgroundColor: const Color(0xFF7B1FA2),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.visibility, size: 16),
+                    label: const Text('View'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openFileWithDialog(filePath),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1976D2),
+                      side: const BorderSide(color: Color(0xFF1976D2)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Open'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadOnly(filePath),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF388E3C),
+                      side: const BorderSide(color: Color(0xFF388E3C)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.download, size: 16),
+                    label: const Text('Download'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _shareFile(filePath),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF9C27B0),
+                      side: const BorderSide(color: Color(0xFF9C27B0)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.share, size: 16),
+                    label: const Text('Share'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      } else {
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openFileWithDialog(filePath),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFC62828),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Open'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadOnly(filePath),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1976D2),
+                      side: const BorderSide(color: Color(0xFF1976D2)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -559,37 +807,208 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _shareFile(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF388E3C),
+                  side: const BorderSide(color: Color(0xFF388E3C)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.share, size: 16),
+                label: const Text('Share File'),
+              ),
+            ),
           ],
+        );
+      }
+    } else {
+      // Desktop/Tablet layout
+      if (isImage) {
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showImageDialog(filePath),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7B1FA2),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.visibility, size: 18),
+                label: const Text('View'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _openFileWithDialog(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1976D2),
+                  side: const BorderSide(color: Color(0xFF1976D2)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('Open'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _downloadOnly(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF388E3C),
+                  side: const BorderSide(color: Color(0xFF388E3C)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Download'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _shareFile(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF9C27B0),
+                  side: const BorderSide(color: Color(0xFF9C27B0)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Share'),
+              ),
+            ),
+          ],
+        );
+      } else {
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _openFileWithDialog(filePath),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFC62828),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('Open'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _downloadOnly(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1976D2),
+                  side: const BorderSide(color: Color(0xFF1976D2)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Download'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _shareFile(filePath),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF388E3C),
+                  side: const BorderSide(color: Color(0xFF388E3C)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Share'),
+              ),
+            ),
+          ],
+        );
+      }
+    }
+  }
+
+  Widget _buildAttachmentsSection(List<String> attachmentPaths, bool isMobile) {
+    if (attachmentPaths.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'No attachments',
+          style: TextStyle(color: Colors.grey),
         ),
-      ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'Attachments:',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: isMobile ? 14 : 16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...attachmentPaths
+            .map((path) => _buildSingleAttachmentPreview(path, isMobile))
+            .toList(),
+      ],
     );
   }
 
-  // ENHANCED DETAIL CARD
+  // ENHANCED DETAIL CARD WITH RESPONSIVE DESIGN
   Widget _buildDetailCard(String title, IconData icon, List<Widget> children,
-      {Color? headerColor}) {
+      {Color? headerColor, bool isMobile = true}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: isMobile ? 12 : 16),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header with icon
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isMobile ? 12 : 16),
               decoration: BoxDecoration(
                 color: headerColor ?? const Color(0xFF252525),
                 border: Border(
@@ -604,15 +1023,16 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                       color: (headerColor ?? Colors.blue).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child:
-                        Icon(icon, size: 18, color: headerColor ?? Colors.blue),
+                    child: Icon(icon,
+                        size: isMobile ? 16 : 18,
+                        color: headerColor ?? Colors.blue),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: isMobile ? 8 : 12),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: isMobile ? 14 : 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -621,7 +1041,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             ),
             // Content
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isMobile ? 12 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: children,
@@ -633,11 +1053,11 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  // ENHANCED DETAIL ITEM
+  // ENHANCED DETAIL ITEM WITH RESPONSIVE DESIGN
   Widget _detailItem(String label, String value,
-      {bool isImportant = false, Color? valueColor}) {
+      {bool isImportant = false, Color? valueColor, bool isMobile = true}) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: isMobile ? 6 : 8),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: Colors.grey[800]!, width: 0.5),
@@ -647,17 +1067,17 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 140,
+            width: isMobile ? 100 : 140,
             child: Text(
               label,
               style: TextStyle(
                 color: Colors.grey[400],
                 fontWeight: FontWeight.w500,
-                fontSize: 14,
+                fontSize: isMobile ? 12 : 14,
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: isMobile ? 8 : 12),
           Expanded(
             child: Text(
               value,
@@ -665,7 +1085,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                 color: valueColor ??
                     (isImportant ? const Color(0xFF00E5FF) : Colors.white),
                 fontWeight: isImportant ? FontWeight.w600 : FontWeight.normal,
-                fontSize: 14,
+                fontSize: isMobile ? 12 : 14,
               ),
             ),
           ),
@@ -676,18 +1096,19 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
 
   // DATE FIELD HANDLING
   Widget _detailItemWithDate(String label, String? backendDate,
-      {bool isImportant = false}) {
+      {bool isImportant = false, bool isMobile = true}) {
     String displayDate = 'Not specified';
 
     if (backendDate != null && backendDate.isNotEmpty) {
       displayDate = DateFormatter.formatBackendDate(backendDate);
     }
 
-    return _detailItem(label, displayDate, isImportant: isImportant);
+    return _detailItem(label, displayDate,
+        isImportant: isImportant, isMobile: isMobile);
   }
 
-  // ENHANCED STATUS BADGE
-  Widget _buildStatusBadge() {
+  // ENHANCED STATUS BADGE WITH RESPONSIVE DESIGN
+  Widget _buildStatusBadge(bool isMobile) {
     final status =
         widget.getRequestData('status')?.toString().toLowerCase() ?? 'pending';
     final rejectionReason = widget.getRequestData('rejection_reason');
@@ -721,8 +1142,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      margin: EdgeInsets.only(bottom: isMobile ? 16 : 20),
+      padding: EdgeInsets.all(isMobile ? 16 : 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.centerLeft,
@@ -732,20 +1153,21 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             statusColor.withOpacity(0.05),
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
         border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(isMobile ? 10 : 12),
             decoration: BoxDecoration(
               color: statusColor.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: Icon(statusIcon, color: statusColor, size: 28),
+            child:
+                Icon(statusIcon, color: statusColor, size: isMobile ? 24 : 28),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: isMobile ? 12 : 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -755,24 +1177,24 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                   style: TextStyle(
                     color: statusColor,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: isMobile ? 14 : 16,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: isMobile ? 2 : 4),
                 Text(
                   description,
                   style: TextStyle(
                     color: statusColor.withOpacity(0.8),
-                    fontSize: 13,
+                    fontSize: isMobile ? 11 : 13,
                   ),
                 ),
                 if (rejectionReason != null && rejectionReason.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  SizedBox(height: isMobile ? 4 : 8),
                   Text(
                     'Reason: $rejectionReason',
                     style: TextStyle(
                       color: statusColor.withOpacity(0.8),
-                      fontSize: 12,
+                      fontSize: isMobile ? 10 : 12,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -785,8 +1207,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  // UPDATED QUICK SUMMARY CARD
-  Widget _buildQuickSummary() {
+  // UPDATED QUICK SUMMARY CARD WITH RESPONSIVE DESIGN
+  Widget _buildQuickSummary(bool isMobile) {
     final isReimbursement =
         widget.requestType.toLowerCase().contains('reimbursement');
     final projectInfo = _getProjectInfo();
@@ -796,23 +1218,25 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       Icons.description,
       [
         _buildSummaryItem('Request Type', widget.requestType.toUpperCase(),
-            Icons.category, Colors.purple),
+            Icons.category, Colors.purple, isMobile),
         _buildSummaryItem(
             'Employee',
             widget.getRequestData('employeeName') ?? 'Unknown',
             Icons.person,
-            Colors.blue),
+            Colors.blue,
+            isMobile),
         _buildSummaryItem(
             'Amount',
             '₹${_formatAmount(widget.getRequestData('amount'))}',
             Icons.attach_money,
-            Colors.green),
+            Colors.green,
+            isMobile),
         if (projectInfo['id'] != null)
-          _buildSummaryItem(
-              'Project Code', projectInfo['id']!, Icons.code, Colors.orange),
+          _buildSummaryItem('Project Code', projectInfo['id']!, Icons.code,
+              Colors.orange, isMobile),
         if (projectInfo['name'] != null)
           _buildSummaryItem('Project Name', projectInfo['name']!,
-              Icons.business, Colors.teal),
+              Icons.business, Colors.teal, isMobile),
         if (isReimbursement &&
             widget.getRequestData('reimbursement_date') != null)
           _buildSummaryItem(
@@ -820,15 +1244,17 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               DateFormatter.formatBackendDate(
                   widget.getRequestData('reimbursement_date')),
               Icons.calendar_today,
-              Colors.teal),
+              Colors.teal,
+              isMobile),
       ],
+      isMobile: isMobile,
     );
   }
 
   Widget _buildSummaryItem(
-      String label, String value, IconData icon, Color color) {
+      String label, String value, IconData icon, Color color, bool isMobile) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: EdgeInsets.symmetric(vertical: isMobile ? 8 : 12),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: Colors.grey[800]!, width: 0.5),
@@ -842,15 +1268,15 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               color: color.withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: color),
+            child: Icon(icon, size: isMobile ? 16 : 18, color: color),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: isMobile ? 8 : 12),
           Expanded(
             child: Text(
               label,
               style: TextStyle(
                 color: Colors.grey[400],
-                fontSize: 14,
+                fontSize: isMobile ? 12 : 14,
               ),
             ),
           ),
@@ -859,7 +1285,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w600,
-              fontSize: 14,
+              fontSize: isMobile ? 12 : 14,
             ),
           ),
         ],
@@ -867,8 +1293,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  // ENHANCED PAYMENT BREAKDOWN CARD WITH ATTACHMENTS
-  Widget _buildPaymentBreakdown() {
+  // ENHANCED PAYMENT BREAKDOWN CARD WITH ATTACHMENTS AND RESPONSIVE DESIGN
+  Widget _buildPaymentBreakdown(bool isMobile) {
     final paymentsData = widget.getRequestData('payments');
 
     return _buildDetailCard(
@@ -878,11 +1304,11 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         if (paymentsData != null &&
             (paymentsData is List && paymentsData.isNotEmpty ||
                 paymentsData is Map))
-          ..._buildPaymentItemsList()
+          ..._buildPaymentItemsList(isMobile)
         else
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: EdgeInsets.all(isMobile ? 12.0 : 16.0),
               child: Text(
                 'No payment details available',
                 style: TextStyle(color: Colors.white70),
@@ -890,10 +1316,11 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             ),
           ),
       ],
+      isMobile: isMobile,
     );
   }
 
-  List<Widget> _buildPaymentItemsList() {
+  List<Widget> _buildPaymentItemsList(bool isMobile) {
     final paymentsData = widget.getRequestData('payments');
     List<dynamic> payments = [];
 
@@ -907,12 +1334,13 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return payments.asMap().entries.map((entry) {
       final index = entry.key;
       final payment = entry.value;
-      return _buildPaymentItemWithAttachments(payment, index);
+      return _buildPaymentItemWithAttachments(payment, index, isMobile);
     }).toList();
   }
 
-  // UPDATED PAYMENT ITEM WITH ATTACHMENTS INCLUDED
-  Widget _buildPaymentItemWithAttachments(dynamic payment, int index) {
+  // UPDATED PAYMENT ITEM WITH ATTACHMENTS INCLUDED AND RESPONSIVE DESIGN
+  Widget _buildPaymentItemWithAttachments(
+      dynamic payment, int index, bool isMobile) {
     Map<String, dynamic> paymentData = {};
     if (payment is Map<String, dynamic>) {
       paymentData = payment;
@@ -936,10 +1364,10 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     final attachmentPaths = _getAttachmentPaths(paymentData);
 
     return Container(
-      margin: EdgeInsets.only(top: index > 0 ? 16 : 0),
+      margin: EdgeInsets.only(top: index > 0 ? (isMobile ? 12 : 16) : 0),
       decoration: BoxDecoration(
         color: const Color(0xFF252525),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(isMobile ? 8 : 12),
         border: Border.all(color: Colors.grey[700]!),
       ),
       child: Column(
@@ -947,7 +1375,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         children: [
           // Payment header and basic info
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(isMobile ? 12 : 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -964,57 +1392,64 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                           ),
                           child: Text(
                             '${index + 1}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.green,
                               fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                              fontSize: isMobile ? 10 : 12,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
+                        SizedBox(width: isMobile ? 8 : 12),
+                        Text(
                           'Payment Entry',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
+                            fontSize: isMobile ? 13 : 14,
                           ),
                         ),
                       ],
                     ),
                     Text(
                       '₹${parsedAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: isMobile ? 14 : 16,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: isMobile ? 8 : 12),
 
                 // Payment details in a structured way
-                _buildPaymentDetailRow('Description:', description),
+                _buildPaymentDetailRow('Description:', description, isMobile),
                 if (claimType != 'Not specified')
-                  _buildPaymentDetailRow('Claim Type:', claimType),
+                  _buildPaymentDetailRow('Claim Type:', claimType, isMobile),
                 if (paymentDate != null)
-                  _buildPaymentDetailRow('Payment Date:',
-                      DateFormatter.formatBackendDate(paymentDate.toString())),
+                  _buildPaymentDetailRow(
+                      'Payment Date:',
+                      DateFormatter.formatBackendDate(paymentDate.toString()),
+                      isMobile),
                 if (requestDate != null)
-                  _buildPaymentDetailRow('Request Date:',
-                      DateFormatter.formatBackendDate(requestDate.toString())),
+                  _buildPaymentDetailRow(
+                      'Request Date:',
+                      DateFormatter.formatBackendDate(requestDate.toString()),
+                      isMobile),
                 if (projectDate != null)
-                  _buildPaymentDetailRow('Project Date:',
-                      DateFormatter.formatBackendDate(projectDate.toString())),
+                  _buildPaymentDetailRow(
+                      'Project Date:',
+                      DateFormatter.formatBackendDate(projectDate.toString()),
+                      isMobile),
               ],
             ),
           ),
 
           // Attachments section for this payment
           if (attachmentPaths.isNotEmpty) ...[
-            const Divider(color: Colors.grey, height: 1),
+            Divider(color: Colors.grey, height: 1),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isMobile ? 12 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1026,19 +1461,19 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                           color: Colors.blue.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Icon(Icons.attachment,
-                            size: 14, color: Colors.blue),
+                        child: Icon(Icons.attachment,
+                            size: isMobile ? 12 : 14, color: Colors.blue),
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
+                      SizedBox(width: isMobile ? 6 : 8),
+                      Text(
                         'Payment Attachments:',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                          fontSize: isMobile ? 13 : 14,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: isMobile ? 6 : 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
@@ -1048,18 +1483,19 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                         ),
                         child: Text(
                           '${attachmentPaths.length}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: isMobile ? 10 : 11,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: isMobile ? 8 : 12),
                   ...attachmentPaths
-                      .map((path) => _buildSingleAttachmentPreview(path))
+                      .map((path) =>
+                          _buildSingleAttachmentPreview(path, isMobile))
                       .toList(),
                 ],
               ),
@@ -1070,30 +1506,30 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  Widget _buildPaymentDetailRow(String label, String value) {
+  Widget _buildPaymentDetailRow(String label, String value, bool isMobile) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: isMobile ? 2 : 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: isMobile ? 80 : 100,
             child: Text(
               label,
               style: TextStyle(
                 color: Colors.grey[400],
-                fontSize: 13,
+                fontSize: isMobile ? 11 : 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: isMobile ? 6 : 8),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 13,
+                fontSize: isMobile ? 11 : 13,
               ),
             ),
           ),
@@ -1102,8 +1538,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  // ENHANCED ACTION BUTTONS
-  Widget _buildActionButtons() {
+  // ENHANCED ACTION BUTTONS WITH RESPONSIVE DESIGN
+  Widget _buildActionButtons(bool isMobile) {
     final status =
         widget.getRequestData('status')?.toString().toLowerCase() ?? '';
 
@@ -1114,12 +1550,14 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       return Container();
     }
 
+    final buttonHeight = isMobile ? 45.0 : 50.0;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      margin: EdgeInsets.only(bottom: isMobile ? 16 : 20),
+      padding: EdgeInsets.all(isMobile ? 16 : 20),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
         border: Border.all(color: Colors.grey[700]!),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1133,53 +1571,91 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.quickreply, color: Colors.white, size: 20),
-              SizedBox(width: 8),
+              Icon(Icons.quickreply,
+                  color: Colors.white, size: isMobile ? 18 : 20),
+              SizedBox(width: isMobile ? 6 : 8),
               Text(
                 'CEO Actions',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: isMobile ? 15 : 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: isMobile ? 12 : 16),
+          Text(
             'Review and take action on this request:',
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 14,
+              fontSize: isMobile ? 13 : 14,
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'Approve',
-                  Icons.check_circle,
-                  Colors.green,
-                  _isProcessing ? null : _approveRequest,
+          SizedBox(height: isMobile ? 12 : 16),
+          if (isMobile)
+            Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: buttonHeight,
+                  child: _buildActionButton(
+                    'Approve',
+                    Icons.check_circle,
+                    Colors.green,
+                    _isProcessing ? null : _approveRequest,
+                    isMobile,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildActionButton(
-                  'Reject',
-                  Icons.cancel,
-                  Colors.redAccent,
-                  _isProcessing ? null : _showRejectDialog,
+                SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: buttonHeight,
+                  child: _buildActionButton(
+                    'Reject',
+                    Icons.cancel,
+                    Colors.redAccent,
+                    _isProcessing ? null : _showRejectDialog,
+                    isMobile,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: buttonHeight,
+                    child: _buildActionButton(
+                      'Approve',
+                      Icons.check_circle,
+                      Colors.green,
+                      _isProcessing ? null : _approveRequest,
+                      isMobile,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: buttonHeight,
+                    child: _buildActionButton(
+                      'Reject',
+                      Icons.cancel,
+                      Colors.redAccent,
+                      _isProcessing ? null : _showRejectDialog,
+                      isMobile,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           if (_isProcessing) ...[
-            const SizedBox(height: 16),
-            const Center(
+            SizedBox(height: isMobile ? 12 : 16),
+            Center(
               child: Column(
                 children: [
                   CircularProgressIndicator(color: Colors.tealAccent),
@@ -1197,37 +1673,37 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     );
   }
 
-  Widget _buildActionButton(
-      String text, IconData icon, Color color, VoidCallback? onPressed) {
+  Widget _buildActionButton(String text, IconData icon, Color color,
+      VoidCallback? onPressed, bool isMobile) {
     return ElevatedButton.icon(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         backgroundColor: color.withOpacity(0.9),
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        padding:
+            EdgeInsets.symmetric(vertical: isMobile ? 14 : 16, horizontal: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(isMobile ? 10 : 12),
         ),
         elevation: 2,
       ),
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: isMobile ? 18 : 20),
       label: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w600,
-          fontSize: 14,
+          fontSize: isMobile ? 13 : 14,
         ),
       ),
     );
   }
 
-// APPROVE/REJECT METHODS - UPDATED URLs
+  // APPROVE/REJECT METHODS - UPDATED URLs
   Future<void> _approveRequest() async {
     setState(() => _isProcessing = true);
 
     try {
       final response = await http.post(
-        // FIXED: Use the correct URL from Django URLs
         Uri.parse('$baseUrl/api/ceo/approve-request/'),
         headers: {
           'Authorization': 'Token ${widget.authToken}',
@@ -1277,7 +1753,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.warning_amber, color: Colors.orange),
             SizedBox(width: 8),
@@ -1288,23 +1764,23 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Please provide a reason for rejection:',
               style: TextStyle(color: Colors.white70),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             TextField(
               controller: reasonController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Enter rejection reason...',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(color: Colors.white54),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.redAccent),
+                  borderSide: BorderSide(color: Colors.redAccent),
                 ),
               ),
               maxLines: 3,
@@ -1314,8 +1790,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child: Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1336,7 +1811,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               backgroundColor: Colors.redAccent,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Reject'),
+            child: Text('Reject'),
           ),
         ],
       ),
@@ -1348,7 +1823,6 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
 
     try {
       final response = await http.post(
-        // FIXED: Use the correct URL from Django URLs
         Uri.parse('$baseUrl/api/ceo/reject-request/'),
         headers: {
           'Authorization': 'Token ${widget.authToken}',
@@ -1392,8 +1866,8 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     }
   }
 
-  // ENHANCED PROJECT INFORMATION SECTION
-  Widget _buildProjectInformation() {
+  // ENHANCED PROJECT INFORMATION SECTION WITH RESPONSIVE DESIGN
+  Widget _buildProjectInformation(bool isMobile) {
     final projectInfo = _getProjectInfo();
 
     // Only show if we have at least one piece of project information
@@ -1404,12 +1878,13 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     List<Widget> projectDetails = [];
 
     if (projectInfo['id'] != null) {
-      projectDetails.add(
-          _detailItem('Project Code', projectInfo['id']!, isImportant: true));
+      projectDetails.add(_detailItem('Project Code', projectInfo['id']!,
+          isImportant: true, isMobile: isMobile));
     }
 
     if (projectInfo['name'] != null) {
-      projectDetails.add(_detailItem('Project Name', projectInfo['name']!));
+      projectDetails.add(_detailItem('Project Name', projectInfo['name']!,
+          isMobile: isMobile));
     }
 
     return _buildDetailCard(
@@ -1417,11 +1892,12 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
       Icons.business_center,
       projectDetails,
       headerColor: Colors.orange,
+      isMobile: isMobile,
     );
   }
 
-  // REIMBURSEMENT SPECIFIC DETAILS
-  Widget _buildReimbursementDetails() {
+  // REIMBURSEMENT SPECIFIC DETAILS WITH RESPONSIVE DESIGN
+  Widget _buildReimbursementDetails(bool isMobile) {
     final isReimbursement =
         widget.requestType.toLowerCase().contains('reimbursement');
     if (!isReimbursement) return Container();
@@ -1431,11 +1907,12 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     if (widget.getRequestData('reimbursement_date') != null)
       reimbursementDetails.add(_detailItemWithDate(
           'Reimbursement Date', widget.getRequestData('reimbursement_date'),
-          isImportant: true));
+          isImportant: true, isMobile: isMobile));
 
     if (widget.getRequestData('payment_date') != null)
       reimbursementDetails.add(_detailItemWithDate(
-          'Payment Date', widget.getRequestData('payment_date')));
+          'Payment Date', widget.getRequestData('payment_date'),
+          isMobile: isMobile));
 
     return reimbursementDetails.isNotEmpty
         ? _buildDetailCard(
@@ -1443,12 +1920,13 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             Icons.receipt_long,
             reimbursementDetails,
             headerColor: Colors.green,
+            isMobile: isMobile,
           )
         : Container();
   }
 
-  // ADVANCE SPECIFIC DETAILS
-  Widget _buildAdvanceDetails() {
+  // ADVANCE SPECIFIC DETAILS WITH RESPONSIVE DESIGN
+  Widget _buildAdvanceDetails(bool isMobile) {
     final isAdvance = widget.requestType.toLowerCase().contains('advance');
     if (!isAdvance) return Container();
 
@@ -1457,15 +1935,17 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     if (widget.getRequestData('request_date') != null)
       advanceDetails.add(_detailItemWithDate(
           'Request Date', widget.getRequestData('request_date'),
-          isImportant: true));
+          isImportant: true, isMobile: isMobile));
 
     if (widget.getRequestData('project_date') != null)
       advanceDetails.add(_detailItemWithDate(
-          'Project Date', widget.getRequestData('project_date')));
+          'Project Date', widget.getRequestData('project_date'),
+          isMobile: isMobile));
 
     if (widget.getRequestData('payment_date') != null)
       advanceDetails.add(_detailItemWithDate(
-          'Payment Date', widget.getRequestData('payment_date')));
+          'Payment Date', widget.getRequestData('payment_date'),
+          isMobile: isMobile));
 
     return advanceDetails.isNotEmpty
         ? _buildDetailCard(
@@ -1473,12 +1953,13 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
             Icons.forward,
             advanceDetails,
             headerColor: Colors.purple,
+            isMobile: isMobile,
           )
         : Container();
   }
 
-  // APPROVAL HISTORY SECTION
-  Widget _buildApprovalHistory() {
+  // APPROVAL HISTORY SECTION WITH RESPONSIVE DESIGN
+  Widget _buildApprovalHistory(bool isMobile) {
     final approvedBy = widget.getRequestData('approved_by');
     final approvalDate = widget.getRequestData('approval_date');
 
@@ -1489,22 +1970,24 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     List<Widget> approvalDetails = [];
 
     if (approvedBy != null)
-      approvalDetails.add(
-          _detailItem('Approved By', approvedBy.toString(), isImportant: true));
+      approvalDetails.add(_detailItem('Approved By', approvedBy.toString(),
+          isImportant: true, isMobile: isMobile));
 
     if (approvalDate != null)
-      approvalDetails.add(_detailItemWithDate('Approval Date', approvalDate));
+      approvalDetails.add(_detailItemWithDate('Approval Date', approvalDate,
+          isMobile: isMobile));
 
     return _buildDetailCard(
       'Approval History',
       Icons.verified_user,
       approvalDetails,
       headerColor: Colors.blue,
+      isMobile: isMobile,
     );
   }
 
-  // REJECTION DETAILS SECTION
-  Widget _buildRejectionDetails() {
+  // REJECTION DETAILS SECTION WITH RESPONSIVE DESIGN
+  Widget _buildRejectionDetails(bool isMobile) {
     final rejectionReason = widget.getRequestData('rejection_reason');
 
     if (rejectionReason == null || rejectionReason.toString().isEmpty) {
@@ -1520,25 +2003,38 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
           rejectionReason.toString(),
           isImportant: true,
           valueColor: Colors.red,
+          isMobile: isMobile,
         ),
       ],
       headerColor: Colors.red,
+      isMobile: isMobile,
     );
   }
 
-  // MAIN BUILD METHOD - COMPLETELY UPDATED
+  // MAIN BUILD METHOD - COMPLETELY UPDATED WITH RESPONSIVE DESIGN
   @override
   Widget build(BuildContext context) {
-    final projectInfo = _getProjectInfo();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+    final isTablet = screenWidth >= 600 && screenWidth < 1024;
+    final isDesktop = screenWidth >= 1024;
+
+    // Responsive padding
+    final double contentPadding = isMobile
+        ? 12.0
+        : isTablet
+            ? 16.0
+            : 20.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: Text(
-          '${capitalizeRequestType(widget.requestType)} Details', // ✅ USE THE UTILITY FUNCTION
-          style: const TextStyle(
+          '${capitalizeRequestType(widget.requestType)} Details',
+          style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
+            fontSize: isMobile ? 16 : 18,
           ),
         ),
         backgroundColor: const Color(0xFF1A1A1A),
@@ -1546,31 +2042,30 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.info_outline,
-                color: Colors.white), // ✅ WHITE ICON
+            icon: Icon(Icons.info_outline,
+                color: Colors.white, size: isMobile ? 20 : 24),
             onPressed: () {
               final projectInfo = _getProjectInfo();
               showDialog(
                 context: context,
                 builder: (_) => AlertDialog(
                   backgroundColor: const Color(0xFF1E1E1E),
-                  title: const Text('Request Information',
+                  title: Text('Request Information',
                       style: TextStyle(color: Colors.white)),
                   content: Text(
                     'Request ID: ${widget.requestId}\n'
-                    'Type: ${capitalizeRequestType(widget.requestType)}\n' // ✅ FIXED TYPE DISPLAY
+                    'Type: ${capitalizeRequestType(widget.requestType)}\n'
                     'Status: ${widget.getRequestData('status') ?? 'Unknown'}\n'
                     'Total Amount: ₹${_formatAmount(widget.getRequestData('amount'))}\n'
                     'Project Code: ${projectInfo['id'] ?? 'Not specified'}\n'
                     'Project Name: ${projectInfo['name'] ?? 'Not specified'}',
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: Colors.white70),
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Close',
-                          style:
-                              TextStyle(color: Colors.white)), // ✅ WHITE TEXT
+                      child:
+                          Text('Close', style: TextStyle(color: Colors.white)),
                     ),
                   ],
                 ),
@@ -1580,7 +2075,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
         ],
       ),
       body: _isProcessing
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1594,15 +2089,15 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               ),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(contentPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Enhanced Status Badge
-                  _buildStatusBadge(),
+                  _buildStatusBadge(isMobile),
 
                   // Quick Summary (now includes project code and name)
-                  _buildQuickSummary(),
+                  _buildQuickSummary(isMobile),
 
                   // 1. BASIC INFORMATION
                   _buildDetailCard(
@@ -1611,44 +2106,48 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                     [
                       _detailItem('Employee Name',
                           widget.getRequestData('employeeName') ?? 'Unknown',
-                          isImportant: true),
+                          isImportant: true, isMobile: isMobile),
                       _detailItem('Employee ID',
-                          widget.getRequestData('employeeId') ?? 'Unknown'),
+                          widget.getRequestData('employeeId') ?? 'Unknown',
+                          isMobile: isMobile),
                       _detailItemWithDate(
                           'Submission Date',
                           widget.getRequestData('submitted_date') ??
-                              widget.getRequestData('date')),
+                              widget.getRequestData('date'),
+                          isMobile: isMobile),
                       _detailItem(
                           'Request Type',
                           capitalizeRequestType(widget.requestType)
-                              .toUpperCase(), // ✅ FIXED TYPE DISPLAY
-                          isImportant: true),
+                              .toUpperCase(),
+                          isImportant: true,
+                          isMobile: isMobile),
                       _detailItem('Total Amount',
                           '₹${_formatAmount(widget.getRequestData('amount'))}',
-                          isImportant: true),
+                          isImportant: true, isMobile: isMobile),
                     ],
+                    isMobile: isMobile,
                   ),
 
                   // 2. PROJECT INFORMATION (ENHANCED) - NOW SHOWS BOTH CODE AND NAME
-                  _buildProjectInformation(),
+                  _buildProjectInformation(isMobile),
 
                   // 3. TYPE-SPECIFIC DETAILS
-                  _buildReimbursementDetails(),
-                  _buildAdvanceDetails(),
+                  _buildReimbursementDetails(isMobile),
+                  _buildAdvanceDetails(isMobile),
 
                   // 4. PAYMENT BREAKDOWN WITH ATTACHMENTS (ATTACHMENTS SHOWN PER PAYMENT)
-                  _buildPaymentBreakdown(),
+                  _buildPaymentBreakdown(isMobile),
 
                   // 5. APPROVAL INFORMATION
-                  _buildApprovalHistory(),
+                  _buildApprovalHistory(isMobile),
 
                   // 6. REJECTION INFORMATION
-                  _buildRejectionDetails(),
+                  _buildRejectionDetails(isMobile),
 
                   // 7. ACTION BUTTONS
-                  _buildActionButtons(),
+                  _buildActionButtons(isMobile),
 
-                  const SizedBox(height: 20),
+                  SizedBox(height: isMobile ? 16 : 20),
                 ],
               ),
             ),
