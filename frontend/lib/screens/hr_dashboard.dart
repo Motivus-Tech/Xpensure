@@ -937,7 +937,12 @@ class _HRDashboardState extends State<HRDashboard>
     setState(() => isLoading = true);
     try {
       await HRApprovalService.approveRequest(requestId, widget.authToken);
-      await _loadHRApprovals();
+
+      // Remove the approved request from local list immediately
+      setState(() {
+        hrPendingApprovals
+            .removeWhere((request) => request['id'].toString() == requestId);
+      });
 
       _addActivity(
         "Approved advance request for: $employeeName",
@@ -965,6 +970,8 @@ class _HRDashboardState extends State<HRDashboard>
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 
@@ -972,9 +979,15 @@ class _HRDashboardState extends State<HRDashboard>
       String requestId, String employeeName, String reason) async {
     setState(() => isLoading = true);
     try {
+      // तुरंत local list से remove करें
+      setState(() {
+        hrPendingApprovals
+            .removeWhere((request) => request['id'].toString() == requestId);
+      });
+
+      // फिर backend को reject करें
       await HRApprovalService.rejectRequest(requestId, widget.authToken,
           rejectionReason: reason);
-      await _loadHRApprovals();
 
       _addActivity(
         "Rejected advance request for: $employeeName",
@@ -996,12 +1009,17 @@ class _HRDashboardState extends State<HRDashboard>
       );
     } catch (e) {
       setState(() => isLoading = false);
+      // अगर error हुआ तो फिर से data fetch करें
+      await _loadHRApprovals();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to reject request: $e'),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 
