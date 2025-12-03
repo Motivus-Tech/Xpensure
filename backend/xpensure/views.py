@@ -432,49 +432,11 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
         print("❌ No employee provided to get_next_approver")
         return None
     
-    print(f"🔍 Getting next approver for: {employee.employee_id} ({employee.role})")
-    
-    # ✅ SPECIAL CASE: Finance Verification
-    if employee.role == "Finance Verification":
-        print(f"⚠️ Finance Verification - Checking request type...")
-        
-        # IMPORTANT: Agar request_type mila hai, toh uske hisab se route karo
-        if request_type == "reimbursement":
-            # ✅ REIMBURSEMENT: HR skip karo, direct CEO ko jao
-            # Pehle check karo agar CEO direct Finance ka report_to hai
-            if employee.report_to:
-                try:
-                    next_user = User.objects.get(employee_id=employee.report_to)
-                    if next_user.role == "HR":
-                        # HR skip karo, CEO dhoondo
-                        ceo_user = User.objects.filter(role="CEO").first()
-                        if ceo_user:
-                            print(f"✅ Finance → CEO: Reimbursement SKIPPED HR, sent to CEO: {ceo_user.employee_id}")
-                            return ceo_user.employee_id
-                    elif next_user.role == "CEO":
-                        # Direct CEO ko jao
-                        print(f"✅ Finance → CEO: Reimbursement sent to CEO: {next_user.employee_id}")
-                        return next_user.employee_id
-                except User.DoesNotExist:
-                    pass
-            
-            # Agar report_to chain fail hui, toh direct CEO dhoondo
-            ceo_user = User.objects.filter(role="CEO").first()
-            if ceo_user:
-                print(f"✅ Finance → CEO (Direct): Reimbursement sent to CEO: {ceo_user.employee_id}")
-                return ceo_user.employee_id
-        
-        else:
-            # ✅ ADVANCE: Normal report_to chain follow karo (HR tak jayega)
-            if employee.report_to:
-                print(f"✅ Finance → Report To: Advance sent to {employee.report_to}")
-                return employee.report_to
+    print(f"🔍 Getting next approver for: {employee.employee_id} ({employee.role}) - Request Type: {request_type}")
     
     # ✅ PREVENT INFINITE LOOP - Check if we're stuck in a loop
     if employee.employee_id in current_chain:
         print(f"⚠️ Infinite loop detected! Chain: {current_chain}")
-        
-        # Agar loop mein phas gaye, toh Finance Verification dhoondo
         finance_user = User.objects.filter(role="Finance Verification").first()
         if finance_user:
             print(f"🔄 Loop broken, sending to Finance: {finance_user.employee_id}")
@@ -484,18 +446,94 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
     # ✅ ADD CURRENT EMPLOYEE TO CHAIN
     new_chain = current_chain + [employee.employee_id]
     
+    # ✅ CRITICAL FIX: Finance Verification Routing
+    if employee.role == "Finance Verification":
+        print(f"⚠️ Finance Verification - Processing {request_type} request")
+        
+        if request_type == "reimbursement":
+            # ✅ REIMBURSEMENT: Direct CEO ko jao (HR skip)
+            print(f"   Processing REIMBURSEMENT - HR should be skipped")
+            
+            # Check if CEO is report_to
+            if employee.report_to:
+                try:
+                    next_user = User.objects.get(employee_id=employee.report_to)
+                    if next_user.role == "HR":
+                        print(f"   ⏩ Skipping HR, looking for CEO...")
+                        ceo_user = User.objects.filter(role="CEO").first()
+                        if ceo_user:
+                            print(f"✅ Finance → CEO: Reimbursement sent to CEO: {ceo_user.employee_id}")
+                            return ceo_user.employee_id
+                    elif next_user.role == "CEO":
+                        print(f"✅ Finance → CEO: Reimbursement sent to CEO: {next_user.employee_id}")
+                        return next_user.employee_id
+                except User.DoesNotExist:
+                    pass
+            
+            # Direct CEO dhoondo
+            ceo_user = User.objects.filter(role="CEO").first()
+            if ceo_user:
+                print(f"✅ Finance → CEO (Direct): Reimbursement sent to CEO: {ceo_user.employee_id}")
+                return ceo_user.employee_id
+            
+            print(f"❌ CEO not found for reimbursement")
+            return None
+            
+        elif request_type == "advance":
+            # ✅ ADVANCE: MUST GO TO HR FIRST (CRITICAL FIX)
+            print(f"   Processing ADVANCE - MUST go to HR first")
+            
+            # First, try to find HR user
+            hr_user = User.objects.filter(role="HR").first()
+            if hr_user:
+                print(f"✅ Finance → HR: Advance MUST go to HR first: {hr_user.employee_id}")
+                return hr_user.employee_id
+            
+            print(f"⚠️ HR not found, checking report_to chain...")
+            
+            # Fallback to report_to chain
+            if employee.report_to:
+                try:
+                    next_user = User.objects.get(employee_id=employee.report_to)
+                    print(f"   Next in report_to chain: {next_user.employee_id} ({next_user.role})")
+                    
+                    # Check if next is CEO
+                    if next_user.role == "CEO":
+                        print(f"❌ WARNING: Advance going from Finance to CEO directly!")
+                        print(f"   Looking for HR again...")
+                        # Try to find any HR user
+                        hr_users = User.objects.filter(role="HR")
+                        if hr_users.exists():
+                            hr_user = hr_users.first()
+                            print(f"   🔄 Found HR: {hr_user.employee_id} - Sending there instead")
+                            return hr_user.employee_id
+                    
+                    return next_user.employee_id
+                except User.DoesNotExist:
+                    print(f"❌ Next in report_to chain not found: {employee.report_to}")
+            
+            print(f"❌ No HR found and no report_to chain for advance")
+            return None
+        
+        else:
+            # Default case
+            print(f"⚠️ Unknown request type: {request_type}")
+            if employee.report_to:
+                return employee.report_to
+            return None
+    
     # ✅ NORMAL MANAGER CHAIN (Common role wale)
-    if employee.role == "Common" or employee.role == "Manager":
+    if employee.role in ["Common", "Manager", "Team Lead", "Supervisor"]:
         if employee.report_to:
             try:
                 next_user = User.objects.get(employee_id=employee.report_to)
                 print(f"✅ Manager chain: {employee.employee_id} → {next_user.employee_id} ({next_user.role})")
                 
-                # Agar next user bhi Common/Manager hai, toh chain continue karo
-                if next_user.role in ["Common", "Manager"]:
+                # Agar next user bhi manager hai, toh chain continue karo
+                if next_user.role in ["Common", "Manager", "Team Lead", "Supervisor"]:
                     return get_next_approver(next_user, request_type, new_chain)
                 else:
-                    # Agar next user special role hai (Finance, HR, etc.)
+                    # Agar next user special role hai
                     return next_user.employee_id
                     
             except User.DoesNotExist:
@@ -506,22 +544,46 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
         if finance_user:
             print(f"📭 No report_to, sending to Finance: {finance_user.employee_id}")
             return finance_user.employee_id
+        
+        return None
     
-    # ✅ SPECIAL ROLES (HR, CEO, Finance Payment)
+    # ✅ HR APPROVAL FLOW
     if employee.role == "HR":
-        print(f"🔍 HR user - checking CEO...")
+        print(f"🔍 HR user - checking next approver...")
+        
+        # HR ke baad CEO jana chahiye (for both reimbursement and advance)
         ceo_user = User.objects.filter(role="CEO").first()
         if ceo_user:
             print(f"✅ HR → CEO: {ceo_user.employee_id}")
             return ceo_user.employee_id
+        
+        # Agar CEO nahi hai, toh report_to chain follow karo
+        if employee.report_to:
+            print(f"⚠️ CEO not found, using report_to: {employee.report_to}")
+            return employee.report_to
+        
+        print(f"❌ HR: No CEO found and no report_to")
+        return None
     
+    # ✅ CEO APPROVAL FLOW
     if employee.role == "CEO":
-        print(f"🔍 CEO user - checking Finance Payment...")
+        print(f"🔍 CEO user - checking next approver...")
+        
+        # CEO ke baad Finance Payment jana chahiye
         finance_payment_user = User.objects.filter(role="Finance Payment").first()
         if finance_payment_user:
             print(f"✅ CEO → Finance Payment: {finance_payment_user.employee_id}")
             return finance_payment_user.employee_id
+        
+        # Agar Finance Payment nahi hai, toh report_to chain follow karo
+        if employee.report_to:
+            print(f"⚠️ Finance Payment not found, using report_to: {employee.report_to}")
+            return employee.report_to
+        
+        print(f"🎯 CEO is final approver - no next approver")
+        return None
     
+    # ✅ Finance Payment is FINAL
     if employee.role == "Finance Payment":
         print(f"🎯 Finance Payment is final approver - no next approver")
         return None
@@ -535,10 +597,9 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
         except User.DoesNotExist:
             print(f"❌ Next approver {employee.report_to} not found")
     
-    # ✅ END OF CHAIN: Agar koi aur option nahi hai
+    # ✅ END OF CHAIN
     print(f"📭 End of chain for {employee.employee_id}")
     return None
-
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
     
