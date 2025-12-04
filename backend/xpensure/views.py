@@ -422,12 +422,12 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'employee_id'
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAdminUser]
-    
+
 def get_next_approver(employee, request_type=None, current_chain=[]):
     """
-    SIMPLE AND CORRECT NEXT APPROVER LOGIC
-    Reimbursement: Common → Finance Verification → CEO → Finance Payment
-    Advance: Common → Finance Verification → HR → CEO → Finance Payment
+    CORRECTED NEXT APPROVER LOGIC
+    Reimbursement: Common → Common... → Finance Verification → CEO → Finance Payment
+    Advance: Common → Common... → Finance Verification → HR → CEO → Finance Payment
     """
     if not employee:
         return None
@@ -436,12 +436,15 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
     
     # PREVENT INFINITE LOOP
     if employee.employee_id in current_chain:
+        print(f"⚠️  Infinite loop detected: {employee.employee_id} already in chain {current_chain}")
         return None
     
     new_chain = current_chain + [employee.employee_id]
     
-    # 1. COMMON USERS (Employee/Managers)
+    # 1. COMMON USERS (Employee/Managers) - Can be multiple in chain
     if employee.role == "Common":
+        print(f"🔄 Processing Common user: {employee.employee_id}")
+        
         if employee.report_to:
             try:
                 next_user = User.objects.get(employee_id=employee.report_to)
@@ -451,61 +454,84 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
                 if next_user.role == "Common":
                     return get_next_approver(next_user, request_type, new_chain)
                 else:
+                    # Next user is not Common, return their ID
                     return next_user.employee_id
             except User.DoesNotExist:
+                print(f"❌ Report_to user {employee.report_to} not found")
                 pass
         
         # No report_to → go to Finance Verification
+        print(f"📭 No report_to for {employee.employee_id}, checking Finance Verification")
         finance_user = User.objects.filter(role="Finance Verification").first()
         if finance_user:
-            print(f"📭 No report_to → Finance: {finance_user.employee_id}")
+            print(f"✅ No report_to → Finance: {finance_user.employee_id}")
             return finance_user.employee_id
-        return None
+        else:
+            print(f"❌ No Finance Verification user found")
+            return None
     
     # 2. FINANCE VERIFICATION
     elif employee.role == "Finance Verification":
+        print(f"💰 Processing Finance Verification user")
+        
         if request_type == "reimbursement":
-            # Reimbursement → CEO
+            # Reimbursement → CEO (direct, no HR)
             ceo_user = User.objects.filter(role="CEO").first()
             if ceo_user:
-                print(f"✅ Finance → CEO: {ceo_user.employee_id}")
+                print(f"✅ Reimbursement: Finance → CEO: {ceo_user.employee_id}")
                 return ceo_user.employee_id
+            else:
+                print(f"❌ No CEO user found")
+                return None
         else:
             # Advance → HR
             hr_user = User.objects.filter(role="HR").first()
             if hr_user:
-                print(f"✅ Finance → HR: {hr_user.employee_id}")
+                print(f"✅ Advance: Finance → HR: {hr_user.employee_id}")
                 return hr_user.employee_id
-        return None
+            else:
+                print(f"❌ No HR user found, checking CEO")
+                ceo_user = User.objects.filter(role="CEO").first()
+                if ceo_user:
+                    return ceo_user.employee_id
+                return None
     
-    # 3. HR
+    # 3. HR (Only for Advance requests)
     elif employee.role == "HR":
+        print(f"👥 Processing HR user")
+        
         # HR → CEO
         ceo_user = User.objects.filter(role="CEO").first()
         if ceo_user:
             print(f"✅ HR → CEO: {ceo_user.employee_id}")
             return ceo_user.employee_id
+        print(f"❌ No CEO user found")
         return None
     
     # 4. CEO
     elif employee.role == "CEO":
+        print(f"👑 Processing CEO user")
+        
         # CEO → Finance Payment
         finance_payment_user = User.objects.filter(role="Finance Payment").first()
         if finance_payment_user:
             print(f"✅ CEO → Finance Payment: {finance_payment_user.employee_id}")
             return finance_payment_user.employee_id
-        print(f"🎯 CEO is final approver")
+        print(f"❌ No Finance Payment user found")
         return None
     
-    # 5. FINANCE PAYMENT
+    # 5. FINANCE PAYMENT (Final)
     elif employee.role == "Finance Payment":
-        print(f"🎯 Finance Payment is final approver")
+        print(f"💰 Finance Payment is final approver")
         return None
     
-    return None
+    # 6. OTHER ROLES
+    else:
+        print(f"⚠️  Unknown role: {employee.role}")
+        return None
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     """
-    CLEAN APPROVAL PROCESSING
+    UPDATED APPROVAL PROCESSING WITH HR HANDLING
     """
     request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
     
@@ -534,6 +560,7 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         )
         
         request_obj.save()
+        print(f"✅ Request rejected")
         return request_obj
     
     # APPROVAL CASE
@@ -548,7 +575,7 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         comments=f'Approved by {approver_employee.role}'
     )
     
-    # 2. Set approval flags
+    # 2. Set approval flags based on approver role
     if approver_employee.role == "Finance Verification":
         request_obj.approved_by_finance = True
         print(f"✅ approved_by_finance = True")
@@ -561,34 +588,19 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         print(f"✅ approved_by_ceo = True")
         print(f"✅ final_approver = {approver_employee.employee_id}")
     
-    # 3. Get next approver
+    # 3. Get next approver in chain
     next_approver_id = get_next_approver(approver_employee, request_type, [])
-    print(f"🎯 Next approver: {next_approver_id}")
+    print(f"🎯 Next approver ID: {next_approver_id}")
     
     # 4. Process based on approver role
     
-    # CASE 1: CEO APPROVES (FINAL APPROVAL)
-    if approver_employee.role == "CEO":
-        print(f"👑 CEO APPROVAL - FINAL!")
-        
-        request_obj.status = "Approved"  # ✅ FINAL STATUS!
-        
-        if next_approver_id:
-            # Finance Payment exists
-            request_obj.current_approver_id = next_approver_id
-            print(f"✅ Approved by CEO, sent to Finance Payment: {next_approver_id}")
-        else:
-            # No Finance Payment user
-            request_obj.current_approver_id = None
-            print(f"✅ Approved by CEO - no Finance Payment user")
-    
-    # CASE 2: FINANCE PAYMENT APPROVES (MARKS AS PAID)
-    elif approver_employee.role == "Finance Payment":
+    # CASE 1: FINANCE PAYMENT APPROVES (MARKS AS PAID)
+    if approver_employee.role == "Finance Payment":
         print(f"💰 FINANCE PAYMENT - MARKING AS PAID!")
         
-        request_obj.status = "Paid"  # ✅ COMPLETED!
+        request_obj.status = "Paid"
         request_obj.payment_date = timezone.now()
-        request_obj.current_approver_id = None  # No more approvers
+        request_obj.current_approver_id = None
         
         # Create payment history
         ApprovalHistory.objects.create(
@@ -602,6 +614,19 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         
         print(f"✅ Marked as Paid, payment_date = {request_obj.payment_date}")
     
+    # CASE 2: CEO APPROVES (SEND TO FINANCE PAYMENT)
+    elif approver_employee.role == "CEO":
+        print(f"👑 CEO APPROVAL - SENDING TO FINANCE PAYMENT!")
+        
+        request_obj.status = "Approved"
+        
+        if next_approver_id:
+            request_obj.current_approver_id = next_approver_id
+            print(f"✅ Approved by CEO, sent to Finance Payment: {next_approver_id}")
+        else:
+            request_obj.current_approver_id = None
+            print(f"✅ Approved by CEO - no Finance Payment user")
+    
     # CASE 3: OTHER APPROVERS (Common, Finance Verification, HR)
     else:
         print(f"🔍 Intermediate approval...")
@@ -611,15 +636,21 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             request_obj.current_approver_id = next_approver_id
             print(f"✅ Sent to next approver: {next_approver_id}")
         else:
-            request_obj.status = "Approved"
-            request_obj.current_approver_id = None
-            print(f"✅ No next approver - auto-approved")
+            # No next approver in chain
+            if approver_employee.role in ["Finance Verification", "HR"]:
+                # If Finance or HR approves but no CEO, mark as Approved
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                print(f"✅ No CEO in system, auto-approved after {approver_employee.role}")
+            else:
+                request_obj.status = "Approved"
+                request_obj.current_approver_id = None
+                print(f"✅ No next approver - auto-approved")
     
     # 5. Save and return
     print(f"\n✅ FINAL: Status={request_obj.status}, Next Approver={request_obj.current_approver_id}")
     request_obj.save()
-    return request_obj   
-
+    return request_obj    
 # ----------------------------
 # -----------------------------
 # Approve / Reject APIs
