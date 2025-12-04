@@ -105,7 +105,9 @@ class _CEODashboardState extends State<CEODashboard> {
         authToken: widget.authToken,
       );
 
-      debugPrint('Dashboard Data: $dashboardData');
+      // ✅ **ADD DETAILED DEBUG LOGGING HERE**
+      debugPrint('=== CEO DASHBOARD DEBUG START ===');
+      debugPrint('Full API response keys: ${dashboardData.keys.toList()}');
 
       final pendingReimbursements = List<Map<String, dynamic>>.from(
         dashboardData['reimbursements_to_approve'] ?? [],
@@ -113,6 +115,26 @@ class _CEODashboardState extends State<CEODashboard> {
       final pendingAdvances = List<Map<String, dynamic>>.from(
         dashboardData['advances_to_approve'] ?? [],
       );
+
+      debugPrint(
+          'Reimbursements from API: ${pendingReimbursements.length} items');
+      debugPrint('Advances from API: ${pendingAdvances.length} items');
+
+      // Log each reimbursement
+      for (var i = 0; i < pendingReimbursements.length; i++) {
+        var reimb = pendingReimbursements[i];
+        debugPrint(
+            'Reimbursement $i: ID=${reimb['id']}, Amount=₹${reimb['amount']}, Finance Approved=${reimb['approved_by_finance']}');
+      }
+
+      // Log each advance
+      for (var i = 0; i < pendingAdvances.length; i++) {
+        var advance = pendingAdvances[i];
+        debugPrint(
+            'Advance $i: ID=${advance['id']}, Amount=₹${advance['amount']}, Finance Approved=${advance['approved_by_finance']}, HR Approved=${advance['approved_by_hr']}');
+      }
+
+      debugPrint('=== CEO DASHBOARD DEBUG END ===');
 
       final allPendingRequests = [
         ...pendingReimbursements.map((r) => _transformReimbursementData(r)),
@@ -126,6 +148,13 @@ class _CEODashboardState extends State<CEODashboard> {
       final history = await _apiService.getCEOHistory(
         authToken: widget.authToken,
       );
+
+      // ✅ **MOVE DEBUG HERE - AFTER LOADING ANALYTICS**
+      debugPrint(
+          '🔥 WHERE IS THIS COMING FROM? Analytics reimb: ${analytics['reimbursement_count']}, advance: ${analytics['advance_count']}');
+      debugPrint(
+          '🔥 Actual pending reimb: ${pendingReimbursements.length}, advance: ${pendingAdvances.length}');
+      debugPrint('🔥 Analytics full data: $analytics');
 
       setState(() {
         _pendingRequests = allPendingRequests;
