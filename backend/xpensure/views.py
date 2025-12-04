@@ -491,7 +491,7 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
     return None
 def process_approval(request_obj, approver_employee, approved=True, rejection_reason=None):
     """
-    APPROVAL PROCESSING WITH REJECTION GOING BACK TO EMPLOYEE
+    FIXED: CEO approves → status = "Approved" (not "Pending")
     """
     request_type = 'reimbursement' if hasattr(request_obj, 'date') else 'advance'
     
@@ -567,7 +567,7 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
     next_approver_id = get_next_approver(approver_employee, request_type)
     print(f"🎯 Next approver calculated: {next_approver_id}")
     
-    # 4. Update status based on role
+    # ✅ FIXED: 4. Update status based on role
     if approver_employee.role == "Finance Payment":
         # Mark as paid
         request_obj.status = "Paid"
@@ -584,21 +584,29 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
         )
         print(f"💰 Marked as Paid")
     
+    # ✅ ADDED: CEO APPROVAL CHECK (BEFORE next_approver_id check)
+    elif approver_employee.role == "CEO":
+        # CEO approves → status = "Approved"
+        request_obj.status = "Approved"
+        
+        if next_approver_id:  # Finance Payment exists
+            request_obj.current_approver_id = next_approver_id
+            print(f"✅ Approved by CEO, sent to Finance Payment: {next_approver_id}")
+        else:
+            request_obj.current_approver_id = None
+            print(f"✅ Approved by CEO, no Finance Payment user found")
+    
     elif next_approver_id:
-        # Continue chain
+        # Other approvers (Common, Finance Verification, HR)
         request_obj.status = "Pending"
         request_obj.current_approver_id = next_approver_id
         print(f"✅ Approved, sent to next: {next_approver_id}")
     
     else:
-        # End of chain
-        if approver_employee.role == "CEO":
-            request_obj.status = "Approved"
-            print(f"✅ Approved by CEO, waiting for Finance Payment")
-        else:
-            request_obj.status = "Approved"  # Auto-approve if no next
-            print(f"✅ Auto-approved, no next approver")
+        # No next approver
+        request_obj.status = "Approved"
         request_obj.current_approver_id = None
+        print(f"✅ Auto-approved, no next approver")
     
     request_obj.save()
     print(f"✅ Final Status: {request_obj.status}, Next Approver: {request_obj.current_approver_id}")
