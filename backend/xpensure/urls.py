@@ -113,7 +113,7 @@ api_patterns = [
     # Health check
     # Add these to your urlpatterns
     path('finance-verification/csv-report/', FinanceVerificationCSVReportView.as_view(), name='finance-verification-csv-report'),
-    path('health/', health_check, name='health'),
+   
      # NEW CEO REPORTING ENDPOINTS
     path('ceo/employee-project-report/', CEOEmployeeProjectReportView.as_view(), name='ceo-employee-project-report'),
     path('ceo/csv-report/', CEOCSVReportView.as_view(), name='ceo-csv-report'),
@@ -124,6 +124,8 @@ api_patterns = [
     path('requests/<int:request_id>/hr-reject/', HRRejectRequestView.as_view(), name='hr-reject-request'),
     # Add this to your Django urlpatterns
     path('requests/<int:request_id>/details/', get_request_details, name='request-details'),
+
+     path('health/', health_check, name='health'),
 ]
 
 

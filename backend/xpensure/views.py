@@ -423,6 +423,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'employee_id'
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAdminUser]
+
 def get_next_approver(employee, request_type=None, current_chain=[]):
     """
     SMART ROUTING: Returns next approver based on report_to hierarchy
@@ -642,7 +643,14 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             
             # Set current approver
             request_obj.current_approver_id = next_approver_id
-            request_obj.status = "Pending"
+            
+            # ✅ FIX: If CEO → Finance Payment, status should be "Approved"
+            if approver_employee.role == "CEO" and next_user.role == "Finance Payment":
+                request_obj.status = "Approved"
+                print(f"✅ CEO → Finance Payment: Status = 'Approved' (ready for payment)")
+            else:
+                request_obj.status = "Pending"
+                print(f"✅ Status = 'Pending' (awaiting {next_user.role})")
             
             # ✅ DYNAMIC STEP CALCULATION
             current_step = request_obj.currentStep if hasattr(request_obj, 'currentStep') else 1
@@ -698,7 +706,7 @@ def process_approval(request_obj, approver_employee, approved=True, rejection_re
             finance_payment_user = User.objects.filter(role="Finance Payment").first()
             if finance_payment_user:
                 request_obj.current_approver_id = finance_payment_user.employee_id
-                request_obj.status = "Pending"  # Back to pending for payment
+                request_obj.status = "Approved"  # CEO approval means "Approved" status
                 request_obj.currentStep = 6
 
     request_obj.save()
@@ -981,7 +989,9 @@ class CEODashboardView(APIView):
         # 2. Advances where CEO is current approver AND HR has approved
         advances_pending = AdvanceRequest.objects.filter(
             current_approver_id=ceo_employee_id,
-            status="Pending"
+            status="Pending",
+            approved_by_finance=True,  # ✅ Finance approved
+            approved_by_hr=True,     # ✅ ✅ ✅ HR approved (YEH MISSING THA!)
         ).select_related('employee')
         
         # ✅ REMOVED: Finance approved requests that haven't been processed by HR
