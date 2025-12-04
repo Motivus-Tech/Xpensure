@@ -422,12 +422,10 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'employee_id'
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAdminUser]
-
+    
 def get_next_approver(employee, request_type=None, current_chain=[]):
     """
-    DYNAMIC COMMON APPROVER CHAIN
-    Follows report_to hierarchy until hitting a non-Common role
-    Employee → Common1 → Common2 → ... (dynamic chain) → Finance/HR/CEO/etc.
+    FIXED: Don't skip Common users in chain
     """
     if not employee:
         return None
@@ -447,13 +445,9 @@ def get_next_approver(employee, request_type=None, current_chain=[]):
             next_user = User.objects.get(employee_id=employee.report_to)
             print(f"✅ Next: {employee.employee_id} → {next_user.employee_id} ({next_user.role})")
             
-            # Check if we should continue the chain
-            if next_user.role == "Common":
-                # Continue with next Common user
-                return get_next_approver(next_user, request_type, new_chain)
-            else:
-                # Non-Common role reached, return it
-                return next_user.employee_id
+            # ✅ FIX: ALWAYS return the IMMEDIATE next user
+            # Don't recursively skip Common users
+            return next_user.employee_id  # ✅ SIMPLE: Just return the next user
                 
         except User.DoesNotExist:
             print(f"❌ Report_to {employee.report_to} not found")
