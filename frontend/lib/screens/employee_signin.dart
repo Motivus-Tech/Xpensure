@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
 import 'employee_signup.dart';
 import 'employee_forgot_password.dart';
@@ -88,10 +91,12 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
 
     try {
       // Call API
-      Map<String, dynamic> response = await _apiService.loginEmployeeMap(
-        employeeId: employeeId,
-        password: password,
-      );
+      Map<String, dynamic> response = await _apiService
+          .loginEmployeeMap(
+            employeeId: employeeId,
+            password: password,
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (mounted) {
         setState(() {
@@ -135,15 +140,86 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
       } else {
         if (mounted) {
           setState(() {
-            _message = response["message"] ?? "Login failed";
+            // User-friendly error messages
+            final serverMessage = response["message"] ?? '';
+
+            if (serverMessage.contains('Invalid credentials') ||
+                serverMessage.contains('incorrect') ||
+                serverMessage.toLowerCase().contains('wrong')) {
+              _message = "Invalid Employee ID or Password. Please try again.";
+            } else if (serverMessage.contains('not found') ||
+                serverMessage.contains('does not exist')) {
+              _message = "Employee ID not found. Please check your ID.";
+            } else if (serverMessage.contains('required') ||
+                serverMessage.contains('missing')) {
+              _message = "Please fill all required fields.";
+            } else if (serverMessage.contains('inactive') ||
+                serverMessage.contains('disabled')) {
+              _message = "Account is disabled. Contact HR department.";
+            } else if (serverMessage.isNotEmpty) {
+              _message = serverMessage;
+            } else {
+              _message = "Login failed. Please try again.";
+            }
           });
         }
+      }
+    } on TimeoutException catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _message = "Connection timeout. Please try again.";
+        });
+      }
+    } on http.ClientException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (e.message.contains('Failed host lookup') ||
+              e.message.contains('Connection refused')) {
+            _message =
+                "Cannot connect to server. Please check your internet connection.";
+          } else if (e.message.contains('timeout')) {
+            _message = "Connection timeout. Please try again.";
+          } else {
+            _message = "Network error. Please check your connection.";
+          }
+        });
+      }
+    } on FormatException catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _message = "Invalid response from server. Please try again.";
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _message = "Error connecting to server: $e";
+
+          // Check if it's an API service error
+          if (e.toString().contains('Failed to login')) {
+            final errorString = e.toString();
+
+            if (errorString.contains('401') || errorString.contains('403')) {
+              _message =
+                  "Invalid credentials. Please check your ID and password.";
+            } else if (errorString.contains('404')) {
+              _message = "Service not available. Please try again later.";
+            } else if (errorString.contains('500')) {
+              _message = "Server error. Please try again later.";
+            } else if (errorString.contains('timeout')) {
+              _message = "Connection timeout. Please try again.";
+            } else {
+              _message = "Login failed. Please try again.";
+            }
+          } else {
+            _message = "An error occurred. Please try again.";
+          }
+
+          // For debugging only
+          print('Login error: $e');
         });
       }
     }
@@ -210,6 +286,15 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                           fontSize: isMobile ? 20 : 22,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF1A237E),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: isMobile ? 4 : 6),
+                      Text(
+                        "Access your employee account",
+                        style: TextStyle(
+                          fontSize: isMobile ? 12 : 13,
+                          color: Colors.grey.shade600,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -394,23 +479,50 @@ class _EmployeeSignInPageState extends State<EmployeeSignInPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.red.shade50,
+                            color: _message.toLowerCase().contains('successful')
+                                ? Colors.green.shade50
+                                : Colors.red.shade50,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.red.shade200,
+                              color:
+                                  _message.toLowerCase().contains('successful')
+                                      ? Colors.green.shade200
+                                      : Colors.red.shade200,
                               width: 1,
                             ),
                           ),
-                          child: Text(
-                            _message,
-                            style: TextStyle(
-                              color: Colors.red.shade700,
-                              fontSize: isMobile ? 13 : 14,
-                              height: 1.3,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _message.toLowerCase().contains('successful')
+                                    ? Icons.check_circle
+                                    : Icons.error_outline,
+                                color: _message
+                                        .toLowerCase()
+                                        .contains('successful')
+                                    ? Colors.green.shade700
+                                    : Colors.red.shade700,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _message,
+                                  style: TextStyle(
+                                    color: _message
+                                            .toLowerCase()
+                                            .contains('successful')
+                                        ? Colors.green.shade700
+                                        : Colors.red.shade700,
+                                    fontSize: isMobile ? 13 : 14,
+                                    height: 1.3,
+                                  ),
+                                  textAlign: TextAlign.left,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                     ],

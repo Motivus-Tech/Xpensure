@@ -289,6 +289,8 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
 
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(result)));
+      // ✅ ADD THIS ONE LINE:
+      if (result.toLowerCase().contains("success")) Navigator.pop(context);
 
       Map<String, dynamic> reimbursementData = {
         "reimbursementDate": reimbursementDate,
@@ -301,11 +303,15 @@ class _ReimbursementFormScreenState extends State<ReimbursementFormScreen> {
       widget.onSubmit(reimbursementData);
 
       // Reset form
+      // setState(() {
+      //   reimbursementDate = DateTime.now();
+      //   projectIdController.clear();
+      //   for (var entry in payments) entry.dispose();
+      //    payments = [PaymentEntry()];
+      //  _isSubmitting = false;
+      //    });
+      // ✅ INSTEAD JUST DO THIS:
       setState(() {
-        reimbursementDate = DateTime.now();
-        projectIdController.clear();
-        for (var entry in payments) entry.dispose();
-        payments = [PaymentEntry()];
         _isSubmitting = false;
       });
     } catch (e) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -97,7 +98,7 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
               "password": password,
             }),
           )
-          .timeout(const Duration(seconds: 30)); // Add timeout
+          .timeout(const Duration(seconds: 30));
 
       if (mounted) {
         setState(() {
@@ -141,7 +142,7 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
             'role': role,
           };
 
-          // Navigate to appropriate dashboard - UPDATED
+          // Navigate to appropriate dashboard
           if (mounted) {
             if (role == 'CEO' || role == 'ceo') {
               Navigator.pushReplacement(
@@ -151,11 +152,10 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     userData: userData,
                     authToken: token,
                     onLogout: () {
-                      // Navigate back to login page
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ApproverSignInPage()),
+                            builder: (context) => const ApproverSignInPage()),
                         (route) => false,
                       );
                     },
@@ -170,11 +170,10 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     userData: userData,
                     authToken: token,
                     onLogout: () {
-                      // Navigate back to login page
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ApproverSignInPage()),
+                            builder: (context) => const ApproverSignInPage()),
                         (route) => false,
                       );
                     },
@@ -189,20 +188,17 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     userData: userData,
                     authToken: token,
                     onLogout: () {
-                      // Navigate back to login page
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ApproverSignInPage()),
+                            builder: (context) => const ApproverSignInPage()),
                         (route) => false,
                       );
                     },
                   ),
                 ),
               );
-            } else if (role == 'HR' ||
-                role == 'hr' ||
-                role == 'Human Resources') {
+            } else if (role == 'HR' || role == 'hr' || role == 'HR') {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -210,11 +206,10 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     userData: userData,
                     authToken: token,
                     onLogout: () {
-                      // Navigate back to login page
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ApproverSignInPage()),
+                            builder: (context) => const ApproverSignInPage()),
                         (route) => false,
                       );
                     },
@@ -231,11 +226,10 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                     userData: userData,
                     authToken: token,
                     onLogout: () {
-                      // Navigate back to login page
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ApproverSignInPage()),
+                            builder: (context) => const ApproverSignInPage()),
                         (route) => false,
                       );
                     },
@@ -244,35 +238,107 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
               );
             } else {
               setState(() {
-                _message = "Role '$role' not authorized for Approver access";
+                _message =
+                    "Access denied. Only authorized personnel can sign in here.";
               });
             }
           }
         } else {
           if (mounted) {
             setState(() {
-              _message =
-                  data['message'] ?? data['error'] ?? "Invalid credentials";
+              // User-friendly error messages
+              final serverMessage = data['message'] ?? data['error'] ?? '';
+
+              if (serverMessage.contains('Invalid credentials') ||
+                  serverMessage.contains('incorrect') ||
+                  serverMessage.toLowerCase().contains('wrong')) {
+                _message = "Invalid Employee ID or Password. Please try again.";
+              } else if (serverMessage.contains('not found') ||
+                  serverMessage.contains('does not exist')) {
+                _message = "Employee ID not found. Please check your ID.";
+              } else if (serverMessage.contains('required') ||
+                  serverMessage.contains('missing')) {
+                _message = "Please fill all required fields.";
+              } else if (serverMessage.contains('inactive') ||
+                  serverMessage.contains('disabled')) {
+                _message = "Account is disabled. Contact your administrator.";
+              } else if (serverMessage.isNotEmpty) {
+                _message = serverMessage;
+              } else {
+                _message = "Invalid credentials. Please try again.";
+              }
             });
           }
         }
       } else {
-        final errorData = jsonDecode(response.body);
+        // User-friendly HTTP error messages
         if (mounted) {
           setState(() {
-            _message = errorData['message'] ??
-                errorData['error'] ??
-                "Server error: ${response.statusCode}";
+            switch (response.statusCode) {
+              case 400:
+                _message = "Bad request. Please check your information.";
+                break;
+              case 401:
+                _message = "Please check your credentials.";
+                break;
+              case 403:
+                _message = "Access denied. You don't have permission.";
+                break;
+              case 404:
+                _message = "Service not found. Please try again later.";
+                break;
+              case 408:
+                _message = "Request timeout. Please try again.";
+                break;
+              case 500:
+              case 502:
+              case 503:
+              case 504:
+                _message =
+                    "Server is temporarily unavailable. Please try again later.";
+                break;
+              default:
+                _message = "Something went wrong. Please try again.";
+            }
           });
         }
+      }
+    } on http.ClientException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (e.message.contains('Failed host lookup') ||
+              e.message.contains('Connection refused')) {
+            _message =
+                "Cannot connect to server. Please check your internet connection.";
+          } else if (e.message.contains('timeout')) {
+            _message = "Connection timeout. Please try again.";
+          } else {
+            _message =
+                "Network error. Please check your connection and try again.";
+          }
+        });
+      }
+    } on TimeoutException catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _message = "Connection timeout. Please try again.";
+        });
+      }
+    } on FormatException catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _message = "Invalid response from server. Please try again.";
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _message = e.toString().contains('TimeoutException')
-              ? "Connection timeout. Please try again."
-              : "Error connecting to server: $e";
+          // Generic fallback message
+          _message = "An error occurred. Please try again.";
         });
       }
     }
@@ -342,7 +408,7 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      SizedBox(height: isMobile ? 16 : 24),
+                      SizedBox(height: isMobile ? 4 : 6),
 
                       // AutofillGroup for password saving
                       AutofillGroup(
@@ -473,29 +539,74 @@ class _ApproverSignInPageState extends State<ApproverSignInPage> {
                                 ),
                         ),
                       ),
+                      SizedBox(height: isMobile ? 8 : 12),
+                      TextButton(
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  "Contact IT department for password reset."),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          "Forgot Password?",
+                          style: TextStyle(
+                            fontSize: isMobile ? 14 : 15,
+                            color: const Color(0xFF1A237E),
+                          ),
+                        ),
+                      ),
                       SizedBox(height: isMobile ? 12 : 16),
                       if (_message.isNotEmpty)
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.red.shade50,
+                            color: _message.toLowerCase().contains('successful')
+                                ? Colors.green.shade50
+                                : Colors.red.shade50,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: Colors.red.shade200,
+                              color:
+                                  _message.toLowerCase().contains('successful')
+                                      ? Colors.green.shade200
+                                      : Colors.red.shade200,
                               width: 1,
                             ),
                           ),
-                          child: Text(
-                            _message,
-                            style: TextStyle(
-                              color: Colors.red.shade700,
-                              fontSize: isMobile ? 13 : 14,
-                              height: 1.3,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _message.toLowerCase().contains('successful')
+                                    ? Icons.check_circle
+                                    : Icons.error_outline,
+                                color: _message
+                                        .toLowerCase()
+                                        .contains('successful')
+                                    ? Colors.green.shade700
+                                    : Colors.red.shade700,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _message,
+                                  style: TextStyle(
+                                    color: _message
+                                            .toLowerCase()
+                                            .contains('successful')
+                                        ? Colors.green.shade700
+                                        : Colors.red.shade700,
+                                    fontSize: isMobile ? 13 : 14,
+                                    height: 1.3,
+                                  ),
+                                  textAlign: TextAlign.left,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                     ],
