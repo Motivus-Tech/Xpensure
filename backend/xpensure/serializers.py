@@ -324,3 +324,4 @@ class EmployeeHRCreateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
         return instance
+
