@@ -19,8 +19,6 @@ class Request {
   final String description;
   final List<dynamic> payments;
   final String requestType;
-  final List<String> attachments; // ✅ ADD THIS
-  final String? attachment; // ✅ ADD THIS FOR SINGLE ATTACHMENT
 
   Request({
     required this.id,
@@ -32,8 +30,6 @@ class Request {
     required this.payments,
     required this.requestType,
     this.avatarUrl,
-    this.attachments = const [], // ✅ INITIALIZE
-    this.attachment, // ✅ ADD
   });
 }
 

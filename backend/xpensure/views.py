@@ -1,3 +1,4 @@
+views
 from rest_framework import status, permissions, generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,7 +22,6 @@ from datetime import timedelta
 from django.db.models import Sum, Count, Q
 from django.db import models 
 import json 
-from django.core.files.storage import default_storage  # ✅ ADD THIS IMPORT
 
 User = get_user_model()
 
@@ -790,14 +790,6 @@ class PendingApprovalsView(APIView):
                     "rejection_reason": r.rejection_reason,  # ✅ ADDED COMMA
                     "projectId": r.project_id,  # ✅ ADDED COMMA
                     "project_id": r.project_id,
-                     # ✅ ADD ATTACHMENT URLS
-                    "attachments": [
-                        request.build_absolute_uri(default_storage.url(attachment_path))
-                        for attachment_path in (r.attachments if r.attachments else [])
-                        if attachment_path
-                    ],
-                    # ✅ ADD SINGLE ATTACHMENT FOR BACKWARD COMPATIBILITY
-                    "attachment": request.build_absolute_uri(r.attachment.url) if r.attachment else None,
                 }
                 for r in reimbursements_to_approve 
             ],
@@ -819,13 +811,6 @@ class PendingApprovalsView(APIView):
                     "project_id": a.project_id,
                     "projectName": a.project_name,
                     "project_name": a.project_name,
-                     "attachments": [
-                        request.build_absolute_uri(default_storage.url(attachment_path))
-                        for attachment_path in (a.attachments if a.attachments else [])
-                        if attachment_path
-                    ],
-                    # ✅ ADD SINGLE ATTACHMENT FOR BACKWARD COMPATIBILITY
-                    "attachment": request.build_absolute_uri(a.attachment.url) if a.attachment else None,
                 }
                 for a in advances_to_approve
             ],

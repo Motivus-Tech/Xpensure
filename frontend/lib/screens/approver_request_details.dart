@@ -85,54 +85,18 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     return Colors.grey;
   }
 
-// Get all attachment paths from a payment (handles local paths and URLs)
+  // Get all attachment paths from a payment (handles both single and multiple)
   List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
-    List<String> attachmentPaths = [];
-
-    // 1. First check for multiple attachments (URLs from server)
-    if (payment["attachments"] is List) {
-      final attachments = List<dynamic>.from(payment["attachments"] ?? []);
-      for (var attachment in attachments) {
-        if (attachment is String && attachment.isNotEmpty) {
-          attachmentPaths.add(attachment);
-        }
-      }
+    // First check for multiple attachmentPaths
+    if (payment["attachmentPaths"] is List) {
+      return List<String>.from(payment["attachmentPaths"] ?? []);
     }
-
-    // 2. Check for single attachment URL from server
-    if (payment["attachment"] is String &&
-        payment["attachment"].toString().isNotEmpty &&
-        payment["attachment"].toString().startsWith('http')) {
-      final attachment = payment["attachment"].toString();
-      if (!attachmentPaths.contains(attachment)) {
-        attachmentPaths.add(attachment);
-      }
-    }
-
-    // 3. Fallback to legacy attachmentPath field (local paths)
+    // Fallback to single attachmentPath
     else if (payment["attachmentPath"] is String &&
         payment["attachmentPath"].toString().isNotEmpty) {
-      final path = payment["attachmentPath"].toString();
-      // If it's a local path and starts with file:// or /data, convert to URL if possible
-      if (path.startsWith('http')) {
-        attachmentPaths.add(path);
-      } else {
-        // Local path - handle carefully
-        attachmentPaths.add(path);
-      }
+      return [payment["attachmentPath"].toString()];
     }
-
-    // 4. Check for payments with multiple attachment paths
-    if (payment["attachmentPaths"] is List) {
-      final paths = List<String>.from(payment["attachmentPaths"] ?? []);
-      for (var path in paths) {
-        if (path.isNotEmpty && !attachmentPaths.contains(path)) {
-          attachmentPaths.add(path);
-        }
-      }
-    }
-
-    return attachmentPaths;
+    return [];
   }
 
   void _showImageDialog(String imagePath) {
@@ -149,82 +113,8 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
               maxScale: 3.0,
               child: Center(
                 child: imagePath.startsWith('http')
-                    ? Image.network(
-                        imagePath,
-                        fit: BoxFit.contain,
-                        headers: {
-                          'Authorization': 'Token ${widget.authToken}',
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[800],
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.broken_image,
-                                    color: Colors.grey, size: 40),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Failed to load image',
-                                  style: TextStyle(color: Colors.grey[400]),
-                                ),
-                                const SizedBox(height: 8),
-                                ElevatedButton(
-                                  onPressed: () =>
-                                      _downloadAndOpenFile(imagePath),
-                                  child: const Text('Download Instead'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
-                          );
-                        },
-                      )
-                    : Image.file(
-                        File(imagePath),
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[800],
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.broken_image,
-                                    color: Colors.grey, size: 40),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Local file not found',
-                                  style: TextStyle(color: Colors.grey[400]),
-                                ),
-                                const SizedBox(height: 8),
-                                if (imagePath.contains('file_picker'))
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                            'File was temporary and has been cleared. Please ask the employee to resubmit.'),
-                                        backgroundColor: Colors.orange,
-                                      ),
-                                    ),
-                                    child: const Text('File Cleared'),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                    ? Image.network(imagePath, fit: BoxFit.contain)
+                    : Image.file(File(imagePath), fit: BoxFit.contain),
               ),
             ),
             Positioned(
@@ -252,14 +142,6 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
         ),
       ),
     );
-  }
-
-  // Add this method for network requests
-  Map<String, String> _getHeaders() {
-    return {
-      'Authorization': 'Token ${widget.authToken}',
-      'Content-Type': 'application/json',
-    };
   }
 
   Future<void> _openFileWithDialog(String filePath) async {
@@ -330,68 +212,18 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
 
   Future<String> _downloadFile(String filePath) async {
     try {
-      print('📥 Downloading file: $filePath');
-
-      // Check if it's a URL
       if (filePath.startsWith('http')) {
-        print('🌐 Downloading from URL...');
-        final response = await http.get(
-          Uri.parse(filePath),
-          headers: {
-            'Authorization': 'Token ${widget.authToken}',
-          },
-        ).timeout(const Duration(seconds: 30));
+        final response = await http.get(Uri.parse(filePath));
+        final tempDir = await getTemporaryDirectory();
+        final fileName = _getFileName(filePath);
+        final file = File('${tempDir.path}/$fileName');
 
-        if (response.statusCode == 200) {
-          // Get downloads directory
-          final downloadsDir = await getDownloadsDirectory();
-          if (downloadsDir == null) {
-            throw Exception('Could not access downloads directory');
-          }
-
-          // Create filename
-          String fileName = _getFileName(filePath);
-          // Handle URL query parameters
-          if (fileName.contains('?')) {
-            fileName = fileName.split('?').first;
-          }
-
-          // Create file
-          final file = File('${downloadsDir.path}/$fileName');
-
-          // Handle duplicate filenames
-          if (await file.exists()) {
-            final timestamp = DateTime.now().millisecondsSinceEpoch;
-            final newFileName =
-                '${fileName.split('.').first}_$timestamp.${_getFileExtension(fileName)}';
-            final newFile = File('${downloadsDir.path}/$newFileName');
-            await newFile.writeAsBytes(response.bodyBytes);
-            print('✅ File downloaded: ${newFile.path}');
-            return newFile.path;
-          } else {
-            await file.writeAsBytes(response.bodyBytes);
-            print('✅ File downloaded: ${file.path}');
-            return file.path;
-          }
-        } else {
-          throw Exception(
-              'HTTP ${response.statusCode}: ${response.reasonPhrase}');
-        }
-      }
-      // Handle local paths
-      else {
-        print('📁 Checking local file...');
-        final file = File(filePath);
-        if (await file.exists()) {
-          print('✅ Local file exists');
-          return filePath;
-        } else {
-          throw Exception(
-              'Local file not found: $filePath. File may have been moved or deleted.');
-        }
+        await file.writeAsBytes(response.bodyBytes);
+        return file.path;
+      } else {
+        return filePath;
       }
     } catch (e) {
-      print('❌ Error in _downloadFile: $e');
       throw Exception('Download failed: $e');
     }
   }

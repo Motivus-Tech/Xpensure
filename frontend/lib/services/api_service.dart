@@ -13,58 +13,6 @@ class ApiService {
     'Accept': 'application/json',
   };
 
-// Add retry logic for file downloads
-  Future<http.Response> _downloadFileWithRetry(
-      String url, String authToken) async {
-    const maxRetries = 3;
-    int attempt = 0;
-
-    while (attempt < maxRetries) {
-      try {
-        attempt++;
-        print('📥 Download attempt $attempt for: $url');
-
-        final response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'Authorization': 'Token $authToken',
-          },
-        ).timeout(const Duration(seconds: 30));
-
-        if (response.statusCode == 200) {
-          print('✅ Download successful on attempt $attempt');
-          return response;
-        } else if (response.statusCode == 401) {
-          throw Exception('Unauthorized. Please login again.');
-        } else {
-          print('⚠️ Download failed with status: ${response.statusCode}');
-          if (attempt < maxRetries) {
-            await Future.delayed(const Duration(seconds: 2));
-            continue;
-          }
-          throw Exception(
-              'HTTP ${response.statusCode}: ${response.reasonPhrase}');
-        }
-      } on TimeoutException {
-        print('⏰ Timeout on attempt $attempt');
-        if (attempt < maxRetries) {
-          await Future.delayed(const Duration(seconds: 2));
-          continue;
-        }
-        throw Exception('Download timeout after $maxRetries attempts');
-      } on SocketException {
-        print('📶 Network error on attempt $attempt');
-        if (attempt < maxRetries) {
-          await Future.delayed(const Duration(seconds: 2));
-          continue;
-        }
-        throw Exception('Network error. Please check your connection.');
-      }
-    }
-
-    throw Exception('Failed to download file after $maxRetries attempts');
-  }
-
   // -----------------------------
   // Employee Signup
   // -----------------------------
