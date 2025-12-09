@@ -1,4 +1,4 @@
-views
+
 from rest_framework import status, permissions, generics, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -105,6 +105,13 @@ class ReimbursementViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Reimbursement.objects.filter(employee=self.request.user).order_by('-date')
     
+     # ✅ ADD THIS METHOD
+    def get_serializer_context(self):
+        """Pass request context to serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
     def create(self, request, *args, **kwargs):
         # ✅ ADD DEBUG LOGGING
         print("=== REIMBURSEMENT SUBMISSION DATA ===")
@@ -162,6 +169,13 @@ class AdvanceRequestViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return AdvanceRequest.objects.filter(employee=self.request.user).order_by('-request_date')
+    
+    # ✅ ADD THIS METHOD
+    def get_serializer_context(self):
+        """Pass request context to serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
     
     def create(self, request, *args, **kwargs):
         # ✅ ADD DEBUG LOGGING
@@ -750,7 +764,6 @@ class RejectRequestAPIView(APIView):
             return Response({"detail": "Not authorized to reject"}, status=status.HTTP_403_FORBIDDEN)
         process_approval(obj, request.user, approved=False, rejection_reason=rejection_reason)
         return Response({"detail": "Request rejected successfully."}, status=status.HTTP_200_OK)
-
 class PendingApprovalsView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -787,9 +800,12 @@ class PendingApprovalsView(APIView):
                     "description": r.description,
                     "payments": r.payments,
                     "status": r.status,
-                    "rejection_reason": r.rejection_reason,  # ✅ ADDED COMMA
-                    "projectId": r.project_id,  # ✅ ADDED COMMA
+                    "rejection_reason": r.rejection_reason,
+                    "projectId": r.project_id,
                     "project_id": r.project_id,
+                    # ✅ ADD ATTACHMENT URLs
+                    "attachment_urls": self._get_attachment_urls(r, request),
+                    "attachments": r.attachments if r.attachments else [],
                 }
                 for r in reimbursements_to_approve 
             ],
@@ -805,12 +821,15 @@ class PendingApprovalsView(APIView):
                     "description": a.description,
                     "payments": a.payments,
                     "status": a.status,
-                    "rejection_reason": a.rejection_reason,  # ✅ ADDED COMMA
+                    "rejection_reason": a.rejection_reason,
                     # ✅ ADD PROJECT FIELDS
                     "projectId": a.project_id,
                     "project_id": a.project_id,
                     "projectName": a.project_name,
                     "project_name": a.project_name,
+                    # ✅ ADD ATTACHMENT URLs
+                    "attachment_urls": self._get_attachment_urls(a, request),
+                    "attachments": a.attachments if a.attachments else [],
                 }
                 for a in advances_to_approve
             ],
@@ -827,10 +846,13 @@ class PendingApprovalsView(APIView):
                     "rejection_reason": r.rejection_reason,
                     "created_at": r.created_at,
                     "updated_at": r.updated_at,
-                    "payment_date": r.payment_date,  # ✅ ADDED COMMA
+                    "payment_date": r.payment_date,
                     # ✅ ADD PROJECT FIELDS - THIS IS WHAT'S MISSING!
                     "projectId": r.project_id,
                     "project_id": r.project_id,
+                    # ✅ ADD ATTACHMENT URLs
+                    "attachment_urls": self._get_attachment_urls(r, request),
+                    "attachments": r.attachments if r.attachments else [],
                 }
                 for r in reimbursements_created
             ],
@@ -847,18 +869,47 @@ class PendingApprovalsView(APIView):
                     "rejection_reason": a.rejection_reason,
                     "created_at": a.created_at,
                     "updated_at": a.updated_at,
-                    "payment_date": a.payment_date,  # ✅ ADDED COMMA
+                    "payment_date": a.payment_date,
                      # ✅ ADD PROJECT FIELDS - THIS IS WHAT'S MISSING!
                     "projectId": a.project_id,
                     "project_id": a.project_id,
                     "projectName": a.project_name,
                     "project_name": a.project_name,
+                    # ✅ ADD ATTACHMENT URLs
+                    "attachment_urls": self._get_attachment_urls(a, request),
+                    "attachments": a.attachments if a.attachments else [],
                 }
                 for a in advances_created
             ],
         }
         
         return Response(data, status=status.HTTP_200_OK)
+    
+    # ✅ ADD THIS HELPER METHOD
+    def _get_attachment_urls(self, obj, request):
+        """Generate attachment URLs for the object"""
+        if not obj.attachments or not isinstance(obj.attachments, list):
+            return []
+        
+        urls = []
+        for attachment_path in obj.attachments:
+            if attachment_path:
+                try:
+                    # Build proper URL
+                    if attachment_path.startswith('/media/') or attachment_path.startswith('media/'):
+                        # Remove media prefix if present
+                        clean_path = attachment_path.replace('/media/', '').replace('media/', '')
+                        url = request.build_absolute_uri(f'/media/{clean_path}')
+                    else:
+                        # Assume it's in media folder
+                        url = request.build_absolute_uri(f'/media/{attachment_path}')
+                    
+                    urls.append(url)
+                except Exception as e:
+                    print(f"Error generating URL for {attachment_path}: {e}")
+                    # Fallback to original path
+                    urls.append(attachment_path)
+        return urls
     
 def health_check(request):
     return JsonResponse({"status": "ok"})

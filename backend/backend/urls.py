@@ -9,6 +9,8 @@ urlpatterns = [
     path('api/', include('Xpensure.urls')),  # Changed to 'api/' prefix
 ]
 
+
+# ✅ IMPORTANT: This must be at the END
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    
+    print(f"✅ Media files will be served at: {settings.MEDIA_URL}")   

@@ -5,7 +5,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Custom user model reference:
 AUTH_USER_MODEL = 'Xpensure.Employee'
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 
@@ -112,3 +112,17 @@ REST_FRAMEWORK = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Ensure media folder exists
+MEDIA_DIR = os.path.join(BASE_DIR, 'media')
+if not os.path.exists(MEDIA_DIR):
+    os.makedirs(MEDIA_DIR)
+
+# Also create uploads folder inside media
+UPLOADS_DIR = os.path.join(MEDIA_DIR, 'uploads')
+if not os.path.exists(UPLOADS_DIR):
+    os.makedirs(UPLOADS_DIR)
+
+print(f"✅ Media URL: {MEDIA_URL}")
+print(f"✅ Media Root: {MEDIA_ROOT}")
+print(f"✅ Uploads Directory: {UPLOADS_DIR}")

@@ -1,8 +1,8 @@
-serialisers
 # serializers.py - COMPLETE FIXED VERSION
 from rest_framework import serializers
 from .models import Employee, Reimbursement, AdvanceRequest
 import os
+import uuid
 from django.core.files.storage import default_storage
 
 class EmployeeSignupSerializer(serializers.ModelSerializer):
@@ -68,7 +68,6 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         employee.refresh_from_db()
 
         return employee
-
 class ReimbursementSerializer(serializers.ModelSerializer):
     employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
     project_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -101,18 +100,36 @@ class ReimbursementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
+    # ✅ YEH METHOD CLASS KE ANDAR HONA CHAHIYE (INDENT FIX)
     def get_attachment_urls(self, obj):
-        """Return list of attachment URLs"""
         request = self.context.get('request')
         if obj.attachments and isinstance(obj.attachments, list):
             urls = []
             for attachment_path in obj.attachments:
-                if attachment_path and default_storage.exists(attachment_path):
-                    if request:
-                        url = request.build_absolute_uri(default_storage.url(attachment_path))
-                    else:
-                        url = default_storage.url(attachment_path)
-                    urls.append(url)
+                if attachment_path:
+                    try:
+                        # Extract filename
+                        filename = attachment_path.split('/')[-1]
+                        
+                        # Check which folder it's from
+                        if 'advance_attachments' in attachment_path:
+                            folder = 'advance_attachments'
+                        elif 'reimbursement_attachments' in attachment_path:
+                            folder = 'reimbursement_attachments'
+                        elif 'uploads' in attachment_path:
+                            folder = 'uploads'
+                        else:
+                            folder = 'uploads'  # Default
+                        
+                        # Build URL
+                        if request:
+                            url = request.build_absolute_uri(f'/media/{folder}/{filename}')
+                        else:
+                            url = f'/media/{folder}/{filename}'
+                        
+                        urls.append(url)
+                    except Exception as e:
+                        urls.append(attachment_path)
             return urls
         return []
 
@@ -127,15 +144,19 @@ class ReimbursementSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
-        # Handle attachments
+        # Handle attachments - FIXED: Save paths that can be converted to URLs
         if attachments:
             attachment_paths = []
             for attachment in attachments:
-                import uuid
+                # ✅ FIXED: Save with proper folder structure
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"reimbursement_attachments/{uuid.uuid4()}{ext}"
+                filename = f"reimbursement_attachments/reimbursement_{uuid.uuid4()}{ext}"  # ✅ CHANGE ho gaya
+                
+                # Save file
                 saved_path = default_storage.save(filename, attachment)
-                attachment_paths.append(saved_path)
+                
+                # ✅ FIXED: Store path that can be converted to URL
+                attachment_paths.append(filename)
             
             reimbursement.attachments = attachment_paths
             reimbursement.save()
@@ -154,9 +175,9 @@ class ReimbursementSerializer(serializers.ModelSerializer):
                 instance.attachments = []
             
             for attachment in attachments:
-                import uuid
+                # ✅ FIXED: Consistent naming
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"reimbursement_attachments/{uuid.uuid4()}{ext}"
+                filename = f"uploads/reimbursement_{uuid.uuid4()}{ext}"
                 saved_path = default_storage.save(filename, attachment)
                 instance.attachments.append(saved_path)
             
@@ -201,22 +222,42 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
+    
     def get_attachment_urls(self, obj):
-        """Return list of attachment URLs"""
+        """Return list of attachment URLs - FIXED VERSION"""
         request = self.context.get('request')
         if obj.attachments and isinstance(obj.attachments, list):
             urls = []
             for attachment_path in obj.attachments:
-                if attachment_path and default_storage.exists(attachment_path):
-                    if request:
-                        url = request.build_absolute_uri(default_storage.url(attachment_path))
-                    else:
-                        url = default_storage.url(attachment_path)
-                    urls.append(url)
+                if attachment_path:
+                    try:
+                        # Extract filename
+                        filename = attachment_path.split('/')[-1]
+                        
+                        # Check which folder it's from
+                        if 'advance_attachments' in attachment_path:
+                            folder = 'advance_attachments'
+                        elif 'reimbursement_attachments' in attachment_path:
+                            folder = 'reimbursement_attachments'
+                        elif 'uploads' in attachment_path:
+                            folder = 'uploads'
+                        else:
+                            folder = 'uploads'  # Default
+                        
+                        # Build URL
+                        if request:
+                            url = request.build_absolute_uri(f'/media/{folder}/{filename}')
+                        else:
+                            url = f'/media/{folder}/{filename}'
+                        
+                        urls.append(url)
+                    except Exception as e:
+                        # Fallback to original path
+                        print(f"Error generating URL for {attachment_path}: {e}")
+                        urls.append(attachment_path)
             return urls
         return []
 
-    # ✅ FIXED: Properly indented create method within the class
     def create(self, validated_data):
         # Extract project fields
         project_id = validated_data.pop('project_id', None)
@@ -230,22 +271,25 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
-        # Handle attachments
+        # Handle attachments - FIXED
         if attachments:
             attachment_paths = []
             for attachment in attachments:
-                import uuid
+                # ✅ FIXED: Save with proper folder structure
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"advance_attachments/{uuid.uuid4()}{ext}"
+                filename = f"advance_attachments/advance_{uuid.uuid4()}{ext}"  # Yeh already sahi hai
+                
+                # Save file
                 saved_path = default_storage.save(filename, attachment)
-                attachment_paths.append(saved_path)
+                
+                # ✅ FIXED: Store relative path
+                attachment_paths.append(filename)  # Store 'uploads/advance_uuid.ext'
             
             advance.attachments = attachment_paths
             advance.save()
         
         return advance
 
-    # ✅ FIXED: Properly indented update method within the class
     def update(self, instance, validated_data):
         attachments = validated_data.pop('attachments', None)
         
@@ -256,9 +300,9 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
                 instance.attachments = []
             
             for attachment in attachments:
-                import uuid
+                # ✅ FIXED: Consistent naming
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"advance_attachments/{uuid.uuid4()}{ext}"
+                filename = f"uploads/advance_{uuid.uuid4()}{ext}"
                 saved_path = default_storage.save(filename, attachment)
                 instance.attachments.append(saved_path)
             
@@ -325,4 +369,3 @@ class EmployeeHRCreateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
         return instance
-
