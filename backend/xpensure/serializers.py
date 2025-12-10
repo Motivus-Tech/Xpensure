@@ -4,6 +4,8 @@ from .models import Employee, Reimbursement, AdvanceRequest
 import os
 import uuid
 from django.core.files.storage import default_storage
+from django.conf import settings
+from urllib.parse import urljoin
 
 class EmployeeSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, min_length=6)
@@ -68,6 +70,33 @@ class EmployeeSignupSerializer(serializers.ModelSerializer):
         employee.refresh_from_db()
 
         return employee
+
+def build_absolute_media_url(file_path):
+    """
+    Helper function to build absolute URL for media files
+    Works with AWS IP and any domain
+    """
+    if not file_path:
+        return None
+    
+    # If already a full URL, return as is
+    if isinstance(file_path, str) and (
+        file_path.startswith('http://') or 
+        file_path.startswith('https://')
+    ):
+        return file_path
+    
+    # Remove leading slash if present
+    if file_path.startswith('/'):
+        file_path = file_path[1:]
+    
+    # Use BASE_API_URL from settings
+    if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+        base_url = settings.BASE_API_URL.rstrip('/')
+        return f"{base_url}/media/{file_path}"
+    
+    # Fallback
+    return f"/media/{file_path}"
 class ReimbursementSerializer(serializers.ModelSerializer):
     employee_id = serializers.CharField(source="employee.employee_id", read_only=True)
     project_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -100,35 +129,35 @@ class ReimbursementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
-    # ✅ YEH METHOD CLASS KE ANDAR HONA CHAHIYE (INDENT FIX)
     def get_attachment_urls(self, obj):
-        request = self.context.get('request')
+        """Return list of FULL ABSOLUTE attachment URLs"""
         if obj.attachments and isinstance(obj.attachments, list):
             urls = []
             for attachment_path in obj.attachments:
                 if attachment_path:
                     try:
-                        # Extract filename
-                        filename = attachment_path.split('/')[-1]
+                        # ✅ CHECK IF ALREADY A FULL URL
+                        if attachment_path.startswith('http://') or attachment_path.startswith('https://'):
+                            urls.append(attachment_path)
+                            continue
                         
-                        # Check which folder it's from
-                        if 'advance_attachments' in attachment_path:
-                            folder = 'advance_attachments'
-                        elif 'reimbursement_attachments' in attachment_path:
-                            folder = 'reimbursement_attachments'
-                        elif 'uploads' in attachment_path:
-                            folder = 'uploads'
+                        # ✅ METHOD 1: Use settings.BASE_API_URL
+                        if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+                            base_url = settings.BASE_API_URL.rstrip('/')
+                            media_path = attachment_path.lstrip('/')
+                            full_url = f"{base_url}/media/{media_path}"
+                        # ✅ METHOD 2: Use request context
+                        elif self.context.get('request'):
+                            request = self.context['request']
+                            full_url = request.build_absolute_uri(f'/media/{attachment_path}')
+                        # ✅ METHOD 3: Fallback
                         else:
-                            folder = 'uploads'  # Default
+                            full_url = f'/media/{attachment_path}'
                         
-                        # Build URL
-                        if request:
-                            url = request.build_absolute_uri(f'/media/{folder}/{filename}')
-                        else:
-                            url = f'/media/{folder}/{filename}'
-                        
-                        urls.append(url)
+                        urls.append(full_url)
                     except Exception as e:
+                        # If error, return the original path
+                        print(f"Error generating URL for {attachment_path}: {e}")
                         urls.append(attachment_path)
             return urls
         return []
@@ -144,21 +173,31 @@ class ReimbursementSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
-        # Handle attachments - FIXED: Save paths that can be converted to URLs
+        # Handle attachments - STORE FULL URLs
         if attachments:
-            attachment_paths = []
+            attachment_urls = []
             for attachment in attachments:
-                # ✅ FIXED: Save with proper folder structure
+                # ✅ Save file with proper folder structure
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"reimbursement_attachments/reimbursement_{uuid.uuid4()}{ext}"  # ✅ CHANGE ho gaya
+                filename = f"reimbursement_attachments/reimbursement_{uuid.uuid4()}{ext}"
                 
                 # Save file
                 saved_path = default_storage.save(filename, attachment)
                 
-                # ✅ FIXED: Store path that can be converted to URL
-                attachment_paths.append(filename)
+                # ✅ Build FULL URL immediately
+                if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+                    base_url = settings.BASE_API_URL.rstrip('/')
+                    file_url = f"{base_url}/media/{saved_path}"
+                elif self.context.get('request'):
+                    request = self.context['request']
+                    file_url = request.build_absolute_uri(f'/media/{saved_path}')
+                else:
+                    file_url = f"/media/{saved_path}"
+                
+                attachment_urls.append(file_url)
             
-            reimbursement.attachments = attachment_paths
+            # ✅ STORE FULL URLs, not paths
+            reimbursement.attachments = attachment_urls
             reimbursement.save()
         
         return reimbursement
@@ -175,11 +214,22 @@ class ReimbursementSerializer(serializers.ModelSerializer):
                 instance.attachments = []
             
             for attachment in attachments:
-                # ✅ FIXED: Consistent naming
+                # Save file
                 ext = os.path.splitext(attachment.name)[1]
                 filename = f"uploads/reimbursement_{uuid.uuid4()}{ext}"
                 saved_path = default_storage.save(filename, attachment)
-                instance.attachments.append(saved_path)
+                
+                # ✅ Build FULL URL
+                if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+                    base_url = settings.BASE_API_URL.rstrip('/')
+                    file_url = f"{base_url}/media/{saved_path}"
+                elif self.context.get('request'):
+                    request = self.context['request']
+                    file_url = request.build_absolute_uri(f'/media/{saved_path}')
+                else:
+                    file_url = f"/media/{saved_path}"
+                
+                instance.attachments.append(file_url)
             
             instance.save()
         
@@ -222,37 +272,33 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['employee', 'employee_id', 'created_at', 'updated_at']
 
-    
     def get_attachment_urls(self, obj):
-        """Return list of attachment URLs - FIXED VERSION"""
-        request = self.context.get('request')
+        """Return list of FULL ABSOLUTE attachment URLs"""
         if obj.attachments and isinstance(obj.attachments, list):
             urls = []
             for attachment_path in obj.attachments:
                 if attachment_path:
                     try:
-                        # Extract filename
-                        filename = attachment_path.split('/')[-1]
+                        # ✅ CHECK IF ALREADY A FULL URL
+                        if attachment_path.startswith('http://') or attachment_path.startswith('https://'):
+                            urls.append(attachment_path)
+                            continue
                         
-                        # Check which folder it's from
-                        if 'advance_attachments' in attachment_path:
-                            folder = 'advance_attachments'
-                        elif 'reimbursement_attachments' in attachment_path:
-                            folder = 'reimbursement_attachments'
-                        elif 'uploads' in attachment_path:
-                            folder = 'uploads'
+                        # ✅ METHOD 1: Use settings.BASE_API_URL
+                        if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+                            base_url = settings.BASE_API_URL.rstrip('/')
+                            media_path = attachment_path.lstrip('/')
+                            full_url = f"{base_url}/media/{media_path}"
+                        # ✅ METHOD 2: Use request context
+                        elif self.context.get('request'):
+                            request = self.context['request']
+                            full_url = request.build_absolute_uri(f'/media/{attachment_path}')
+                        # ✅ METHOD 3: Fallback
                         else:
-                            folder = 'uploads'  # Default
+                            full_url = f'/media/{attachment_path}'
                         
-                        # Build URL
-                        if request:
-                            url = request.build_absolute_uri(f'/media/{folder}/{filename}')
-                        else:
-                            url = f'/media/{folder}/{filename}'
-                        
-                        urls.append(url)
+                        urls.append(full_url)
                     except Exception as e:
-                        # Fallback to original path
                         print(f"Error generating URL for {attachment_path}: {e}")
                         urls.append(attachment_path)
             return urls
@@ -271,45 +317,35 @@ class AdvanceRequestSerializer(serializers.ModelSerializer):
             **validated_data
         )
         
-        # Handle attachments - FIXED
+        # Handle attachments - STORE FULL URLs
         if attachments:
-            attachment_paths = []
+            attachment_urls = []
             for attachment in attachments:
-                # ✅ FIXED: Save with proper folder structure
+                # Save file
                 ext = os.path.splitext(attachment.name)[1]
-                filename = f"advance_attachments/advance_{uuid.uuid4()}{ext}"  # Yeh already sahi hai
+                filename = f"advance_attachments/advance_{uuid.uuid4()}{ext}"
                 
                 # Save file
                 saved_path = default_storage.save(filename, attachment)
                 
-                # ✅ FIXED: Store relative path
-                attachment_paths.append(filename)  # Store 'uploads/advance_uuid.ext'
+                # ✅ Build FULL URL immediately
+                if hasattr(settings, 'BASE_API_URL') and settings.BASE_API_URL:
+                    base_url = settings.BASE_API_URL.rstrip('/')
+                    file_url = f"{base_url}/media/{saved_path}"
+                elif self.context.get('request'):
+                    request = self.context['request']
+                    file_url = request.build_absolute_uri(f'/media/{saved_path}')
+                else:
+                    file_url = f"/media/{saved_path}"
+                
+                attachment_urls.append(file_url)
             
-            advance.attachments = attachment_paths
+            # ✅ STORE FULL URLs, not paths
+            advance.attachments = attachment_urls
             advance.save()
         
         return advance
-
-    def update(self, instance, validated_data):
-        attachments = validated_data.pop('attachments', None)
-        
-        instance = super().update(instance, validated_data)
-        
-        if attachments is not None:
-            if instance.attachments is None:
-                instance.attachments = []
             
-            for attachment in attachments:
-                # ✅ FIXED: Consistent naming
-                ext = os.path.splitext(attachment.name)[1]
-                filename = f"uploads/advance_{uuid.uuid4()}{ext}"
-                saved_path = default_storage.save(filename, attachment)
-                instance.attachments.append(saved_path)
-            
-            instance.save()
-        
-        return instance
-
 class EmployeeProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(required=False, allow_null=True)
 
