@@ -132,37 +132,30 @@ class ReimbursementSerializer(serializers.ModelSerializer):
                         urls.append(attachment_path)
             return urls
         return []
-
-    def create(self, validated_data):
-        # Extract project_id from validated_data
-        project_id = validated_data.pop('project_id', None)
-        attachments = validated_data.pop('attachments', [])
-        
-        # ✅ CREATE WITH PROJECT ID
-        reimbursement = Reimbursement.objects.create(
-            project_id=project_id,
-            **validated_data
-        )
-        
-        # Handle attachments - FIXED: Save paths that can be converted to URLs
-        if attachments:
-            attachment_paths = []
-            for attachment in attachments:
-                # ✅ FIXED: Save with proper folder structure
-                ext = os.path.splitext(attachment.name)[1]
-                filename = f"reimbursement_attachments/reimbursement_{uuid.uuid4()}{ext}"  # ✅ CHANGE ho gaya
-                
-                # Save file
-                saved_path = default_storage.save(filename, attachment)
-                
-                # ✅ FIXED: Store path that can be converted to URL
-                attachment_paths.append(filename)
+def create(self, validated_data):
+    attachments = validated_data.pop('attachments', [])
+    
+    # Create reimbursement first
+    reimbursement = Reimbursement.objects.create(**validated_data)
+    
+    # Handle attachments - ALWAYS SAVE TO SERVER
+    if attachments:
+        attachment_paths = []
+        for attachment in attachments:
+            # Generate unique filename
+            ext = os.path.splitext(attachment.name)[1]
+            filename = f"reimbursement_attachments/{uuid.uuid4()}{ext}"
             
-            reimbursement.attachments = attachment_paths
-            reimbursement.save()
+            # Save file to server storage
+            saved_path = default_storage.save(filename, attachment)
+            
+            # Store the path that Django can serve
+            attachment_paths.append(saved_path)
         
-        return reimbursement
-
+        reimbursement.attachments = attachment_paths
+        reimbursement.save()
+    
+    return reimbursement
     def update(self, instance, validated_data):
         attachments = validated_data.pop('attachments', None)
         
