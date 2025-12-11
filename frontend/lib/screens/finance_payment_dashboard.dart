@@ -77,7 +77,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
   Future<void> _loadPaymentData() async {
     try {
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-payment/dashboard/"),
+        Uri.parse("http://3.110.215.143/api/finance-payment/dashboard/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -133,7 +133,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
   Future<void> _loadPaymentInsights() async {
     try {
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-payment/insights/"),
+        Uri.parse("http://3.110.215.143/api/finance-payment/insights/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -187,7 +187,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
   Future<void> _markAsPaid(int requestId, String requestType) async {
     try {
       final response = await http.post(
-        Uri.parse("http://10.0.2.2:8000/api/finance-payment/mark-paid/"),
+        Uri.parse("http://3.110.215.143/api/finance-payment/mark-paid/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -551,7 +551,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
 
       // Use the new dedicated API endpoint
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/employee-project-spending/")
+        Uri.parse("http://3.110.215.143/api/employee-project-spending/")
             .replace(queryParameters: {
           'employee_id': _employeeIdForProjectReport,
           'project_identifier': _projectIdForEmployeeReport,

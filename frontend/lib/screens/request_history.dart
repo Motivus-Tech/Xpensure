@@ -51,12 +51,12 @@ class _RequestHistoryScreenState extends State<RequestHistoryScreen> {
     print("🎯 Request Type: ${widget.requestType}");
     print("🎯 Auth Token Present: ${widget.authToken.isNotEmpty}");
     print(
-        "🎯 Full URL: http://10.0.2.2:8000/api/approval-timeline/${widget.requestId}/?request_type=${widget.requestType}");
+        "🎯 Full URL: http://3.110.215.143/api/approval-timeline/${widget.requestId}/?request_type=${widget.requestType}");
 
     try {
       final response = await http.get(
         Uri.parse(
-            'http://10.0.2.2:8000/api/approval-timeline/${widget.requestId}/?request_type=${widget.requestType}'),
+            'http://3.110.215.143/api/approval-timeline/${widget.requestId}/?request_type=${widget.requestType}'),
         headers: {
           'Authorization': 'Token ${widget.authToken}',
           'Accept': 'application/json',

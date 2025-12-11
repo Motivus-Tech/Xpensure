@@ -85,17 +85,35 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     return Colors.grey;
   }
 
-  // Get all attachment paths from a payment (handles both single and multiple)
+  // YEH FUNCTION CHANGE KAR:
   List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
-    // First check for multiple attachmentPaths
+    // Pehle check karo ki koi network URL available hai
+    List<String> networkUrls = [];
+
+    print('DEBUG: Request attachments: ${widget.request.attachments}');
+    print('DEBUG: Payment attachments: ${payment['attachments']}');
+    print('DEBUG: Payment attachmentPaths: ${payment['attachmentPaths']}');
+
+    // Tere database record mein "attachments" field mein network URL hai
+    // Use pehle priority do
+    if (widget.request.attachments != null &&
+        widget.request.attachments.isNotEmpty) {
+      networkUrls.addAll(widget.request.attachments);
+    }
+
+    // Agar network URL mila, wahi return karo
+    if (networkUrls.isNotEmpty) {
+      return networkUrls;
+    }
+
+    // Nahi to purana logic chalao
     if (payment["attachmentPaths"] is List) {
       return List<String>.from(payment["attachmentPaths"] ?? []);
-    }
-    // Fallback to single attachmentPath
-    else if (payment["attachmentPath"] is String &&
+    } else if (payment["attachmentPath"] is String &&
         payment["attachmentPath"].toString().isNotEmpty) {
       return [payment["attachmentPath"].toString()];
     }
+
     return [];
   }
 

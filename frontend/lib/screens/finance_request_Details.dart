@@ -29,7 +29,7 @@ class FinanceRequestDetails extends StatefulWidget {
 class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
   final ApiService apiService = ApiService();
   bool _isProcessing = false;
-  final String baseUrl = "http://10.0.2.2:8000";
+  final String baseUrl = "http://3.110.215.143";
 
   // Helper methods for amount handling
   double _parseAmount(dynamic amount) {

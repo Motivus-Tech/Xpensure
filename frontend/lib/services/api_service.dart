@@ -5,7 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 class ApiService {
-  final String baseUrl = "http://10.0.2.2:8000";
+  final String baseUrl = "http://3.110.215.143";
   final Duration requestTimeout = const Duration(seconds: 15);
 
   static const Map<String, String> defaultHeaders = {

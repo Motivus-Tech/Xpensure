@@ -268,7 +268,7 @@ class CSVService {
 
 // Backend Service
 class EmployeeService {
-  static const String baseUrl = "http://10.0.2.2:8000/api";
+  static const String baseUrl = "http://3.110.215.143/api";
 
   static Map<String, String> getHeaders(String? token) {
     return {
@@ -556,7 +556,7 @@ class EmployeeService {
 
 // HR Approval Service
 class HRApprovalService {
-  static const String baseUrl = "http://10.0.2.2:8000/api";
+  static const String baseUrl = "http://3.110.215.143/api";
 
   static Map<String, String> getHeaders(String? token) {
     return {

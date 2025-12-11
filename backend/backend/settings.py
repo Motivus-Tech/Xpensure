@@ -14,8 +14,9 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.1.5', '192.168.1.7', '10.0.2
                  '*', '3.110.215.143',  '3.110.215.143:8000' ]
 
 # ✅ ADD THIS FOR ABSOLUTE URLs
-BASE_API_URL = 'http://3.110.215.143:8000'  # Development के लिए
+BASE_API_URL = 'http://10.0.2.2:8000'  # Development के लिए
 # Production में: 'https://api.abc.com'
+# BASE_API_URL = 'http://3.110.215.143:8000' 
 
 INSTALLED_APPS = [
     'django.contrib.admin',

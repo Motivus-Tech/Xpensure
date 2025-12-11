@@ -113,9 +113,9 @@ class _HrRequestDetailsState extends State<HrRequestDetails> {
     } else if (path.startsWith('advance_attachments/') ||
         path.startsWith('reimbursement_attachments/')) {
       // Convert relative path to full URL
-      return 'http://10.0.2.2:8000/media/$path';
+      return 'http://3.110.215.143/media/$path';
     } else if (path.startsWith('media/')) {
-      return 'http://10.0.2.2:8000/$path';
+      return 'http://3.110.215.143/$path';
     }
     return path;
   }

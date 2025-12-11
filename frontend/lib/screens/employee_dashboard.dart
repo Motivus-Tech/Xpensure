@@ -81,7 +81,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     currentAvatarUrl = widget.avatarUrl.isNotEmpty
         ? (widget.avatarUrl.startsWith("http")
             ? widget.avatarUrl
-            : "http://10.0.2.2:8000${widget.avatarUrl}")
+            : "http://3.110.215.143${widget.avatarUrl}")
         : null;
 
     _loadAuthTokenAndRequests();
@@ -503,7 +503,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     try {
       final response = await http.get(
         Uri.parse(
-            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
+            'http://3.110.215.143/api/employee/csv-download/?period=$period'),
         headers: {
           'Authorization': 'Token $authToken',
           'Content-Type': 'application/json',
@@ -548,7 +548,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard>
     try {
       final response = await http.get(
         Uri.parse(
-            'http://10.0.2.2:8000/api/employee/csv-download/?period=$period'),
+            'http://3.110.215.143/api/employee/csv-download/?period=$period'),
         headers: {
           'Authorization': 'Token $authToken',
           'Content-Type': 'application/json',

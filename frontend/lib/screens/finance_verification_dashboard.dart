@@ -114,7 +114,7 @@ class _FinanceVerificationDashboardState
   Future<void> _loadPendingVerifications() async {
     try {
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-verification/dashboard/"),
+        Uri.parse("http://3.110.215.143/api/finance-verification/dashboard/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -170,7 +170,7 @@ class _FinanceVerificationDashboardState
   Future<void> _loadVerifiedHistory() async {
     try {
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-verification/history/"),
+        Uri.parse("http://3.110.215.143/api/finance-verification/history/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -217,7 +217,7 @@ class _FinanceVerificationDashboardState
   Future<void> _loadVerificationInsights() async {
     try {
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-verification/insights/"),
+        Uri.parse("http://3.110.215.143/api/finance-verification/insights/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -347,7 +347,7 @@ class _FinanceVerificationDashboardState
   Future<void> _approveRequest(int requestId, String requestType) async {
     try {
       final response = await http.post(
-        Uri.parse("http://10.0.2.2:8000/api/finance-verification/approve/"),
+        Uri.parse("http://3.110.215.143/api/finance-verification/approve/"),
         headers: {
           "Authorization": "Token ${widget.authToken}",
           "Content-Type": "application/json",
@@ -431,7 +431,7 @@ class _FinanceVerificationDashboardState
               try {
                 final response = await http.post(
                   Uri.parse(
-                      "http://10.0.2.2:8000/api/finance-verification/reject/"),
+                      "http://3.110.215.143/api/finance-verification/reject/"),
                   headers: {
                     "Authorization": "Token ${widget.authToken}",
                     "Content-Type": "application/json",
@@ -2425,7 +2425,7 @@ class _FinanceVerificationDashboardState
 
       // Try to use backend API first
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/finance-verification/csv-report/")
+        Uri.parse("http://3.110.215.143/api/finance-verification/csv-report/")
             .replace(queryParameters: {
           'report_type': _reportType,
           'period': _reportPeriod,
@@ -2625,7 +2625,7 @@ class _FinanceVerificationDashboardState
 
       // Use the correct endpoint for finance verification
       final response = await http.get(
-        Uri.parse("http://10.0.2.2:8000/api/employee-project-report/")
+        Uri.parse("http://3.110.215.143/api/employee-project-report/")
             .replace(queryParameters: {
           'employee_id': _employeeIdForProjectReport,
           'project_identifier': _projectIdForEmployeeReport,

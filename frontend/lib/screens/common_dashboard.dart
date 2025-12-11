@@ -19,6 +19,7 @@ class Request {
   final String description;
   final List<dynamic> payments;
   final String requestType;
+  final List<String> attachments; // ✅ YEH ADD KARO
 
   Request({
     required this.id,
@@ -30,6 +31,7 @@ class Request {
     required this.payments,
     required this.requestType,
     this.avatarUrl,
+    this.attachments = const [], // ✅ Default value
   });
 }
 
@@ -132,6 +134,7 @@ class _CommonDashboardState extends State<CommonDashboard>
             description: r['description'] ?? '',
             payments: _parseReimbursementPayments(r),
             requestType: 'reimbursement',
+            attachments: _extractAttachmentsFromJson(r), // ✅ YEH ADD KARO
           );
         }).toList();
 
@@ -146,6 +149,7 @@ class _CommonDashboardState extends State<CommonDashboard>
             description: r['description'] ?? '',
             payments: _parseAdvancePayments(r),
             requestType: 'advance',
+            attachments: _extractAttachmentsFromJson(r), // ✅ YEH ADD KARO
           );
         }).toList();
       });
@@ -154,10 +158,48 @@ class _CommonDashboardState extends State<CommonDashboard>
     }
   }
 
+  // ✅ YEH NEW FUNCTION ADD KARO:
+  List<String> _extractAttachmentsFromJson(Map<String, dynamic> json) {
+    final attachments = <String>[];
+
+    // 1. Direct 'attachments' field check
+    if (json['attachments'] is List) {
+      for (var item in json['attachments']) {
+        if (item is String && item.isNotEmpty) {
+          attachments.add(item);
+        }
+      }
+    }
+
+    // 2. 'payments' array se bhi check
+    if (json['payments'] is List) {
+      for (var payment in json['payments']) {
+        if (payment is Map) {
+          // Check attachmentPaths
+          if (payment['attachmentPaths'] is List) {
+            for (var path in payment['attachmentPaths']) {
+              if (path is String && path.isNotEmpty) {
+                attachments.add(path);
+              }
+            }
+          }
+          // Check attachmentPath
+          if (payment['attachmentPath'] is String &&
+              payment['attachmentPath'].isNotEmpty) {
+            attachments.add(payment['attachmentPath']);
+          }
+        }
+      }
+    }
+
+    return attachments;
+  }
+
   List<dynamic> _parseReimbursementPayments(
       Map<String, dynamic> reimbursement) {
     try {
       List<dynamic> payments = [];
+      List<String> attachments = []; // ✅ YEH ADD KARO
 
       if (reimbursement['payments'] is List &&
           reimbursement['payments'].isNotEmpty) {
@@ -195,6 +237,7 @@ class _CommonDashboardState extends State<CommonDashboard>
                 payment['attachment_paths'] ??
                 payment['files'] ??
                 [],
+            'attachments': attachments, // ✅ YEH ADD KARO
           };
         }).toList();
       } else {
@@ -218,6 +261,7 @@ class _CommonDashboardState extends State<CommonDashboard>
             'attachmentPaths': reimbursement['attachmentPaths'] ??
                 reimbursement['attachment_paths'] ??
                 [],
+            'attachments': attachments, // ✅ YEH ADD KARO
           }
         ];
       }
@@ -232,6 +276,7 @@ class _CommonDashboardState extends State<CommonDashboard>
   List<dynamic> _parseAdvancePayments(Map<String, dynamic> advance) {
     try {
       List<dynamic> payments = [];
+      List<String> attachments = []; // ✅ YEH ADD KARO
 
       if (advance['payments'] is List && advance['payments'].isNotEmpty) {
         payments = advance['payments'].map((payment) {
@@ -271,6 +316,7 @@ class _CommonDashboardState extends State<CommonDashboard>
                 payment['attachment_paths'] ??
                 payment['files'] ??
                 [],
+            'attachments': attachments, // ✅ YEH ADD KARO
           };
         }).toList();
       } else {
@@ -289,6 +335,7 @@ class _CommonDashboardState extends State<CommonDashboard>
                 advance['attachmentPath'] ?? advance['attachment_path'],
             'attachmentPaths':
                 advance['attachmentPaths'] ?? advance['attachment_paths'] ?? [],
+            'attachments': attachments, // ✅ YEH ADD KARO
           }
         ];
       }
@@ -619,7 +666,7 @@ class _CommonDashboardState extends State<CommonDashboard>
       );
 
       // Use approver CSV endpoint
-      String baseUrl = 'http://10.0.2.2:8000'; // For Android emulator
+      String baseUrl = 'http://3.110.215.143'; // For Android emulator
 
       final url =
           Uri.parse('$baseUrl/api/approver/csv-download/?period=$period');
