@@ -226,24 +226,35 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
     }
   }
 
-  // ✅ IMPROVED: CONVERT TO FINANCE REQUEST WITH BETTER AVATAR HANDLING
   FinanceRequest _convertToFinanceRequest(dynamic requestData) {
     List<dynamic> payments = [];
-    List<dynamic> mainAttachments = [];
+    List<dynamic> mainAttachments = []; // ✅ List<dynamic> banaye
 
     // Enhanced attachment extraction
     if (requestData['attachments'] != null) {
       if (requestData['attachments'] is List) {
-        mainAttachments = List.from(requestData['attachments']);
+        for (var item in requestData['attachments']) {
+          if (item != null && item.toString().isNotEmpty) {
+            mainAttachments.add(item);
+          }
+        }
       } else if (requestData['attachments'] is String) {
         try {
-          mainAttachments = jsonDecode(requestData['attachments']);
+          final parsedAttachments = jsonDecode(requestData['attachments']);
+          if (parsedAttachments is List) {
+            for (var item in parsedAttachments) {
+              if (item != null && item.toString().isNotEmpty) {
+                mainAttachments.add(item);
+              }
+            }
+          }
         } catch (e) {
-          mainAttachments = [requestData['attachments']];
+          mainAttachments.add(requestData['attachments']);
         }
       }
     }
 
+    // Payments mein se bhi attachments extract karo
     if (requestData['payments'] != null) {
       if (requestData['payments'] is String) {
         try {
@@ -252,19 +263,19 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
           print("❌ Failed to parse payments JSON: $e");
         }
       } else if (requestData['payments'] is List) {
-        payments = List.from(requestData['payments']);
+        payments = requestData['payments'];
       }
 
+      // Payments ke attachments bhi extract karo
       for (var payment in payments) {
         if (payment is Map<String, dynamic>) {
           final paymentAttachments = _extractAttachmentsFromPayment(payment);
-          if (paymentAttachments.isNotEmpty) {
-            mainAttachments.addAll(paymentAttachments);
-          }
+          mainAttachments.addAll(paymentAttachments);
         }
       }
     }
 
+    // If payments is still empty, create from main request data
     if (payments.isEmpty) {
       Map<String, dynamic> mainPayment = {
         'amount': requestData['amount'] ?? 0,
@@ -275,7 +286,6 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
             '',
         'claimType': requestData['claim_type'] ?? '',
         'attachmentPaths': mainAttachments,
-        'attachments': mainAttachments,
       };
       payments.add(mainPayment);
     }
@@ -284,7 +294,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       id: requestData['id'] ?? 0,
       employeeId: requestData['employee_id']?.toString() ?? 'Unknown',
       employeeName: requestData['employee_name']?.toString() ?? 'Unknown',
-      avatarUrl: requestData['employee_avatar'], // ✅ Avatar passed directly
+      avatarUrl: requestData['employee_avatar'],
       submissionDate: requestData['submitted_date']?.toString() ??
           requestData['created_at']?.toString() ??
           requestData['date']?.toString() ??
@@ -292,7 +302,7 @@ class _FinancePaymentDashboardState extends State<FinancePaymentDashboard>
       amount: (requestData['amount'] ?? 0).toDouble(),
       description: requestData['description']?.toString() ?? '',
       payments: payments,
-      attachments: mainAttachments,
+      attachments: mainAttachments, // ✅ YEH PASS KARO
       requestType: requestData['request_type']?.toString() ?? 'Unknown',
       status: requestData['status'] ?? 'approved',
       approvedBy: requestData['approved_by'],

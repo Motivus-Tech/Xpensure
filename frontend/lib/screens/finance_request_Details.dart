@@ -103,55 +103,47 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     return Colors.grey;
   }
 
-  // Enhanced attachment extraction
   List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
-    List<String> attachmentPaths = [];
+    Set<String> networkUrls = Set<String>();
 
-    // Priority 1: Check attachmentPaths array
+    // Helper function to add only network URLs
+    void addNetworkUrl(dynamic path) {
+      if (path == null || path.toString().isEmpty) return;
+
+      final pathStr = path.toString();
+      // Sirf network URLs lo
+      if (pathStr.startsWith('http://') || pathStr.startsWith('https://')) {
+        networkUrls.add(pathStr);
+      }
+    }
+
+    // 1. Request ke direct attachments check karo
+    if (widget.request.attachments != null &&
+        widget.request.attachments.isNotEmpty) {
+      for (var attachment in widget.request.attachments) {
+        addNetworkUrl(attachment);
+      }
+    }
+
+    // 2. Payment se attachments
     if (payment['attachmentPaths'] is List) {
       final paths = payment['attachmentPaths'] as List;
       for (var path in paths) {
-        if (path is String && path.isNotEmpty) {
-          attachmentPaths.add(path);
-        }
+        addNetworkUrl(path);
       }
     }
 
-    // Priority 2: Check for single attachmentPath
-    if (payment['attachmentPath'] is String &&
-        payment['attachmentPath'].toString().isNotEmpty) {
-      attachmentPaths.add(payment['attachmentPath'].toString());
-    }
+    // 3. Single attachmentPath
+    addNetworkUrl(payment['attachmentPath']);
 
-    // Priority 3: Check direct attachment fields
+    // 4. Direct attachment fields
     final directFields = ['attachment', 'file', 'receipt', 'document'];
     for (String field in directFields) {
-      if (payment[field] is String && payment[field].toString().isNotEmpty) {
-        attachmentPaths.add(payment[field].toString());
-        break;
-      }
+      addNetworkUrl(payment[field]);
     }
 
-    // Priority 4: Check for any URLs or file paths
-    if (attachmentPaths.isEmpty) {
-      payment.forEach((key, value) {
-        if (value is String && value.isNotEmpty) {
-          if (value.startsWith('http') ||
-              value.startsWith('/') ||
-              value.contains('.jpg') ||
-              value.contains('.png') ||
-              value.contains('.pdf') ||
-              value.contains('.doc') ||
-              value.contains('.docx') ||
-              value.contains('.xls') ||
-              value.contains('.xlsx')) {
-            attachmentPaths.add(value);
-          }
-        }
-      });
-    }
-
-    return attachmentPaths;
+    print('🌐 NETWORK URLs only: ${networkUrls.toList()}');
+    return networkUrls.toList();
   }
 
   // Enhanced file dialog for images
@@ -322,6 +314,18 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
 
   Future<void> _downloadOnly(String filePath) async {
     try {
+      // Sirf network URLs ke liye download karo
+      if (!filePath.startsWith('http')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('This is a local file, downloading not needed'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        await _openFileWithDialog(filePath);
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloading ${_getFileName(filePath)}...'),
@@ -330,69 +334,38 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
         ),
       );
 
-      String downloadedPath;
-
-      if (filePath.startsWith('http')) {
-        // Download from network
-        final response = await http.get(Uri.parse(filePath));
-
-        // Use Downloads directory for user-accessible storage
-        final downloadsDir = await getDownloadsDirectory();
-        if (downloadsDir == null) {
-          throw Exception('Could not access downloads directory');
-        }
-
-        final fileName = _getFileName(filePath);
-        final file = File('${downloadsDir.path}/$fileName');
-
-        await file.writeAsBytes(response.bodyBytes);
-        downloadedPath = file.path;
-      } else {
-        // For local files, copy to downloads directory
-        final originalFile = File(filePath);
-        final downloadsDir = await getDownloadsDirectory();
-        if (downloadsDir == null) {
-          throw Exception('Could not access downloads directory');
-        }
-
-        final fileName = _getFileName(filePath);
-        final newFile = File('${downloadsDir.path}/$fileName');
-
-        await originalFile.copy(newFile.path);
-        downloadedPath = newFile.path;
+      // Network file download
+      final response = await http.get(Uri.parse(filePath));
+      final downloadsDir = await getDownloadsDirectory();
+      if (downloadsDir == null) {
+        throw Exception('Could not access downloads directory');
       }
+
+      final fileName = _getFileName(filePath);
+      final file = File('${downloadsDir.path}/$fileName');
+
+      await file.writeAsBytes(response.bodyBytes);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('File downloaded successfully!'),
-              Text(
-                'Location: ${downloadedPath.split('/').last}',
-                style: TextStyle(fontSize: 12, color: Colors.white70),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF1E8C3E),
-          duration: const Duration(seconds: 4),
+          content: Text('Downloaded: $fileName'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
           action: SnackBarAction(
             label: 'OPEN',
             textColor: Colors.white,
-            onPressed: () => _openFileWithDialog(downloadedPath),
+            onPressed: () => _openFileWithDialog(file.path),
           ),
         ),
       );
 
-      print('File downloaded to: $downloadedPath');
+      print('✅ Downloaded network file: ${file.path}');
     } catch (e) {
-      print('Error downloading file: $e');
+      print('❌ Download error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error downloading file: $e'),
-          backgroundColor: const Color(0xFFB71C1C),
-          duration: const Duration(seconds: 4),
+          content: Text('Download failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
       );
     }
@@ -816,16 +789,14 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // Enhanced attachments section
   Widget _buildAttachmentsSection(List<String> attachmentPaths) {
-    if (attachmentPaths.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 8),
-        child: Text(
-          'No attachments',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
+    // Sirf network URLs filter karo
+    final networkAttachments =
+        attachmentPaths.where((path) => path.startsWith('http')).toList();
+
+    if (networkAttachments.isEmpty) {
+      return const SizedBox
+          .shrink(); // Kuch nahi dikhao agar network URLs nahi hain
     }
 
     return Column(
@@ -841,7 +812,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
           ),
         ),
         const SizedBox(height: 8),
-        ...attachmentPaths
+        ...networkAttachments
             .map((path) => _buildSingleAttachmentPreview(path))
             .toList(),
       ],
@@ -1225,7 +1196,6 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     );
   }
 
-  // Enhanced payment item with attachments
   Widget _buildPaymentItemWithAttachments(dynamic payment, int index) {
     Map<String, dynamic> paymentData = {};
     if (payment is Map<String, dynamic>) {
@@ -1243,6 +1213,8 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
     final description = paymentData['description'] ??
         paymentData['particulars'] ??
         'No description';
+
+    // ✅ YEH CHANGE KARO: Payment se attachments lo
     final attachmentPaths = _getAttachmentPaths(paymentData);
 
     return Container(
@@ -1313,7 +1285,7 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
             ),
           ),
 
-          // Attachments section for this payment
+          // ✅ ATTACHMENTS SECTION - Always show if there are attachments
           if (attachmentPaths.isNotEmpty) ...[
             const Divider(color: Colors.grey, height: 1),
             Padding(
@@ -1361,9 +1333,8 @@ class _FinanceRequestDetailsState extends State<FinanceRequestDetails> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ...attachmentPaths
-                      .map((path) => _buildSingleAttachmentPreview(path))
-                      .toList(),
+                  // ✅ YEH LINE CHANGE KARO: _buildAttachmentsSection use karo
+                  _buildAttachmentsSection(attachmentPaths),
                 ],
               ),
             ),

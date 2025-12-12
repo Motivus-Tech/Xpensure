@@ -85,7 +85,6 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     return Colors.grey;
   }
 
-  // YEH FUNCTION CHANGE KAR:
   List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
     // Pehle check karo ki koi network URL available hai
     List<String> networkUrls = [];
@@ -94,27 +93,45 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
     print('DEBUG: Payment attachments: ${payment['attachments']}');
     print('DEBUG: Payment attachmentPaths: ${payment['attachmentPaths']}');
 
-    // Tere database record mein "attachments" field mein network URL hai
-    // Use pehle priority do
+    // ✅ YEH CHANGE KARO: Sirf network URLs filter karo
     if (widget.request.attachments != null &&
         widget.request.attachments.isNotEmpty) {
-      networkUrls.addAll(widget.request.attachments);
+      for (var attachment in widget.request.attachments) {
+        // Sirf http/https URLs lo
+        if (attachment.startsWith('http://') ||
+            attachment.startsWith('https://')) {
+          networkUrls.add(attachment);
+        }
+      }
     }
 
-    // Agar network URL mila, wahi return karo
+    // ✅ Agar network URL mila, sirf wahi return karo
     if (networkUrls.isNotEmpty) {
+      print('DEBUG: Filtered network URLs: $networkUrls');
       return networkUrls;
     }
 
-    // Nahi to purana logic chalao
+    // ✅ Payment se bhi network URLs check karo
     if (payment["attachmentPaths"] is List) {
-      return List<String>.from(payment["attachmentPaths"] ?? []);
-    } else if (payment["attachmentPath"] is String &&
-        payment["attachmentPath"].toString().isNotEmpty) {
-      return [payment["attachmentPath"].toString()];
+      final paths = List<String>.from(payment["attachmentPaths"] ?? []);
+      for (var path in paths) {
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          networkUrls.add(path);
+        }
+      }
     }
 
-    return [];
+    // ✅ Single attachmentPath bhi check karo
+    if (payment["attachmentPath"] is String &&
+        payment["attachmentPath"].toString().isNotEmpty) {
+      final path = payment["attachmentPath"].toString();
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        networkUrls.add(path);
+      }
+    }
+
+    print('DEBUG: Final network URLs to return: $networkUrls');
+    return networkUrls;
   }
 
   void _showImageDialog(String imagePath) {
@@ -294,30 +311,48 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
       String downloadedPath;
 
       if (filePath.startsWith('http')) {
-        // Download from network
         final response = await http.get(Uri.parse(filePath));
 
-        // Use Downloads directory for user-accessible storage
-        final downloadsDir = await getDownloadsDirectory();
+        // ✅ Use DIRECT DOWNLOADS PATH (System accessible)
+        final downloadsDir = await getExternalStorageDirectory();
         if (downloadsDir == null) {
-          throw Exception('Could not access downloads directory');
+          throw Exception('Could not access storage directory');
         }
 
+        // ✅ Create proper downloads path
+        final downloadsPath = '${downloadsDir.path}/Download';
+        await Directory(downloadsPath).create(recursive: true);
+
         final fileName = _getFileName(filePath);
-        final file = File('${downloadsDir.path}/$fileName');
+        final file = File('$downloadsPath/$fileName');
 
         await file.writeAsBytes(response.bodyBytes);
         downloadedPath = file.path;
+
+        // ✅ FOR IMAGES ONLY: Also save to Pictures folder for gallery
+        if (_isImageFile(filePath)) {
+          final picturesPath = '${downloadsDir.path}/Pictures/Xpensure';
+          await Directory(picturesPath).create(recursive: true);
+          final galleryFile = File('$picturesPath/$fileName');
+          await galleryFile.writeAsBytes(response.bodyBytes);
+
+          // Refresh gallery
+          final result = await OpenFile.open(galleryFile.path);
+          print('Gallery save result: $result');
+        }
       } else {
-        // For local files, copy to downloads directory
+        // For local files
         final originalFile = File(filePath);
-        final downloadsDir = await getDownloadsDirectory();
+        final downloadsDir = await getExternalStorageDirectory();
         if (downloadsDir == null) {
-          throw Exception('Could not access downloads directory');
+          throw Exception('Could not access storage directory');
         }
 
+        final downloadsPath = '${downloadsDir.path}/Download';
+        await Directory(downloadsPath).create(recursive: true);
+
         final fileName = _getFileName(filePath);
-        final newFile = File('${downloadsDir.path}/$fileName');
+        final newFile = File('$downloadsPath/$fileName');
 
         await originalFile.copy(newFile.path);
         downloadedPath = newFile.path;
@@ -329,11 +364,16 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('File downloaded successfully!'),
+              Text('✅ File downloaded successfully!'),
               Text(
-                'Location: ${downloadedPath.split('/').last}',
+                'Location: Download/${_getFileName(filePath)}',
                 style: TextStyle(fontSize: 12, color: Colors.white70),
               ),
+              if (_isImageFile(filePath))
+                Text(
+                  'Image also saved to Pictures/Xpensure folder',
+                  style: TextStyle(fontSize: 11, color: Colors.greenAccent),
+                ),
             ],
           ),
           backgroundColor: const Color(0xFF1E8C3E),
@@ -347,11 +387,17 @@ class _ApproverRequestDetailsState extends State<ApproverRequestDetails> {
       );
 
       print('File downloaded to: $downloadedPath');
+
+      // ✅ Notify system about new file (for gallery refresh)
+      if (_isImageFile(filePath)) {
+        final file = File(downloadedPath);
+        await OpenFile.open(file.path); // This triggers media scanner
+      }
     } catch (e) {
       print('Error downloading file: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error downloading file: $e'),
+          content: Text('Error: ${e.toString()}'),
           backgroundColor: const Color(0xFFB71C1C),
           duration: const Duration(seconds: 4),
         ),

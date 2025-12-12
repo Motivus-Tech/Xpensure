@@ -535,10 +535,33 @@ class _FinanceVerificationDashboardState
     );
   }
 
-  // CONVERT TO FINANCE REQUEST WITH ALL DATE FIELDS
   FinanceRequest _convertToFinanceRequest(dynamic requestData) {
     List<dynamic> payments = [];
-    List<dynamic> mainAttachments = [];
+    List<dynamic> mainAttachments = []; // ✅ List<dynamic> banaye
+
+    // Handle attachments
+    if (requestData['attachments'] != null) {
+      if (requestData['attachments'] is List) {
+        for (var item in requestData['attachments']) {
+          if (item != null && item.toString().isNotEmpty) {
+            mainAttachments.add(item);
+          }
+        }
+      } else if (requestData['attachments'] is String) {
+        try {
+          final parsedAttachments = jsonDecode(requestData['attachments']);
+          if (parsedAttachments is List) {
+            for (var item in parsedAttachments) {
+              if (item != null && item.toString().isNotEmpty) {
+                mainAttachments.add(item);
+              }
+            }
+          }
+        } catch (e) {
+          mainAttachments.add(requestData['attachments']);
+        }
+      }
+    }
 
     // Handle payments field
     if (requestData['payments'] != null) {
@@ -551,17 +574,12 @@ class _FinanceVerificationDashboardState
       } else if (requestData['payments'] is List) {
         payments = requestData['payments'];
       }
-    }
 
-    // Handle attachments
-    if (requestData['attachments'] != null) {
-      if (requestData['attachments'] is List) {
-        mainAttachments = requestData['attachments'];
-      } else if (requestData['attachments'] is String) {
-        try {
-          mainAttachments = jsonDecode(requestData['attachments']);
-        } catch (e) {
-          mainAttachments = [requestData['attachments']];
+      // Payments ke attachments bhi extract karo
+      for (var payment in payments) {
+        if (payment is Map<String, dynamic>) {
+          final paymentAttachments = _extractAttachmentsFromPayment(payment);
+          mainAttachments.addAll(paymentAttachments);
         }
       }
     }
@@ -587,7 +605,7 @@ class _FinanceVerificationDashboardState
       amount: (requestData['amount'] ?? 0).toDouble(),
       description: requestData['description']?.toString() ?? '',
       payments: payments,
-      attachments: mainAttachments,
+      attachments: mainAttachments, // ✅ YEH PASS KARO
       requestType: requestData['request_type']?.toString() ?? 'Unknown',
       status: requestData['status'] ?? 'pending',
       approvedBy: requestData['approved_by'],
@@ -601,6 +619,46 @@ class _FinanceVerificationDashboardState
     );
 
     return financeRequest;
+  }
+
+  // ✅ YEH METHOD ADD KARO
+  List<String> _extractAttachmentsFromPayment(Map<String, dynamic> payment) {
+    List<String> attachments = [];
+    final attachmentFields = [
+      'attachmentPaths',
+      'attachments',
+      'attachment',
+      'file',
+      'receipt',
+      'document',
+      'files'
+    ];
+
+    for (String field in attachmentFields) {
+      if (payment[field] != null) {
+        if (payment[field] is List) {
+          for (var item in payment[field] as List) {
+            if (item is String && item.isNotEmpty) {
+              attachments.add(item);
+            }
+          }
+        } else if (payment[field] is String && payment[field].isNotEmpty) {
+          try {
+            final parsed = jsonDecode(payment[field]);
+            if (parsed is List) {
+              for (var item in parsed) {
+                if (item is String && item.isNotEmpty) {
+                  attachments.add(item);
+                }
+              }
+            }
+          } catch (e) {
+            attachments.add(payment[field]);
+          }
+        }
+      }
+    }
+    return attachments;
   }
 
   // HISTORY REQUEST CARD

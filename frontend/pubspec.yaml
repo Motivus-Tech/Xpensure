@@ -30,7 +30,7 @@ dependencies:
   cached_network_image: ^3.3.0
   connectivity_plus: ^5.0.1
   open_file: ^3.3.3
-
+  
 
 
 dev_dependencies:
