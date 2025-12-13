@@ -278,55 +278,164 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return projectInfo;
   }
 
-  // ENHANCED ATTACHMENT EXTRACTION
-  List<String> _getAttachmentPaths(Map<String, dynamic> payment) {
-    List<String> attachmentPaths = [];
+  // ENHANCED ATTACHMENT EXTRACTION METHOD
+  List<String> _getAllAttachmentPaths() {
+    List<String> allAttachments = [];
 
-    // Priority 1: Check attachmentPaths array
-    if (payment['attachmentPaths'] is List) {
-      final paths = payment['attachmentPaths'] as List;
-      for (var path in paths) {
-        if (path is String && path.isNotEmpty) {
-          attachmentPaths.add(path);
+    // 1. Check main attachments field (network URLs)
+    final mainAttachments = widget.getRequestData('attachments');
+    if (mainAttachments != null) {
+      if (mainAttachments is String) {
+        // If it's a JSON string, parse it
+        try {
+          final parsed = json.decode(mainAttachments) as List;
+          for (var item in parsed) {
+            if (item is String && item.isNotEmpty) {
+              allAttachments.add(item);
+            }
+          }
+        } catch (e) {
+          // If not JSON, treat as single string
+          if (mainAttachments.isNotEmpty) {
+            allAttachments.add(mainAttachments);
+          }
+        }
+      } else if (mainAttachments is List) {
+        for (var item in mainAttachments) {
+          if (item is String && item.isNotEmpty) {
+            allAttachments.add(item);
+          }
         }
       }
     }
 
-    // Priority 2: Check for single attachmentPath
-    if (payment['attachmentPath'] is String &&
-        payment['attachmentPath'].toString().isNotEmpty) {
-      attachmentPaths.add(payment['attachmentPath'].toString());
+    // 2. Check payments array for attachments (could be local paths)
+    final payments = widget.getRequestData('payments');
+    if (payments != null && payments is List && payments.isNotEmpty) {
+      for (var payment in payments) {
+        if (payment is Map) {
+          final paymentAttachments = _getAttachmentPathsFromPayment(payment);
+          allAttachments.addAll(paymentAttachments);
+        } else if (payment is String) {
+          try {
+            final parsedPayment = json.decode(payment) as Map<String, dynamic>;
+            final paymentAttachments =
+                _getAttachmentPathsFromPayment(parsedPayment);
+            allAttachments.addAll(paymentAttachments);
+          } catch (e) {
+            print('Error parsing payment: $e');
+          }
+        }
+      }
     }
 
-    // Priority 3: Check direct attachment fields
+    // 3. Remove duplicates and empty strings
+    return allAttachments.where((path) => path.isNotEmpty).toSet().toList();
+  }
+
+  // Helper method to extract attachments from payment object
+  List<String> _getAttachmentPathsFromPayment(dynamic payment) {
+    List<String> attachments = [];
+
+    // If payment is not a Map, return empty list
+    if (payment is! Map) {
+      return attachments;
+    }
+
+    // Convert to Map for safe access
+    final paymentMap = payment as Map;
+
+    // Check attachmentPaths array (from your data structure)
+    if (paymentMap['attachmentPaths'] != null) {
+      if (paymentMap['attachmentPaths'] is List) {
+        final paths = paymentMap['attachmentPaths'] as List;
+        for (var path in paths) {
+          if (path is String && path.isNotEmpty) {
+            attachments.add(path);
+          }
+        }
+      } else if (paymentMap['attachmentPaths'] is String) {
+        try {
+          // Try to parse as JSON array
+          final parsed = json.decode(paymentMap['attachmentPaths']) as List;
+          for (var path in parsed) {
+            if (path is String && path.isNotEmpty) {
+              attachments.add(path);
+            }
+          }
+        } catch (e) {
+          // If not JSON, treat as single string
+          if (paymentMap['attachmentPaths'].toString().isNotEmpty) {
+            attachments.add(paymentMap['attachmentPaths'].toString());
+          }
+        }
+      }
+    }
+
+    // Check for single attachmentPath
+    if (paymentMap['attachmentPath'] is String &&
+        paymentMap['attachmentPath'].toString().isNotEmpty) {
+      attachments.add(paymentMap['attachmentPath'].toString());
+    }
+
+    // Check direct attachment fields
     final directFields = ['attachment', 'file', 'receipt', 'document'];
     for (String field in directFields) {
-      if (payment[field] is String && payment[field].toString().isNotEmpty) {
-        attachmentPaths.add(payment[field].toString());
+      if (paymentMap[field] is String &&
+          paymentMap[field].toString().isNotEmpty) {
+        attachments.add(paymentMap[field].toString());
         break;
       }
     }
 
-    // Priority 4: Check for any URLs or file paths
-    if (attachmentPaths.isEmpty) {
-      payment.forEach((key, value) {
-        if (value is String && value.isNotEmpty) {
-          if (value.startsWith('http') ||
-              value.startsWith('/') ||
-              value.contains('.jpg') ||
-              value.contains('.png') ||
-              value.contains('.pdf')) {
-            attachmentPaths.add(value);
-          }
-        }
-      });
-    }
-
-    return attachmentPaths;
+    return attachments;
   }
 
-  // ENHANCED FILE VIEWING AND DOWNLOADING METHODS
+// Also update the _getAttachmentPaths method to handle dynamic type:
+  List<String> _getAttachmentPaths(dynamic payment) {
+    return _getAttachmentPathsFromPayment(payment);
+  }
+
+  // UPDATED: Check if path is a network URL
+  bool _isNetworkUrl(String path) {
+    return path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('www.');
+  }
+
+  // UPDATED: Check if path is a local file path
+  bool _isLocalPath(String path) {
+    return path.startsWith('/') ||
+        path.startsWith('file://') ||
+        path.contains('cache/file_picker/');
+  }
+
+  // UPDATED: Get base URL for constructing full URLs
+  String _getFullUrl(String relativePath) {
+    // If it's already a full URL, return as is
+    if (_isNetworkUrl(relativePath)) {
+      return relativePath;
+    }
+
+    // If it's a local path, check if it starts with /media/
+    if (relativePath.startsWith('/media/')) {
+      return 'http://3.110.215.143$relativePath';
+    }
+
+    // If it starts with media/, add base URL
+    if (relativePath.startsWith('media/')) {
+      return 'http://3.110.215.143/$relativePath';
+    }
+
+    // For other cases, assume it's a local file
+    return relativePath;
+  }
+
+  // UPDATED: Enhanced file viewing for both network and local files
   void _showImageDialog(String imagePath) {
+    final fullPath =
+        _isNetworkUrl(imagePath) ? imagePath : _getFullUrl(imagePath);
+
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -339,9 +448,58 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               minScale: 0.5,
               maxScale: 3.0,
               child: Center(
-                child: imagePath.startsWith('http')
-                    ? Image.network(imagePath, fit: BoxFit.contain)
-                    : Image.file(File(imagePath), fit: BoxFit.contain),
+                child: _isNetworkUrl(fullPath)
+                    ? Image.network(
+                        fullPath,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[800],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error, color: Colors.red, size: 50),
+                                SizedBox(height: 10),
+                                Text(
+                                  'Failed to load image',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      )
+                    : Image.file(
+                        File(fullPath),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[800],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error, color: Colors.red, size: 50),
+                                SizedBox(height: 10),
+                                Text(
+                                  'Failed to load image',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
             ),
             Positioned(
@@ -356,7 +514,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
               bottom: 10,
               right: 10,
               child: ElevatedButton.icon(
-                onPressed: () => _downloadAndOpenFile(imagePath),
+                onPressed: () => _downloadAndOpenFile(fullPath),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
@@ -437,20 +595,41 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     }
   }
 
+  // UPDATED: File download method that handles both network and local files
   Future<String> _downloadFile(String filePath) async {
     try {
-      if (filePath.startsWith('http')) {
-        final response = await http.get(Uri.parse(filePath));
-        final tempDir = await getTemporaryDirectory();
-        final fileName = _getFileName(filePath);
-        final file = File('${tempDir.path}/$fileName');
+      final fullPath =
+          _isNetworkUrl(filePath) ? filePath : _getFullUrl(filePath);
 
-        await file.writeAsBytes(response.bodyBytes);
-        return file.path;
+      if (_isNetworkUrl(fullPath)) {
+        final response = await http.get(
+          Uri.parse(fullPath),
+          headers: {
+            'Authorization': 'Token ${widget.authToken}',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final tempDir = await getTemporaryDirectory();
+          final fileName = _getFileName(fullPath);
+          final file = File('${tempDir.path}/$fileName');
+
+          await file.writeAsBytes(response.bodyBytes);
+          return file.path;
+        } else {
+          throw Exception('Failed to download: ${response.statusCode}');
+        }
       } else {
-        return filePath;
+        // For local files, check if file exists
+        final file = File(fullPath);
+        if (await file.exists()) {
+          return file.path;
+        } else {
+          throw Exception('Local file not found: $fullPath');
+        }
       }
     } catch (e) {
+      print('Error downloading file: $e');
       throw Exception('Download failed: $e');
     }
   }
@@ -589,9 +768,12 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     }
   }
 
-  // ENHANCED ATTACHMENT PREVIEW WIDGET WITH RESPONSIVE DESIGN
+  // UPDATED: Modified _buildSingleAttachmentPreview to handle network URLs
   Widget _buildSingleAttachmentPreview(String attachmentPath, bool isMobile) {
     final isImage = _isImageFile(attachmentPath);
+    final isNetwork = _isNetworkUrl(attachmentPath);
+    final displayPath =
+        isNetwork ? attachmentPath : _getFullUrl(attachmentPath);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -617,18 +799,44 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _getFileName(attachmentPath),
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                          fontSize: isMobile ? 13 : 14,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
+                      Row(
+                        children: [
+                          if (isNetwork)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green[800],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'NETWORK',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isMobile ? 8 : 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          if (isNetwork) SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _getFileName(attachmentPath),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: isMobile ? 13 : 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
                       ),
                       Text(
-                        _getFileExtension(attachmentPath).toUpperCase(),
+                        '${_getFileExtension(attachmentPath).toUpperCase()} ${isNetwork ? '(Online)' : '(Local)'}',
                         style: TextStyle(
                           color: Colors.grey[400],
                           fontSize: isMobile ? 10 : 12,
@@ -650,10 +858,22 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: attachmentPath.startsWith('http')
+                  child: isNetwork
                       ? Image.network(
-                          attachmentPath,
+                          displayPath,
                           fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes !=
+                                        null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
                               color: Colors.grey[800],
@@ -666,7 +886,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                           },
                         )
                       : Image.file(
-                          File(attachmentPath),
+                          File(displayPath),
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
@@ -682,7 +902,7 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                 ),
               ),
             if (isImage) const SizedBox(height: 12),
-            _buildFileActions(attachmentPath, isMobile),
+            _buildFileActions(displayPath, isMobile),
           ],
         ),
       ),
@@ -953,7 +1173,10 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     }
   }
 
-  Widget _buildAttachmentsSection(List<String> attachmentPaths, bool isMobile) {
+  // UPDATED: Build attachments section
+  Widget _buildAttachmentsSection(bool isMobile) {
+    final attachmentPaths = _getAllAttachmentPaths();
+
     if (attachmentPaths.isEmpty) {
       return const Padding(
         padding: EdgeInsets.only(top: 8),
@@ -967,14 +1190,37 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
-        Text(
-          'Attachments:',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: isMobile ? 14 : 16,
-          ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Icon(Icons.attachment,
+                color: Colors.white, size: isMobile ? 18 : 20),
+            SizedBox(width: 8),
+            Text(
+              'Attachments:',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: isMobile ? 16 : 18,
+              ),
+            ),
+            SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue[800],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${attachmentPaths.length}',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isMobile ? 12 : 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         ...attachmentPaths
@@ -2138,13 +2384,17 @@ class _CeoRequestDetailsState extends State<CeoRequestDetails> {
                   // 4. PAYMENT BREAKDOWN WITH ATTACHMENTS (ATTACHMENTS SHOWN PER PAYMENT)
                   _buildPaymentBreakdown(isMobile),
 
-                  // 5. APPROVAL INFORMATION
+                  // 5. ALL ATTACHMENTS SECTION - ADDED THIS SECTION
+                  if (_getAllAttachmentPaths().isNotEmpty)
+                    _buildAttachmentsSection(isMobile),
+
+                  // 6. APPROVAL INFORMATION
                   _buildApprovalHistory(isMobile),
 
-                  // 6. REJECTION INFORMATION
+                  // 7. REJECTION INFORMATION
                   _buildRejectionDetails(isMobile),
 
-                  // 7. ACTION BUTTONS
+                  // 8. ACTION BUTTONS
                   _buildActionButtons(isMobile),
 
                   SizedBox(height: isMobile ? 16 : 20),

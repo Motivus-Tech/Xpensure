@@ -800,6 +800,7 @@ class _FinanceVerificationDashboardState
                       ),
                     ),
                   );
+                  _loadAllData();
                 },
                 child: Text(
                   'View Details',
@@ -1066,6 +1067,7 @@ class _FinanceVerificationDashboardState
                                     ),
                                   ),
                                 );
+                                _loadAllData();
                               },
                               style: TextButton.styleFrom(
                                 backgroundColor: Colors.transparent,
